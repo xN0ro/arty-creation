@@ -1,0 +1,276 @@
+{
+  "adminEmails": [
+    "admin@arty.com"
+  ],
+  "googleClientId": "YOUR_GOOGLE_CLIENT_ID_HERE",
+  "kits": [
+    {
+      "id": 1,
+      "name": "Sunset Acrylic Kit",
+      "description": "Everything you need to paint breathtaking sunsets. Includes 12 premium acrylic paints, 3 brushes, a stretched canvas, and a step-by-step printed guide. The colors were hand-selected by professional artists to give you the perfect warm palette for golden hour scenes.",
+      "shortDesc": "12 acrylic paints, 3 brushes, canvas & guide",
+      "price": 49.99,
+      "category": "acrylic",
+      "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
+      "images": [
+        "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
+        "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
+        "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"
+      ],
+      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "videoTitle": "How to Paint a Stunning Sunset - Full Tutorial",
+      "difficulty": "Beginner",
+      "includes": [
+        "12 acrylic paints",
+        "3 premium brushes",
+        "Stretched canvas 16×20",
+        "Step-by-step guide",
+        "Color mixing chart"
+      ],
+      "inStock": true,
+      "featured": true
+    },
+    {
+      "id": 2,
+      "name": "Watercolor Botanicals Kit",
+      "description": "Explore the delicate art of watercolor botanicals. Contains 18 watercolor pans, a premium watercolor paper pad, detail brushes, and botanical reference cards with real plant illustrations to follow along with.",
+      "shortDesc": "18 watercolors, paper pad, brushes & reference cards",
+      "price": 59.99,
+      "category": "watercolor",
+      "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
+      "images": [
+        "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
+        "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600"
+      ],
+      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "videoTitle": "Watercolor Botanicals for Beginners",
+      "difficulty": "Intermediate",
+      "includes": [
+        "18 watercolor pans",
+        "Watercolor paper pad",
+        "3 detail brushes",
+        "Botanical reference cards",
+        "Mixing palette"
+      ],
+      "inStock": true,
+      "featured": true
+    },
+    {
+      "id": 3,
+      "name": "Abstract Expressionism Kit",
+      "description": "Unleash your inner artist with bold strokes and vibrant colors. Includes palette knives, a large canvas, 8 bold acrylic colors, and an inspiration booklet filled with techniques from the masters.",
+      "shortDesc": "Palette knives, large canvas, 8 bold acrylics",
+      "price": 69.99,
+      "category": "acrylic",
+      "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600",
+      "images": [
+        "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600",
+        "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"
+      ],
+      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "videoTitle": "Abstract Art Techniques - Express Yourself",
+      "difficulty": "All Levels",
+      "includes": [
+        "8 bold acrylic colors",
+        "3 palette knives",
+        "Large canvas 24×30",
+        "Inspiration booklet",
+        "Drop cloth"
+      ],
+      "inStock": true,
+      "featured": false
+    },
+    {
+      "id": 4,
+      "name": "Portrait Drawing Kit",
+      "description": "Master the art of portrait drawing with professional graphite pencils, charcoal sticks, blending stumps, and a premium sketchpad. Includes a proportions guide for realistic faces.",
+      "shortDesc": "Graphite pencils, charcoal, blending tools & sketchpad",
+      "price": 39.99,
+      "category": "drawing",
+      "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
+      "images": [
+        "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600"
+      ],
+      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "videoTitle": "Portrait Drawing Fundamentals",
+      "difficulty": "Intermediate",
+      "includes": [
+        "12 graphite pencils (2H-8B)",
+        "4 charcoal sticks",
+        "Blending stumps",
+        "Premium sketchpad",
+        "Proportions guide"
+      ],
+      "inStock": true,
+      "featured": false
+    },
+    {
+      "id": 5,
+      "name": "Kids Creative Kit",
+      "description": "A fun and safe art kit designed for young artists aged 5-12. Washable paints, foam brushes, stickers, glitter, and coloring templates. Everything is non-toxic and easy to clean up.",
+      "shortDesc": "Washable paints, foam brushes, stickers & templates",
+      "price": 29.99,
+      "category": "kids",
+      "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600",
+      "images": [
+        "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600"
+      ],
+      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "videoTitle": "Fun Art Projects for Kids",
+      "difficulty": "Beginner",
+      "includes": [
+        "8 washable paints",
+        "Foam brushes",
+        "Sticker sheets",
+        "Glitter tubes",
+        "Coloring templates"
+      ],
+      "inStock": true,
+      "featured": true
+    },
+    {
+      "id": 6,
+      "name": "Oil Painting Masterclass Kit",
+      "description": "Premium oil painting set with 24 oil colors, linseed oil, turpentine, professional brushes, palette, and a stretched canvas. For serious artists ready to explore oil painting.",
+      "shortDesc": "24 oil colors, professional brushes, palette & canvas",
+      "price": 89.99,
+      "category": "oil",
+      "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600",
+      "images": [
+        "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"
+      ],
+      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+      "videoTitle": "Oil Painting Masterclass - Complete Guide",
+      "difficulty": "Advanced",
+      "includes": [
+        "24 oil colors",
+        "Linseed oil & turpentine",
+        "6 professional brushes",
+        "Wooden palette",
+        "Stretched canvas 18×24"
+      ],
+      "inStock": true,
+      "featured": false
+    }
+  ],
+  "events": [
+    {
+      "id": 1,
+      "title": "Friday Night Paint & Sip",
+      "description": "Join us for a relaxing evening of painting and socializing. All materials provided. Bring your favorite drink!",
+      "date": "2026-03-20",
+      "time": "18:00",
+      "duration": "2.5 hours",
+      "location": "Arty! Studio Downtown",
+      "price": 45,
+      "maxSpots": 20,
+      "bookedSpots": 13,
+      "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
+      "category": "social"
+    },
+    {
+      "id": 2,
+      "title": "Kids Art Saturday",
+      "description": "A fun-filled morning of creativity for kids aged 5-12. Different techniques and materials each week. Parents welcome!",
+      "date": "2026-03-22",
+      "time": "10:00",
+      "duration": "2 hours",
+      "location": "Arty! Studio Downtown",
+      "price": 25,
+      "maxSpots": 15,
+      "bookedSpots": 8,
+      "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600",
+      "category": "kids"
+    },
+    {
+      "id": 3,
+      "title": "Watercolor Workshop",
+      "description": "Deep dive into watercolor techniques with professional artist Marie Leclair. Learn wet-on-wet, glazing, and more.",
+      "date": "2026-03-25",
+      "time": "14:00",
+      "duration": "3 hours",
+      "location": "Arty! Studio Downtown",
+      "price": 65,
+      "maxSpots": 12,
+      "bookedSpots": 10,
+      "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600",
+      "category": "workshop"
+    },
+    {
+      "id": 4,
+      "title": "Abstract Art Night",
+      "description": "No rules, no boundaries. Express yourself through abstract art with live music and good vibes.",
+      "date": "2026-03-28",
+      "time": "19:00",
+      "duration": "2 hours",
+      "location": "Arty! Studio Downtown",
+      "price": 50,
+      "maxSpots": 18,
+      "bookedSpots": 5,
+      "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600",
+      "category": "social"
+    },
+    {
+      "id": 5,
+      "title": "Oil Painting Intensive",
+      "description": "A full-day workshop covering oil painting from start to finish. Lunch provided. All skill levels welcome.",
+      "date": "2026-04-05",
+      "time": "09:00",
+      "duration": "6 hours",
+      "location": "Arty! Studio Downtown",
+      "price": 120,
+      "maxSpots": 10,
+      "bookedSpots": 3,
+      "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
+      "category": "workshop"
+    },
+    {
+      "id": 6,
+      "title": "Date Night: Paint Together",
+      "description": "A romantic painting experience for couples. Paint matching canvases with snacks and soft music.",
+      "date": "2026-04-12",
+      "time": "19:00",
+      "duration": "2.5 hours",
+      "location": "Arty! Studio Downtown",
+      "price": 80,
+      "maxSpots": 16,
+      "bookedSpots": 14,
+      "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
+      "category": "social"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "name": "Admin",
+      "email": "admin@arty.com",
+      "password": "$2a$10$placeholder",
+      "role": "admin",
+      "provider": "local",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": 1772996720802,
+      "name": "Norayr Petrosyan",
+      "email": "pnorayr@gmail.com",
+      "password": "$2a$10$yalqdHF2owLlCMaISGMt5uPfzcP9C3X/1ZsBWQthGVFgNzXDJys8S",
+      "role": "user",
+      "provider": "local",
+      "picture": "",
+      "createdAt": "2026-03-08T19:05:20.802Z"
+    }
+  ],
+  "orders": [],
+  "bookings": [
+    {
+      "id": 1772997580793,
+      "userId": 1772996720802,
+      "eventId": 1,
+      "name": "Norayr Petrosyan",
+      "email": "pnorayr@gmail.com",
+      "guests": 1,
+      "bookedAt": "2026-03-08T19:19:40.793Z",
+      "status": "confirmed"
+    }
+  ]
+}
