@@ -16,7 +16,14 @@
     <a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a>
     <div class="nav-links" id="navLinks">
       <a href="#/" data-nav="home">Home</a>
-      <a href="#/" data-nav="kits">Shop</a>
+      
+      <div class="nav-item-dropdown">
+        <a href="#/" data-nav="kits">Shop</a>
+        <div class="nav-dropdown-menu hover-menu">
+          <a href="#/inventory">All Products</a>
+        </div>
+      </div>
+
       <a href="#/" data-nav="events">Events</a>
       <a href="#/" data-nav="tutorials">Tutorials</a>
       <a href="#/" data-nav="about">About</a>
@@ -63,6 +70,10 @@
         <button class="filter-btn active" data-filter="all">All</button><button class="filter-btn" data-filter="acrylic">Acrylic</button><button class="filter-btn" data-filter="watercolor">Watercolor</button><button class="filter-btn" data-filter="oil">Oil</button><button class="filter-btn" data-filter="drawing">Drawing</button><button class="filter-btn" data-filter="kids">Kids</button>
       </div>
       <div class="kits-grid stagger-children" id="kitsGrid"></div>
+      
+      <div class="text-center fade-up" style="margin-top: 48px;">
+        <a href="#/inventory" class="btn btn-ghost">View Full Inventory →</a>
+      </div>
     </div>
   </section>
 
@@ -126,6 +137,28 @@
     </div>
   </section>
 </div>
+
+<div class="page" id="page-inventory">
+  <section class="kits-section section-pad" style="min-height: 100vh;">
+    <div class="container">
+      <div class="text-center fade-up">
+        <div class="section-tag">Full Collection</div>
+        <h2 class="section-heading">All <span class="accent">Art Kits</span></h2>
+      </div>
+      <div class="kits-filter fade-up" id="inventoryFilter">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="acrylic">Acrylic</button>
+        <button class="filter-btn" data-filter="watercolor">Watercolor</button>
+        <button class="filter-btn" data-filter="oil">Oil</button>
+        <button class="filter-btn" data-filter="drawing">Drawing</button>
+        <button class="filter-btn" data-filter="kids">Kids</button>
+      </div>
+      <div class="kits-grid stagger-children" id="inventoryGrid"></div>
+    </div>
+  </section>
+</div>
+
+<div class="page" id="page-product"><div class="product-page"><div class="container" id="productPageContent"></div></div></div>
 
 <!-- ====== PAGE: PRODUCT ====== -->
 <div class="page" id="page-product"><div class="product-page"><div class="container" id="productPageContent"></div></div></div>

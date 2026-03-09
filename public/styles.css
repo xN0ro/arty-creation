@@ -40,6 +40,18 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 .btn-danger{background:rgba(255,107,107,.1);color:#FF6B6B;border:1px solid rgba(255,107,107,.2)}
 .btn-danger:hover{background:#FF6B6B;color:var(--black)}
 
+/* Shop Dropdown Hover Effects */
+.nav-item-dropdown { position: relative; display: flex; align-items: center; height: 100%; }
+.nav-item-dropdown .hover-menu {
+  position: absolute; top: 100%; left: -10px; background: var(--dark-card); border: 1px solid var(--w08);
+  border-radius: var(--r-md); padding: 8px; min-width: 160px;
+  opacity: 0; visibility: hidden; transform: translateY(10px); transition: var(--tr); box-shadow: 0 16px 40px rgba(0,0,0,.5); z-index: 100;
+}
+.nav-item-dropdown:hover .hover-menu { opacity: 1; visibility: visible; transform: translateY(0); }
+.nav-item-dropdown .hover-menu a { display: block; padding: 10px 14px; font-size: .84rem; color: var(--w70); border-radius: 8px; transition: var(--tr); }
+.nav-item-dropdown .hover-menu a:hover { background: var(--w08); color: var(--white); }
+.nav-item-dropdown .hover-menu a::after { display: none; } /* removes underline from dropdown links */
+
 /* ===== NAVBAR ===== */
 .navbar{position:fixed;top:0;left:0;right:0;z-index:1000;padding:18px 0;transition:var(--tr)}
 .navbar.scrolled{background:rgba(10,10,10,.9);backdrop-filter:blur(24px);border-bottom:1px solid var(--w08);padding:12px 0}

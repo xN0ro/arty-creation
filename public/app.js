@@ -36,12 +36,11 @@ function handleRoute() {
   const footer = document.getElementById('mainFooter');
   footer.style.display = '';
 
-  if (hash.startsWith('#/product/')) {
-    document.getElementById('page-product').classList.add('active');
-    const id = parseInt(hash.split('/')[2]);
-    renderProductPage(id);
+  if (hash === '#/inventory') {                               // <--- NEW ROUTE
+    document.getElementById('page-inventory').classList.add('active');
+    renderInventory();
     window.scrollTo(0, 0);
-  } else if (hash === '#/profile') {
+  } else if (hash.startsWith('#/product/')) {
     if (!currentUser) { navigate('#/'); openModal('auth'); return; }
     document.getElementById('page-profile').classList.add('active');
     renderProfilePage();
@@ -213,22 +212,57 @@ async function loadKits() {
   try { allKits = await (await fetch('/api/kits')).json(); } catch { allKits=[]; }
   renderKits(); renderTutorials(); initFilterButtons();
 }
+// Variable for the new inventory page filter
+let inventoryFilter = 'all';
+
+// Updated Home Page Render (Shows only 3 items)
 function renderKits() {
-  const g=document.getElementById('kitsGrid');
-  const f=currentFilter==='all'?allKits:allKits.filter(k=>k.category===currentFilter);
-  g.innerHTML=f.map(k=>`<div class="kit-card" onclick="navigate('#/product/${k.id}')">
+  const g = document.getElementById('kitsGrid');
+  if(!g) return;
+  const f = currentFilter === 'all' ? allKits : allKits.filter(k => k.category === currentFilter);
+  const top3 = f.slice(0, 3); // <--- Restricts to 3 items
+  
+  g.innerHTML = top3.map(k => `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
     <div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Featured</span>':''}</div>
     <div class="kit-card-body"><div class="kit-card-category">${k.category}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p>
     <div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta"><span class="kit-card-dot" style="background:${k.inStock?'#1B9AAA':'#FF6B6B'}"></span>${k.inStock?'In Stock':'Sold Out'} · ${k.difficulty}</span></div></div></div>`).join('');
-  setTimeout(()=>g.classList.add('visible'),50);
+  setTimeout(() => g.classList.add('visible'), 50);
+}
+
+// New Full Inventory Render
+function renderInventory() {
+  const g = document.getElementById('inventoryGrid');
+  if(!g) return;
+  const f = inventoryFilter === 'all' ? allKits : allKits.filter(k => k.category === inventoryFilter);
+  
+  g.innerHTML = f.map(k => `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
+    <div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Featured</span>':''}</div>
+    <div class="kit-card-body"><div class="kit-card-category">${k.category}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p>
+    <div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta"><span class="kit-card-dot" style="background:${k.inStock?'#1B9AAA':'#FF6B6B'}"></span>${k.inStock?'In Stock':'Sold Out'} · ${k.difficulty}</span></div></div></div>`).join('');
+  setTimeout(() => g.classList.add('visible'), 50);
 }
 function initFilterButtons() {
-  document.querySelectorAll('.filter-btn').forEach(b=>{b.addEventListener('click',()=>{
-    document.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active'));
-    b.classList.add('active'); currentFilter=b.dataset.filter;
-    document.getElementById('kitsGrid').classList.remove('visible');
-    setTimeout(()=>renderKits(),100);
-  })});
+  // Home page filters
+  document.querySelectorAll('#kitsFilter .filter-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#kitsFilter .filter-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); 
+      currentFilter = b.dataset.filter;
+      document.getElementById('kitsGrid').classList.remove('visible');
+      setTimeout(() => renderKits(), 100);
+    });
+  });
+
+  // Inventory page filters
+  document.querySelectorAll('#inventoryFilter .filter-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('#inventoryFilter .filter-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); 
+      inventoryFilter = b.dataset.filter;
+      document.getElementById('inventoryGrid').classList.remove('visible');
+      setTimeout(() => renderInventory(), 100);
+    });
+  });
 }
 
 // ===================== PRODUCT PAGE =====================
