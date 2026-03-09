@@ -36,11 +36,18 @@ function handleRoute() {
   const footer = document.getElementById('mainFooter');
   footer.style.display = '';
 
-  if (hash === '#/inventory') {                               // <--- NEW ROUTE
+  if (hash === '#/inventory') {
     document.getElementById('page-inventory').classList.add('active');
     renderInventory();
     window.scrollTo(0, 0);
   } else if (hash.startsWith('#/product/')) {
+    // THIS is the missing product logic
+    document.getElementById('page-product').classList.add('active');
+    const id = parseInt(hash.split('/')[2]);
+    renderProductPage(id);
+    window.scrollTo(0, 0);
+  } else if (hash === '#/profile') {
+    // THIS is the missing profile logic
     if (!currentUser) { navigate('#/'); openModal('auth'); return; }
     document.getElementById('page-profile').classList.add('active');
     renderProfilePage();
