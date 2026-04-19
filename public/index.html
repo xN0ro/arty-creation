@@ -15,9 +15,9 @@
     <a class="nav-logo" href="#/" onclick="navigate('#/');return false"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a>
     <div class="nav-links" id="navLinks">
       <a href="#/" data-nav="home">Accueil</a>
-      <a href="#/paintings" data-page="paintings">Nos Peintures</a>
-      <a href="#/party" data-page="party">Événements</a>
-      <a href="#/team" data-page="team">Entreprises</a>
+      <a href="#/paintings">Nos Peintures</a>
+      <a href="#/party">Événements</a>
+      <a href="#/team">Entreprises</a>
       <a href="#/" data-nav="contact">Contact</a>
     </div>
     <div class="nav-auth" id="navAuth"></div>
@@ -25,8 +25,10 @@
   </div>
 </nav>
 
-<!-- ====== HOME ====== -->
+<!-- ===================== HOME ===================== -->
 <div class="page active" id="page-home">
+
+  <!-- HERO -->
   <section class="hero">
     <div class="container">
       <div class="hero-inner">
@@ -36,12 +38,7 @@
           <p>Kits de peinture créatifs, livrés à votre porte pour toutes vos occasions. Que ce soit en famille, entre amis, en amoureux ou solo — Arty! a le kit parfait pour vous.</p>
           <div class="hero-actions">
             <a href="#/paintings" class="btn btn-orange">Voir les kits →</a>
-            <a href="#/party" class="btn btn-ghost">Événements</a>
-          </div>
-          <div class="hero-steps">
-            <div class="hero-step"><div class="hero-step-num">1</div><h4>Tracez</h4><p>Chaque kit inclut une photo croquis, du papier carbone et un guide pour tracer les contours sur votre toile.</p></div>
-            <div class="hero-step"><div class="hero-step-num">2</div><h4>Commandez</h4><p>Choisissez votre kit et recevez votre commande directement à votre porte.</p></div>
-            <div class="hero-step"><div class="hero-step-num">3</div><h4>Peignez</h4><p>Suivez les instructions et peignez à votre rythme. Environ 2 heures par peinture. Tout ce qu'il vous faut, c'est un verre d'eau.</p></div>
+            <a href="#/party" class="btn btn-ghost">Nos Événements</a>
           </div>
         </div>
         <div class="hero-visual">
@@ -53,16 +50,129 @@
     </div>
   </section>
 
-  <section class="categories-section section-pad" id="home-cats">
+  <!-- WHY ARTY -->
+  <section class="why-section section-pad">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Nos Collections</div><h2 class="section-heading">Voir par <span class="accent">Catégories</span></h2><p class="section-sub">Explorez nos kits par thème et trouvez l'inspiration parfaite pour votre prochaine création.</p></div>
-      <div class="cat-grid stagger-children" id="homeCatGrid"></div>
+      <div class="text-center fade-up">
+        <div class="section-tag">Pourquoi Arty!</div>
+        <h2 class="section-heading">Apprenez à tracer et à peindre <span class="accent">étape par étape</span></h2>
+      </div>
+      <div class="why-grid fade-up">
+        <div class="why-card">
+          <div class="why-card-num">1</div>
+          <img src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=500&h=350&fit=crop" alt="Tracer" class="why-card-img">
+          <h3>Choisissez et commandez</h3>
+          <p>Choisissez parmi nos peintures créatives pour enfants et adultes, nos kits individuels ou en groupe, et recevez votre commande directement à votre porte.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-card-num">2</div>
+          <img src="https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=500&h=350&fit=crop" alt="Guide" class="why-card-img">
+          <h3>Tracez les contours</h3>
+          <p>Chaque kit inclut une photo croquis en noir et blanc, du papier carbone et un guide pour tracer facilement les contours sur votre toile. On vous apprend à tracer ET à peindre.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-card-num">3</div>
+          <img src="https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=500&h=350&fit=crop" alt="Peindre" class="why-card-img">
+          <h3>Peignez votre œuvre d'art</h3>
+          <p>Suivez les instructions et peignez à votre rythme. Chaque peinture prend environ 2 heures. Vous avez une image de référence tout en restant libre de personnaliser. Tout ce qu'il vous faut, c'est un verre d'eau.</p>
+        </div>
+      </div>
     </div>
   </section>
 
+  <!-- POPULAR PRODUCTS -->
+  <section class="popular-section section-pad">
+    <div class="container">
+      <div class="text-center fade-up">
+        <div class="section-tag">Les Plus Populaires</div>
+        <h2 class="section-heading">Nos kits <span class="accent">favoris</span></h2>
+        <p class="section-sub">Les kits les plus aimés par notre communauté. Commencez par ceux-là!</p>
+      </div>
+      <div class="kits-grid stagger-children" id="homePopularKits"></div>
+      <div class="text-center fade-up" style="margin-top:40px">
+        <a href="#/paintings" class="btn btn-orange">Voir tous les kits →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIES -->
+  <section class="categories-section section-pad" id="home-cats">
+    <div class="container">
+      <div class="text-center fade-up">
+        <div class="section-tag">Nos Collections</div>
+        <h2 class="section-heading">Voir par <span class="accent">Catégories</span></h2>
+        <p class="section-sub">Explorez nos kits par thème et trouvez l'inspiration parfaite pour votre prochaine création.</p>
+      </div>
+      <div class="cat-grid stagger-children" id="homeCatGrid"></div>
+      <div class="text-center fade-up" style="margin-top:40px">
+        <a href="#/paintings" class="btn btn-teal">Voir tous les produits →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- UPCOMING EVENTS -->
+  <section class="home-events-section section-pad">
+    <div class="container">
+      <div class="text-center fade-up">
+        <div class="section-tag">Événements à Venir</div>
+        <h2 class="section-heading">Réservez votre <span class="accent">prochaine soirée</span></h2>
+        <p class="section-sub">Joignez-vous à nos événements créatifs. Places limitées!</p>
+      </div>
+      <div class="events-grid stagger-children" id="homeEventsGrid"></div>
+      <div class="text-center fade-up" style="margin-top:40px">
+        <a href="#/party" class="btn btn-ghost">Voir tous les événements →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- OCCASIONS TEASER -->
+  <section class="occasions-teaser section-pad">
+    <div class="container">
+      <div class="text-center fade-up">
+        <div class="section-tag">Pour Chaque Occasion</div>
+        <h2 class="section-heading">Il y a toujours une bonne raison de <span class="accent">peindre</span></h2>
+      </div>
+      <div class="occasions-icons fade-up">
+        <div class="occ-icon-card"><span>🎂</span><h4>Anniversaires</h4></div>
+        <div class="occ-icon-card"><span>👩‍👩‍👧</span><h4>Entre Amies</h4></div>
+        <div class="occ-icon-card"><span>💑</span><h4>En Amoureux</h4></div>
+        <div class="occ-icon-card"><span>🧒</span><h4>Enfants</h4></div>
+        <div class="occ-icon-card"><span>🧘</span><h4>Art-Thérapie</h4></div>
+        <div class="occ-icon-card"><span>🏢</span><h4>Entreprises</h4></div>
+      </div>
+      <div class="text-center fade-up" style="margin-top:36px">
+        <a href="#/party" class="btn btn-orange">Explorer les occasions →</a>
+        <a href="#/team" class="btn btn-ghost" style="margin-left:12px">Entreprises →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- INCLUDED IN EVERY KIT -->
+  <section class="included-section section-pad">
+    <div class="container">
+      <div class="text-center fade-up">
+        <div class="section-tag">Tout est Inclus</div>
+        <h2 class="section-heading">Inclus dans chaque <span class="accent">kit Arty</span></h2>
+      </div>
+      <div class="included-grid fade-up">
+        <div class="included-item"><span>🎨</span><h4>Peintures acryliques</h4><p>Couleurs sélectionnées par des artistes professionnels</p></div>
+        <div class="included-item"><span>🖌️</span><h4>Pinceaux de qualité</h4><p>Différentes tailles adaptées à chaque kit</p></div>
+        <div class="included-item"><span>🖼️</span><h4>Toile tendue</h4><p>Prête à peindre, format professionnel</p></div>
+        <div class="included-item"><span>📋</span><h4>Croquis & papier carbone</h4><p>Pour tracer facilement les contours</p></div>
+        <div class="included-item"><span>📖</span><h4>Guide étape par étape</h4><p>Instructions claires et détaillées</p></div>
+        <div class="included-item"><span>🎬</span><h4>Tutoriel vidéo</h4><p>Suivez le tutoriel à votre rythme</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
   <section class="contact-section section-pad" id="contact">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Contactez-nous</div><h2 class="section-heading">Parlons <span class="accent">Créativité</span></h2><p class="section-sub">Questions? Nous serons ravis de vous aider.</p></div>
+      <div class="text-center fade-up">
+        <div class="section-tag">Contactez-nous</div>
+        <h2 class="section-heading">Parlons <span class="accent">Créativité</span></h2>
+        <p class="section-sub">Questions? Nous serons ravis de vous aider.</p>
+      </div>
       <div class="contact-layout fade-up">
         <div class="contact-info-card">
           <h3>Nous Joindre</h3><p>Nous répondons dans les 24 heures.</p>
@@ -82,7 +192,7 @@
   </section>
 </div>
 
-<!-- ====== ALL PAINTINGS ====== -->
+<!-- ===================== ALL PAINTINGS ===================== -->
 <div class="page" id="page-paintings">
   <div style="padding-top:100px" class="section-pad">
     <div class="container">
@@ -97,50 +207,63 @@
   </div>
 </div>
 
-<!-- ====== PAINTING PARTY ====== -->
+<!-- ===================== PAINTING PARTY ===================== -->
 <div class="page" id="page-party">
-  <div class="events-section section-pad" style="padding-top:120px">
+  <div class="section-pad" style="padding-top:120px;background:var(--bg2)">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Événements Créatifs</div><h2 class="section-heading">Quand commander les <span class="accent">kits Arty</span> ?</h2><p class="section-sub">Il y a toujours une bonne raison de peindre ensemble ! Voici toutes les occasions où les kits Arty font toute la différence.</p></div>
+      <div class="text-center fade-up"><div class="section-tag">Événements Créatifs</div><h2 class="section-heading">Quand commander les <span class="accent">kits Arty</span> ?</h2><p class="section-sub">Il y a toujours une bonne raison de peindre ensemble !</p></div>
       <div class="occasions-grid stagger-children" id="occasionsGrid">
-        <div class="occasion-card"><h3>🎂 Fête d'Anniversaire Enfants</h3><p class="occasion-sub">Une fête originale et unique !</p><p>Chaque enfant peint son kit et repart avec une belle peinture qu'il a réalisée lui-même. Les vidéos pré-enregistrées Arty animent la fête facilement. Activité pour 4 à 15 enfants, parfait pour les 6 à 12 ans.</p></div>
-        <div class="occasion-card"><h3>🥂 Fête d'Anniversaire Adultes</h3><p class="occasion-sub">Célébrez autrement !</p><p>Un anniversaire adulte avec une touche artistique — c'est chic, amusant et unique ! Choisissez votre thème et recevez le tout directement chez vous. Ambiance décontractée — vin, musique et pinceaux.</p></div>
-        <div class="occasion-card"><h3>👩‍👩‍👧 Soirée Entre Amies & Famille</h3><p class="occasion-sub">Du temps de qualité ensemble</p><p>Rien de mieux qu'une activité créative pour rassembler toute la famille et amis ! Chacun peint à son rythme et contribue à une session artistique chaleureuse.</p></div>
-        <div class="occasion-card"><h3>🧒 Occuper les Enfants</h3><p class="occasion-sub">Les enfants peignent pendant que vous profitez !</p><p>Vous recevez des amis et vous avez besoin d'occuper les enfants ? Les kits Arty sont parfaits ! Les enfants sont absorbés par leur peinture pendant des heures.</p></div>
-        <div class="occasion-card"><h3>🧘 Art-Thérapie & Solo</h3><p class="occasion-sub">Peindre pour se retrouver</p><p>Pas de pression, pas de performances. Juste vous, vos couleurs et le moment présent. Peindre est une thérapie douce, méditative et relaxante.</p></div>
+        <div class="occasion-card"><h3>🎂 Fête d'Anniversaire Enfants</h3><p class="occasion-sub">Une fête originale et unique !</p><p>Chaque enfant peint son kit et repart avec une belle peinture. Les vidéos pré-enregistrées Arty animent la fête facilement. Pour 4 à 15 enfants de 6 à 12 ans.</p></div>
+        <div class="occasion-card"><h3>🥂 Fête d'Anniversaire Adultes</h3><p class="occasion-sub">Célébrez autrement !</p><p>Un anniversaire avec une touche artistique — c'est chic, amusant et unique ! Choisissez votre thème et recevez le tout chez vous.</p></div>
+        <div class="occasion-card"><h3>👩‍👩‍👧 Soirée Entre Amies & Famille</h3><p class="occasion-sub">Du temps de qualité ensemble</p><p>Une activité créative pour rassembler famille et amis ! Chacun peint à son rythme.</p></div>
+        <div class="occasion-card"><h3>🧒 Occuper les Enfants</h3><p class="occasion-sub">Ils peignent, vous profitez !</p><p>Les enfants sont absorbés par leur peinture pendant des heures — et vous profitez de votre soirée.</p></div>
+        <div class="occasion-card"><h3>🧘 Art-Thérapie & Solo</h3><p class="occasion-sub">Se retrouver, se calmer</p><p>Juste vous, vos couleurs et le moment présent. Peindre est une thérapie douce et relaxante.</p></div>
       </div>
+    </div>
+  </div>
+  <!-- ACTUAL BOOKABLE EVENTS -->
+  <div class="section-pad" style="background:var(--bg)">
+    <div class="container">
+      <div class="text-center fade-up"><div class="section-tag">Prochains Événements</div><h2 class="section-heading">Réservez votre <span class="accent">place</span></h2><p class="section-sub">Places limitées — réservez maintenant!</p></div>
+      <div class="events-grid stagger-children" id="partyEventsGrid"></div>
     </div>
   </div>
 </div>
 
-<!-- ====== TEAM EVENTS ====== -->
+<!-- ===================== TEAM ===================== -->
 <div class="page" id="page-team">
   <div class="team-section section-pad" style="padding-top:120px">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Arty pour votre Entreprise</div><h2 class="section-heading">Créativité & <span class="accent">Cohésion</span> pour votre équipe</h2><p class="section-sub">Arty transforme vos événements d'entreprise en expériences créatives uniques. Team building, congrès, réunions — nous créons des activités artistiques sur mesure.</p></div>
+      <div class="text-center fade-up"><div class="section-tag">Arty pour votre Entreprise</div><h2 class="section-heading">Créativité & <span class="accent">Cohésion</span> pour votre équipe</h2><p class="section-sub">Arty transforme vos événements d'entreprise en expériences créatives uniques et mémorables.</p></div>
       <div class="team-grid stagger-children" id="teamGrid"></div>
       <div class="fade-up">
         <h3 style="font-size:1.3rem;font-weight:700;text-align:center;margin-top:64px;margin-bottom:28px">Les avantages d'un <span style="color:var(--orange)">team building</span> artistique</h3>
         <div class="team-benefits">
-          <div class="team-benefit"><div class="team-benefit-icon">💡</div><div><h4>Stimule la créativité</h4><p>Peindre active des zones du cerveau rarement sollicitées en milieu professionnel.</p></div></div>
-          <div class="team-benefit"><div class="team-benefit-icon">🤝</div><div><h4>Crée de vrais liens</h4><p>Partager une expérience artistique renforce les liens humains entre collègues.</p></div></div>
-          <div class="team-benefit"><div class="team-benefit-icon">😌</div><div><h4>Réduit le stress</h4><p>La peinture aide à décompresser et relâcher la tension accumulée.</p></div></div>
-          <div class="team-benefit"><div class="team-benefit-icon">⭐</div><div><h4>Valorise chaque individu</h4><p>Créer de ses propres mains augmente la confiance en soi.</p></div></div>
-          <div class="team-benefit"><div class="team-benefit-icon">🌍</div><div><h4>Inclusif & accessible</h4><p>Aucune expérience requise. Tout le monde peut participer.</p></div></div>
-          <div class="team-benefit"><div class="team-benefit-icon">🎨</div><div><h4>Souvenir durable</h4><p>Chaque participant repart avec une œuvre créée de ses propres mains.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">💡</div><div><h4>Stimule la créativité</h4><p>Active des zones du cerveau rarement sollicitées au travail.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">🤝</div><div><h4>Crée de vrais liens</h4><p>Renforce les liens humains entre collègues.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">😌</div><div><h4>Réduit le stress</h4><p>Aide à décompresser et relâcher la tension.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">⭐</div><div><h4>Valorise chacun</h4><p>Créer augmente la confiance en soi.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">🌍</div><div><h4>Inclusif & accessible</h4><p>Aucune expérience requise.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">🎨</div><div><h4>Souvenir durable</h4><p>Chacun repart avec sa propre œuvre.</p></div></div>
         </div>
+      </div>
+      <div class="text-center fade-up" style="margin-top:48px">
+        <a href="#/" onclick="scrollToSection('contact')" class="btn btn-orange">Demander un devis →</a>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ====== PRODUCT ====== -->
+<!-- ===================== PRODUCT ===================== -->
 <div class="page" id="page-product"><div class="product-page"><div class="container" id="productPageContent"></div></div></div>
 
-<!-- ====== PROFILE ====== -->
+<!-- ===================== EVENT DETAIL ===================== -->
+<div class="page" id="page-event"><div class="product-page"><div class="container" id="eventPageContent"></div></div></div>
+
+<!-- ===================== PROFILE ===================== -->
 <div class="page" id="page-profile"><div class="profile-page"><div class="container" id="profilePageContent"></div></div></div>
 
-<!-- ====== ADMIN ====== -->
+<!-- ===================== ADMIN ===================== -->
 <div class="page" id="page-admin">
   <div class="admin-page">
     <div class="admin-header-bar"><div class="container"><h2>🎨 Arty! Admin</h2><button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour</button></div></div>
@@ -167,33 +290,22 @@
   </div>
 </footer>
 
-<!-- AUTH MODAL -->
+<!-- ALL MODALS -->
 <div class="modal-overlay" id="authModal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('auth')">&times;</button>
-    <h2 id="authModalTitle">Bienvenue</h2>
-    <p class="modal-subtitle" id="authModalSub">Connectez-vous à votre compte.</p>
-    <div id="googleBtnWrap"></div>
-    <div class="divider">ou</div>
+    <h2 id="authModalTitle">Bienvenue</h2><p class="modal-subtitle" id="authModalSub">Connectez-vous.</p>
+    <div id="googleBtnWrap"></div><div class="divider">ou</div>
     <div class="modal-tabs"><button class="modal-tab active" id="tabLogin" onclick="switchAuthTab('login')">Connexion</button><button class="modal-tab" id="tabRegister" onclick="switchAuthTab('register')">Inscription</button></div>
     <div id="loginForm"><div class="form-group"><label>Courriel</label><input type="email" id="loginEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="loginPassword" placeholder="Mot de passe"></div><button class="btn btn-orange" onclick="doLogin()">Se Connecter →</button></div>
-    <div id="registerForm" style="display:none"><div class="form-group"><label>Nom complet</label><input type="text" id="regName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="regEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="regPassword" placeholder="6+ caractères"></div><button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button></div>
+    <div id="registerForm" style="display:none"><div class="form-group"><label>Nom</label><input type="text" id="regName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="regEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="regPassword" placeholder="6+ caractères"></div><button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button></div>
   </div>
 </div>
-
-<!-- BOOKING -->
-<div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer →</button></div></div>
-
-<!-- CHECKOUT -->
+<div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer la Réservation →</button></div></div>
 <div class="modal-overlay" id="checkoutModal"><div class="modal"><button class="modal-close" onclick="closeModal('checkout')">&times;</button><h2>Paiement</h2><p class="modal-subtitle">Livraison en 1 à quelques jours.</p><div id="checkoutSummary"></div><div class="form-group"><label>Nom</label><input type="text" id="checkoutName"></div><div class="form-group"><label>Courriel</label><input type="email" id="checkoutEmail"></div><div class="form-group"><label>Adresse de livraison</label><input type="text" id="checkoutAddress" placeholder="Adresse complète"></div><div class="form-row"><div class="form-group"><label>Carte</label><input type="text" id="checkoutCard" placeholder="4242 4242 4242 4242" maxlength="19"></div><div class="form-group"><label>Expiration</label><input type="text" id="checkoutExpiry" placeholder="MM/AA" maxlength="5"></div></div><div class="form-row"><div class="form-group"><label>CVC</label><input type="text" id="checkoutCVC" placeholder="123" maxlength="4"></div><div class="form-group"><label>Total</label><div class="checkout-total" id="checkoutTotal">$0</div></div></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="placeOrder()">Passer la Commande →</button></div></div>
-
-<!-- SUCCESS -->
 <div class="modal-overlay" id="successModal"><div class="modal" style="text-align:center"><div style="font-size:4rem;margin-bottom:14px">🎉</div><h2>Commande Confirmée!</h2><p class="modal-subtitle">Vos kits sont en route!</p><p style="font-size:.88rem;color:var(--teal);margin-bottom:20px" id="successOrderId"></p><button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continuer →</button></div></div>
-
-<!-- CART -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>🛒 Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="checkout()">Paiement →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
-
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
 </body>
