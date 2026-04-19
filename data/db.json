@@ -32,6 +32,10 @@
     { "id": 5, "title": "Peinture & Décoration sur Bois", "subtitle": "Artisanal & Mémorable", "description": "Créez des œuvres sur des pièces en bois — plaques, tableaux, objets décoratifs.", "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600" },
     { "id": 6, "title": "Peinture & Fleurs Séchées", "subtitle": "Luxe · Originalité · Wow factor", "description": "Peinture sur toile avec des fleurs et plantes séchées intégrées. L'effet final est somptueux.", "image": "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600" }
   ],
+  "bundles": [
+    { "id": 1, "name": "Forfait Famille", "description": "Un kit pour chaque membre de la famille! 2 kits adultes et 2 kits enfants à prix spécial. Parfait pour une soirée peinture en famille.", "price": 129.99, "originalPrice": 159.96, "image": "https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600", "kitIds": [1,2,4,4], "tag": "Économisez 30$" },
+    { "id": 2, "name": "Duo Romantique", "description": "Deux toiles complémentaires pour une soirée en amoureux. Tout le matériel pour 2 personnes inclus.", "price": 79.99, "originalPrice": 99.98, "image": "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600", "kitIds": [1,2], "tag": "Populaire" }
+  ],
   "users": [],
   "orders": [],
   "bookings": []

@@ -1,5 +1,5 @@
 /* Arty! — Application v3 */
-let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],cart=[],currentFilter='all',googleClientId='';
+let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='';
 
 document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
   try{const r=await fetch('/api/config');googleClientId=(await r.json()).googleClientId}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
-  await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam()]);
+  await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles()]);
   initNavbar();updateAuthUI();updateCartUI();initGoogleSignIn();
   window.addEventListener('hashchange',handleRoute);handleRoute();
 });
@@ -28,6 +28,8 @@ function handleRoute(){
   else if(h==='#/profile'){if(!currentUser){navigate('#/');openModal('auth');return}show('page-profile');renderProfilePage();window.scrollTo(0,0)}
   else if(h==='#/admin'){if(!currentUser||currentUser.role!=='admin'){navigate('#/');showToast('Accès admin requis','error');return}show('page-admin');document.getElementById('mainFooter').style.display='none';loadAdminData();window.scrollTo(0,0)}
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
+  else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
+  else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
   else if(h==='#/party'){show('page-party');renderPartyEvents();initScrollEffects();window.scrollTo(0,0)}
   else if(h==='#/team'){show('page-team');renderTeamPage();window.scrollTo(0,0)}
   else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
@@ -105,6 +107,7 @@ async function loadKits(){try{allKits=await(await fetch('/api/kits')).json()}cat
 async function loadCategories(){try{allCategories=await(await fetch('/api/categories')).json()}catch{allCategories=[]}}
 async function loadEvents(){try{allEvents=await(await fetch('/api/events')).json()}catch{allEvents=[]}}
 async function loadTeam(){try{teamActivities=await(await fetch('/api/team-activities')).json()}catch{teamActivities=[]}}
+async function loadBundles(){try{allBundles=await(await fetch('/api/bundles')).json()}catch{allBundles=[]}}
 
 // ===== SCROLL =====
 function initScrollEffects(){
@@ -209,6 +212,62 @@ function renderTeamPage(){
   initScrollEffects();
 }
 
+// ===== TUTORIALS PAGE =====
+function renderTutorialsPage(){
+  const kitsWithVideo = allKits.filter(k=>k.videoUrl && k.videoUrl.trim());
+  const grid = document.getElementById('tutorialsGrid');
+  if(!kitsWithVideo.length){grid.innerHTML='<div class="empty-state"><div class="empty-state-icon">🎬</div><p>Aucun tutoriel disponible pour le moment.</p></div>';initScrollEffects();return}
+  grid.innerHTML = kitsWithVideo.map(k=>`<div class="tutorial-card">
+    <div class="tutorial-video-wrap" onclick="playVideo(this,'${k.videoUrl}')">
+      <img src="${k.image}" alt="${k.videoTitle||k.name}" loading="lazy">
+      <div class="tutorial-play-btn"></div>
+    </div>
+    <div class="tutorial-body">
+      <div class="tutorial-kit-name">Kit: ${k.name}</div>
+      <h3 class="tutorial-title">${k.videoTitle||'Tutoriel '+k.name}</h3>
+      <p class="tutorial-diff">${k.difficulty}</p>
+    </div>
+  </div>`).join('');
+  initScrollEffects();
+}
+function playVideo(el,url){el.innerHTML=`<iframe src="${url}?autoplay=1" allow="autoplay;encrypted-media" allowfullscreen></iframe>`}
+
+// ===== BUNDLES PAGE =====
+function renderBundlesPage(){
+  const grid = document.getElementById('bundlesGrid');
+  const noMsg = document.getElementById('noBundles');
+  if(!allBundles.length){grid.innerHTML='';noMsg.style.display='block';initScrollEffects();return}
+  noMsg.style.display='none';
+  grid.innerHTML = allBundles.map(b=>{
+    const kitNames = (b.kitIds||[]).map(id=>{const k=allKits.find(x=>x.id===id);return k?k.name:'Kit'});
+    return `<div class="bundle-card" onclick="navigate('#/bundle/${b.id}')" style="cursor:pointer">
+      ${b.tag?`<div class="bundle-card-ribbon">${b.tag}</div>`:''}
+      <div class="bundle-card-img"><img src="${b.image}" alt="${b.name}" loading="lazy"></div>
+      <div class="bundle-card-body">
+        <div class="bundle-card-tag">🎁 Bundle Spécial</div>
+        <h3>${b.name}</h3>
+        <p class="bundle-card-desc">${b.description}</p>
+        <div class="bundle-card-includes">${kitNames.map(n=>`<span>${n}</span>`).join('')}</div>
+        <div class="bundle-card-footer">
+          <div class="bundle-card-price">
+            <span class="current">$${b.price.toFixed(2)}</span>
+            ${b.originalPrice?`<span class="original">$${b.originalPrice.toFixed(2)}</span>`:''}
+          </div>
+          <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();addBundleToCart(${b.id})">Ajouter 🛒</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  initScrollEffects();
+}
+
+function addBundleToCart(bundleId){
+  const b=allBundles.find(x=>x.id===bundleId);if(!b)return;
+  const ex=cart.find(i=>i.id==='bundle-'+b.id);
+  if(ex){ex.qty+=1}else{cart.push({id:'bundle-'+b.id,name:b.name+' (Bundle)',price:b.price,image:b.image,qty:1})}
+  saveCart();updateCartUI();showToast(`${b.name} ajouté au panier!`,'success');
+}
+
 // ===== PROFILE =====
 async function renderProfilePage(){
   const c=document.getElementById('profilePageContent');if(!currentUser)return;
@@ -225,14 +284,14 @@ async function updateProfile(){const body={name:document.getElementById('profile
 // ===== CART =====
 function addToCart(kitId){const kit=allKits.find(k=>k.id===kitId);if(!kit)return;const qty=parseInt(document.getElementById('pQty')?.value||1);const ex=cart.find(i=>i.id===kitId);if(ex)ex.qty+=qty;else cart.push({id:kit.id,name:kit.name,price:kit.price,image:kit.image,qty});saveCart();updateCartUI();showToast(`${kit.name} ajouté au panier!`,'success')}
 function buyNow(id){addToCart(id);setTimeout(()=>checkout(),300)}
-function removeFromCart(id){cart=cart.filter(i=>i.id!==id);saveCart();updateCartUI();renderCartItems()}
+function removeFromCart(id){cart=cart.filter(i=>i.id!==id&&i.id!==''+id);saveCart();updateCartUI();renderCartItems()}
 function clearCart(){cart=[];saveCart();updateCartUI();renderCartItems()}
 function saveCart(){localStorage.setItem('arty_cart',JSON.stringify(cart))}
 function updateCartUI(){const n=cart.reduce((s,i)=>s+i.qty,0);const b=document.getElementById('cartBtn'),c=document.getElementById('cartCount');if(b)b.style.display=n>0?'flex':'none';if(c)c.textContent=n}
 function getTotal(){return cart.reduce((s,i)=>s+i.price*i.qty,0)}
 function openCart(){renderCartItems();document.getElementById('cartOverlay').classList.add('open');document.getElementById('cartSidebar').classList.add('open');document.body.style.overflow='hidden'}
 function closeCart(){document.getElementById('cartOverlay').classList.remove('open');document.getElementById('cartSidebar').classList.remove('open');document.body.style.overflow=''}
-function renderCartItems(){const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div><p>Panier vide</p></div>';f.style.display='none';return}f.style.display='block';c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${i.image}" class="cart-item-img"><div class="cart-item-info"><div class="cart-item-name">${i.name}</div><div class="cart-item-price">$${i.price.toFixed(2)}</div><div class="cart-item-qty">Qté: ${i.qty}</div></div><button class="cart-item-remove" onclick="removeFromCart(${i.id})">✕</button></div>`).join('');document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`}
+function renderCartItems(){const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div><p>Panier vide</p></div>';f.style.display='none';return}f.style.display='block';c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${i.image}" class="cart-item-img"><div class="cart-item-info"><div class="cart-item-name">${i.name}</div><div class="cart-item-price">$${i.price.toFixed(2)}</div><div class="cart-item-qty">Qté: ${i.qty}</div></div><button class="cart-item-remove" onclick="removeFromCart('${i.id}')">✕</button></div>`).join('');document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`}
 
 // ===== CHECKOUT =====
 function checkout(){if(!cart.length)return showToast('Panier vide','error');if(!currentUser){closeCart();openModal('auth');return showToast('Connectez-vous pour commander','error')}closeCart();document.getElementById('checkoutSummary').innerHTML=cart.map(i=>`<div class="checkout-summary-item"><span>${i.name} × ${i.qty}</span><span>$${(i.price*i.qty).toFixed(2)}</span></div>`).join('');document.getElementById('checkoutTotal').textContent=`$${getTotal().toFixed(2)}`;document.getElementById('checkoutName').value=currentUser.name;document.getElementById('checkoutEmail').value=currentUser.email;document.getElementById('checkoutModal').classList.add('active');document.body.style.overflow='hidden'}
@@ -256,8 +315,8 @@ async function confirmBooking(){const eid=document.getElementById('bookingModal'
 async function submitContact(){const n=document.getElementById('contactName').value,e=document.getElementById('contactEmail').value,m=document.getElementById('contactMessage').value;if(!n||!e||!m)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,message:m})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');showToast(d.message,'success');['contactName','contactEmail','contactMessage'].forEach(id=>document.getElementById(id).value='')}catch{showToast('Erreur','error')}}
 
 // ===== ADMIN =====
-async function loadAdminData(){try{const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminEvents()}
-function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none'}
+async function loadAdminData(){try{const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents()}
+function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none'}
 
 function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="aKitDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>c.id===k.categoryId);return`<tr><td><strong>${k.name}</strong></td><td>${cat?cat.name:'-'}</td><td>$${k.price.toFixed(2)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
 async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value,price:document.getElementById('aKitPrice').value,description:document.getElementById('aKitDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadKits();loadAdminData()}catch{showToast('Erreur','error')}}
@@ -270,6 +329,16 @@ async function saveCat(){const eid=document.getElementById('editCatId').value;co
 function editCat(id){const c=allCategories.find(x=>x.id===id);if(!c)return;document.getElementById('editCatId').value=c.id;document.getElementById('aCatName').value=c.name;document.getElementById('aCatParent').value=c.parent;document.getElementById('aCatImg').value=c.image||'';document.getElementById('catFormTitle').textContent='Modifier';document.getElementById('cancelCat').style.display='inline-flex'}
 function resetCatForm(){['editCatId','aCatName','aCatImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('catFormTitle').textContent='Ajouter une Catégorie';document.getElementById('cancelCat').style.display='none'}
 async function deleteCat(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/categories/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadCategories();loadAdminData()}
+
+// Admin Bundles
+function renderAdminBundles(){
+  const kitOpts=allKits.map(k=>`<option value="${k.id}">${k.name} ($${k.price.toFixed(2)})</option>`).join('');
+  document.getElementById('adminBundlesPanel').innerHTML=`<div class="admin-form-card"><h3 id="bunFormTitle">Ajouter un Bundle</h3><input type="hidden" id="editBunId"><div class="form-row"><div class="form-group"><label>Nom du Bundle</label><input type="text" id="aBunName" placeholder="Ex: Forfait Famille"></div><div class="form-group"><label>Prix Bundle ($)</label><input type="number" id="aBunPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="aBunDesc" placeholder="Décrivez le bundle..."></textarea></div><div class="form-row"><div class="form-group"><label>Prix Original ($)</label><input type="number" id="aBunOrigPrice" step="0.01" placeholder="Pour montrer l'économie"></div><div class="form-group"><label>Étiquette</label><input type="text" id="aBunTag" placeholder="Ex: Économisez 30$"></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aBunImg"></div><div class="form-group"><label>Kits inclus (sélectionnez plusieurs avec Ctrl+clic)</label><select id="aBunKits" multiple style="min-height:100px">${kitOpts}</select></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveBun()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetBunForm()" style="display:none" id="cancelBun">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Bundle</th><th>Prix</th><th>Kits</th><th>Actions</th></tr></thead><tbody>${allBundles.map(b=>`<tr><td><strong>${b.name}</strong>${b.tag?` <span style="color:var(--orange);font-size:.75rem">${b.tag}</span>`:''}</td><td>$${b.price.toFixed(2)}</td><td>${(b.kitIds||[]).length} kits</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editBun(${b.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteBun(${b.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function saveBun(){const eid=document.getElementById('editBunId').value;const sel=document.getElementById('aBunKits');const kitIds=Array.from(sel.selectedOptions).map(o=>parseInt(o.value));const p={name:document.getElementById('aBunName').value,price:document.getElementById('aBunPrice').value,description:document.getElementById('aBunDesc').value,originalPrice:document.getElementById('aBunOrigPrice').value,tag:document.getElementById('aBunTag').value,image:document.getElementById('aBunImg').value,kitIds};if(!p.name||!p.price)return showToast('Nom et prix requis','error');await fetch(eid?`/api/admin/bundles/${eid}`:'/api/admin/bundles',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadBundles();loadAdminData()}
+function editBun(id){const b=allBundles.find(x=>x.id===id);if(!b)return;document.getElementById('editBunId').value=b.id;document.getElementById('aBunName').value=b.name;document.getElementById('aBunPrice').value=b.price;document.getElementById('aBunDesc').value=b.description||'';document.getElementById('aBunOrigPrice').value=b.originalPrice||'';document.getElementById('aBunTag').value=b.tag||'';document.getElementById('aBunImg').value=b.image||'';const sel=document.getElementById('aBunKits');Array.from(sel.options).forEach(o=>{o.selected=(b.kitIds||[]).includes(parseInt(o.value))});document.getElementById('bunFormTitle').textContent='Modifier le Bundle';document.getElementById('cancelBun').style.display='inline-flex';window.scrollTo(0,0)}
+function resetBunForm(){['editBunId','aBunName','aBunPrice','aBunDesc','aBunOrigPrice','aBunTag','aBunImg'].forEach(id=>document.getElementById(id).value='');const sel=document.getElementById('aBunKits');if(sel)Array.from(sel.options).forEach(o=>o.selected=false);document.getElementById('bunFormTitle').textContent='Ajouter un Bundle';document.getElementById('cancelBun').style.display='none'}
+async function deleteBun(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/bundles/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadBundles();loadAdminData()}
 
 function renderAdminEvents(){document.getElementById('adminEventsPanel').innerHTML=`<div class="admin-form-card"><h3 id="evFormTitle">Ajouter un Événement</h3><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix ($)</label><input type="number" id="aEvPrice" step="0.01"></div><div class="form-group"><label>Places max</label><input type="number" id="aEvSpots"></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg"></div></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveEv()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Événement</th><th>Date</th><th>Prix</th><th>Places</th><th>Actions</th></tr></thead><tbody>${allEvents.map(e=>`<tr><td><strong>${e.title}</strong></td><td>${e.date}</td><td>$${e.price.toFixed(2)}</td><td>${e.bookedSpots||0}/${e.maxSpots}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editEv(${e.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteEv(${e.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
 async function saveEv(){const eid=document.getElementById('editEvId').value;const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value};if(!p.title||!p.date)return showToast('Titre et date requis','error');await fetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadEvents();loadAdminData()}

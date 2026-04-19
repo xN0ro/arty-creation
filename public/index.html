@@ -12,10 +12,12 @@
 
 <nav class="navbar" id="navbar">
   <div class="container">
-    <a class="nav-logo" href="#/" onclick="navigate('#/');return false"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a>
+    <a class="nav-logo" href="#/" onclick="navigate('#/');return false"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Créations</span></a>
     <div class="nav-links" id="navLinks">
       <a href="#/" data-nav="home">Accueil</a>
       <a href="#/paintings">Nos Peintures</a>
+      <a href="#/bundles">Kits Bundles</a>
+      <a href="#/tutorials">Tutoriels</a>
       <a href="#/party">Événements</a>
       <a href="#/team">Entreprises</a>
       <a href="#/" data-nav="contact">Contact</a>
@@ -38,13 +40,13 @@
           <p>Kits de peinture créatifs, livrés à votre porte pour toutes vos occasions. Que ce soit en famille, entre amis, en amoureux ou solo — Arty! a le kit parfait pour vous.</p>
           <div class="hero-actions">
             <a href="#/paintings" class="btn btn-orange">Voir les kits →</a>
-            <a href="#/party" class="btn btn-ghost">Nos Événements</a>
+            <a href="#/bundles" class="btn btn-teal">Kits Bundles 🎁</a>
           </div>
         </div>
         <div class="hero-visual">
           <img src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&h=800&fit=crop" alt="Peinture" class="hero-img-main">
-          <div class="hero-badge b1"><div class="hero-badge-label">Nouveau</div><div class="hero-badge-value">Kits Enfants</div></div>
-          <div class="hero-badge b2"><div class="hero-badge-label">Populaire</div><div class="hero-badge-value t">Forfait Duo</div></div>
+          <a href="#/tutorials" class="hero-badge b1"><div class="hero-badge-icon">🎬</div><div class="hero-badge-value">Tutoriels Vidéo</div></a>
+          <a href="#/party" class="hero-badge b2"><div class="hero-badge-icon">📅</div><div class="hero-badge-value">Réserver</div></a>
         </div>
       </div>
     </div>
@@ -260,6 +262,27 @@
 <!-- ===================== EVENT DETAIL ===================== -->
 <div class="page" id="page-event"><div class="product-page"><div class="container" id="eventPageContent"></div></div></div>
 
+<!-- ===================== TUTORIALS ===================== -->
+<div class="page" id="page-tutorials">
+  <div class="section-pad" style="padding-top:120px;background:var(--bg)">
+    <div class="container">
+      <div class="text-center fade-up"><div class="section-tag">Apprenez à Peindre</div><h2 class="section-heading">Nos <span class="accent">Tutoriels</span> Vidéo</h2><p class="section-sub">Chaque kit inclut un tutoriel vidéo. Regardez, suivez et créez votre chef-d'œuvre à votre rythme.</p></div>
+      <div class="tutorials-grid stagger-children" id="tutorialsGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== BUNDLES ===================== -->
+<div class="page" id="page-bundles">
+  <div class="section-pad" style="padding-top:120px;background:var(--bg2)">
+    <div class="container">
+      <div class="text-center fade-up"><div class="section-tag">Économisez Plus</div><h2 class="section-heading">Nos Kits <span class="accent">Bundles</span></h2><p class="section-sub">Des ensembles spéciaux à prix réduit. Parfaits pour les groupes, les familles ou pour offrir en cadeau!</p></div>
+      <div class="bundles-grid stagger-children" id="bundlesGrid"></div>
+      <div id="noBundles" style="display:none" class="empty-state fade-up"><div class="empty-state-icon">🎁</div><p>Aucun bundle disponible pour le moment. Revenez bientôt!</p></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== PROFILE ===================== -->
 <div class="page" id="page-profile"><div class="profile-page"><div class="container" id="profilePageContent"></div></div></div>
 
@@ -269,9 +292,10 @@
     <div class="admin-header-bar"><div class="container"><h2>🎨 Arty! Admin</h2><button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour</button></div></div>
     <div class="container" style="padding-bottom:60px">
       <div class="admin-stats"><div class="admin-stat-card"><div class="num" id="statKits">0</div><div class="label">Kits</div></div><div class="admin-stat-card"><div class="num" id="statCats">0</div><div class="label">Catégories</div></div><div class="admin-stat-card"><div class="num" id="statUsers">0</div><div class="label">Utilisateurs</div></div><div class="admin-stat-card"><div class="num" id="statOrders">0</div><div class="label">Commandes</div></div></div>
-      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits',this)">Kits</button><button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button><button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button></div>
+      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits',this)">Kits</button><button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button><button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button><button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button></div>
       <div id="adminKitsPanel"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
+      <div id="adminBundlesPanel" style="display:none"></div>
       <div id="adminEventsPanel" style="display:none"></div>
     </div>
   </div>

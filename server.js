@@ -58,6 +58,8 @@ app.get('/api/kits/:id', (req, res) => { const k = readDB().kits.find(k => k.id 
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
 app.get('/api/events', (req, res) => res.json(readDB().events));
 app.get('/api/team-activities', (req, res) => res.json(readDB().teamActivities || []));
+app.get('/api/bundles', (req, res) => res.json(readDB().bundles || []));
+app.get('/api/bundles/:id', (req, res) => { const b = (readDB().bundles||[]).find(b=>b.id===parseInt(req.params.id)); b ? res.json(b) : res.status(404).json({error:'Non trouvé'}); });
 
 // ========== AUTH ==========
 app.post('/api/users/register', async (req, res) => {
@@ -166,6 +168,23 @@ app.delete('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); 
 app.post('/api/admin/events', adminOnly, (req, res) => { const db=readDB(); const {title,date}=req.body; if(!title||!date) return res.status(400).json({error:'Titre et date requis'}); const ev={id:db.events.length>0?Math.max(...db.events.map(e=>e.id))+1:1,...req.body,price:parseFloat(req.body.price)||0,maxSpots:parseInt(req.body.maxSpots)||20,bookedSpots:0}; db.events.push(ev); writeDB(db); res.json({success:true,event:ev}); });
 app.put('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB(); const i=db.events.findIndex(e=>e.id===parseInt(req.params.id)); if(i===-1) return res.status(404).json({error:'Non trouvé'}); db.events[i]={...db.events[i],...req.body,id:db.events[i].id}; writeDB(db); res.json({success:true,event:db.events[i]}); });
 app.delete('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB(); db.events=db.events.filter(e=>e.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
+
+// Bundles CRUD
+app.post('/api/admin/bundles', adminOnly, (req, res) => {
+  const db=readDB(); if(!db.bundles) db.bundles=[];
+  const {name,description,price,originalPrice,image,kitIds,tag}=req.body;
+  if(!name||!price) return res.status(400).json({error:'Nom et prix requis'});
+  const bundle={id:db.bundles.length>0?Math.max(...db.bundles.map(b=>b.id))+1:1,name,description:description||'',price:parseFloat(price),originalPrice:parseFloat(originalPrice)||0,image:image||'',kitIds:kitIds||[],tag:tag||'',createdAt:new Date().toISOString()};
+  db.bundles.push(bundle); writeDB(db);
+  res.json({success:true,bundle});
+});
+app.put('/api/admin/bundles/:id', adminOnly, (req, res) => {
+  const db=readDB(); const idx=(db.bundles||[]).findIndex(b=>b.id===parseInt(req.params.id));
+  if(idx===-1) return res.status(404).json({error:'Non trouvé'});
+  db.bundles[idx]={...db.bundles[idx],...req.body,id:db.bundles[idx].id,price:parseFloat(req.body.price)||db.bundles[idx].price};
+  writeDB(db); res.json({success:true,bundle:db.bundles[idx]});
+});
+app.delete('/api/admin/bundles/:id', adminOnly, (req, res) => { const db=readDB(); db.bundles=(db.bundles||[]).filter(b=>b.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.listen(PORT, () => console.log(`Arty! server → http://localhost:${PORT}`));
