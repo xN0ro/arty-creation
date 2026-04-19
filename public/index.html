@@ -1,32 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Arty! — Art Kits & Creative Events</title>
+  <title>Arty! — Kits de Peinture & Événements Créatifs</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="logoarty.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
-<!-- NAVBAR -->
 <nav class="navbar" id="navbar">
   <div class="container">
-    <a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a>
+    <a class="nav-logo" href="#/" onclick="navigate('#/');return false"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a>
     <div class="nav-links" id="navLinks">
-      <a href="#/" data-nav="home">Home</a>
-      
-      <div class="nav-item-dropdown">
-        <a href="#kits" data-nav="kits">Shop</a>
-        <div class="hover-menu">
-          <a href="#/inventory">All Products</a>
-        </div>
-      </div>
-
-      <a href="#/" data-nav="events">Events</a>
-      <a href="#/" data-nav="tutorials">Tutorials</a>
-      <a href="#/" data-nav="about">About</a>
+      <a href="#/" data-nav="home">Accueil</a>
+      <a href="#/paintings" data-page="paintings">Nos Peintures</a>
+      <a href="#/party" data-page="party">Événements</a>
+      <a href="#/team" data-page="team">Entreprises</a>
       <a href="#/" data-nav="contact">Contact</a>
     </div>
     <div class="nav-auth" id="navAuth"></div>
@@ -34,149 +25,131 @@
   </div>
 </nav>
 
-<!-- ====== PAGE: HOME ====== -->
+<!-- ====== HOME ====== -->
 <div class="page active" id="page-home">
-
-  <section class="hero" id="hero">
+  <section class="hero">
     <div class="container">
       <div class="hero-inner">
         <div class="hero-text">
-          <h1>Create.<br><span class="hand">Paint.</span><br><span class="teal">Inspire.</span></h1>
-          <p class="hero-tagline">Art kits & painting events for everyone</p>
-          <p>Premium curated kits delivered to your door, plus hands-on workshops and paint nights that bring your creativity to life.</p>
+          <h1><span class="hand">Paint</span> / Enjoy / <span class="teal">Relax</span></h1>
+          <p class="hero-tagline">Peindre n'a jamais été aussi simple… et aussi beau.</p>
+          <p>Kits de peinture créatifs, livrés à votre porte pour toutes vos occasions. Que ce soit en famille, entre amis, en amoureux ou solo — Arty! a le kit parfait pour vous.</p>
           <div class="hero-actions">
-            <a href="#/" onclick="scrollToSection('kits')" class="btn btn-orange">Explore Kits →</a>
-            <a href="#/" onclick="scrollToSection('events')" class="btn btn-ghost">Book an Event</a>
+            <a href="#/paintings" class="btn btn-orange">Voir les kits →</a>
+            <a href="#/party" class="btn btn-ghost">Événements</a>
           </div>
-          <div class="hero-stats">
-            <div class="hero-stat"><div class="hero-stat-num">50+</div><div class="hero-stat-label">Art Kits</div></div>
-            <div class="hero-stat"><div class="hero-stat-num">200+</div><div class="hero-stat-label">Events</div></div>
-            <div class="hero-stat"><div class="hero-stat-num">5K+</div><div class="hero-stat-label">Artists</div></div>
+          <div class="hero-steps">
+            <div class="hero-step"><div class="hero-step-num">1</div><h4>Tracez</h4><p>Chaque kit inclut une photo croquis, du papier carbone et un guide pour tracer les contours sur votre toile.</p></div>
+            <div class="hero-step"><div class="hero-step-num">2</div><h4>Commandez</h4><p>Choisissez votre kit et recevez votre commande directement à votre porte.</p></div>
+            <div class="hero-step"><div class="hero-step-num">3</div><h4>Peignez</h4><p>Suivez les instructions et peignez à votre rythme. Environ 2 heures par peinture. Tout ce qu'il vous faut, c'est un verre d'eau.</p></div>
           </div>
         </div>
         <div class="hero-visual">
-          <img src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&h=800&fit=crop" alt="Art" class="hero-img-main">
-          <div class="hero-badge b1"><div class="hero-badge-label">Next Event</div><div class="hero-badge-value t">Paint Night</div></div>
-          <div class="hero-badge b2"><div class="hero-badge-label">New Drop</div><div class="hero-badge-value">Sunset Kit</div></div>
+          <img src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&h=800&fit=crop" alt="Peinture" class="hero-img-main">
+          <div class="hero-badge b1"><div class="hero-badge-label">Nouveau</div><div class="hero-badge-value">Kits Enfants</div></div>
+          <div class="hero-badge b2"><div class="hero-badge-label">Populaire</div><div class="hero-badge-value t">Forfait Duo</div></div>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="kits-section section-pad" id="kits">
+  <section class="categories-section section-pad" id="home-cats">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Our Collection</div><h2 class="section-heading">Curated <span class="accent">Art Kits</span></h2><p class="section-sub">Each kit comes with premium materials, guides, and a video tutorial.</p></div>
-      <div class="kits-filter fade-up" id="kitsFilter">
-        <button class="filter-btn active" data-filter="all">All</button><button class="filter-btn" data-filter="acrylic">Acrylic</button><button class="filter-btn" data-filter="watercolor">Watercolor</button><button class="filter-btn" data-filter="oil">Oil</button><button class="filter-btn" data-filter="drawing">Drawing</button><button class="filter-btn" data-filter="kids">Kids</button>
-      </div>
-      <div class="kits-grid stagger-children" id="kitsGrid"></div>
-      
-      <div class="text-center fade-up" style="margin-top: 48px;">
-        <a href="#/inventory" class="btn btn-ghost">View Full Inventory →</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="events-section section-pad" id="events">
-    <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Upcoming</div><h2 class="section-heading">Events & <span class="accent">Workshops</span></h2><p class="section-sub">Grab your spot before they sell out!</p></div>
-      <div class="events-layout fade-up">
-        <div class="mini-calendar"><div class="cal-header"><h3 id="calMonthYear"></h3><div class="cal-nav"><button onclick="changeMonth(-1)">‹</button><button onclick="changeMonth(1)">›</button></div></div><div class="cal-grid" id="calGrid"></div></div>
-        <div class="events-list" id="eventsList"></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="tutorials-section section-pad" id="tutorials">
-    <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Learn & Create</div><h2 class="section-heading">Video <span class="accent">Tutorials</span></h2><p class="section-sub">Every kit comes with a free video tutorial.</p></div>
-      <div class="tutorials-grid stagger-children" id="tutorialsGrid"></div>
-    </div>
-  </section>
-
-  <section class="about-section section-pad" id="about">
-    <div class="container">
-      <div class="about-grid">
-        <div class="about-images fade-up">
-          <img src="https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=500&h=600&fit=crop" class="about-img-1"><img src="https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=400&h=400&fit=crop" class="about-img-2"><div class="about-accent"></div>
-        </div>
-        <div class="about-text fade-up">
-          <div class="section-tag">Our Story</div><h2 class="section-heading">Where Creativity Meets <span class="accent">Community</span></h2>
-          <p>Arty! was born from a simple belief: everyone is an artist. We started hosting paint nights and quickly realized creative expression has the power to bring people together.</p>
-          <p>Today we curate premium art kits and host events where our community paints, laughs, and makes memories together.</p>
-          <div class="about-values">
-            <div class="about-value"><div class="about-value-icon">🎯</div><div><h4>Quality Materials</h4><p>Artist-grade supplies in every kit.</p></div></div>
-            <div class="about-value"><div class="about-value-icon">🌍</div><div><h4>Community</h4><p>5,000+ artists and growing.</p></div></div>
-            <div class="about-value"><div class="about-value-icon">📦</div><div><h4>All-In-One</h4><p>Everything included, ready to create.</p></div></div>
-            <div class="about-value"><div class="about-value-icon">🎬</div><div><h4>Tutorials</h4><p>Video guide with every kit.</p></div></div>
-          </div>
-        </div>
-      </div>
+      <div class="text-center fade-up"><div class="section-tag">Nos Collections</div><h2 class="section-heading">Voir par <span class="accent">Catégories</span></h2><p class="section-sub">Explorez nos kits par thème et trouvez l'inspiration parfaite pour votre prochaine création.</p></div>
+      <div class="cat-grid stagger-children" id="homeCatGrid"></div>
     </div>
   </section>
 
   <section class="contact-section section-pad" id="contact">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Get in Touch</div><h2 class="section-heading">Let's <span class="accent">Talk</span></h2><p class="section-sub">Questions? We'd love to hear from you.</p></div>
+      <div class="text-center fade-up"><div class="section-tag">Contactez-nous</div><h2 class="section-heading">Parlons <span class="accent">Créativité</span></h2><p class="section-sub">Questions? Nous serons ravis de vous aider.</p></div>
       <div class="contact-layout fade-up">
         <div class="contact-info-card">
-          <h3>Contact Info</h3><p>We respond within 24 hours.</p>
-          <div class="contact-detail"><div class="contact-detail-icon">📍</div><div><h4>Visit</h4><p>123 Creative Lane, Montreal QC</p></div></div>
-          <div class="contact-detail"><div class="contact-detail-icon">📧</div><div><h4>Email</h4><p>hello@arty.com</p></div></div>
-          <div class="contact-detail"><div class="contact-detail-icon">📞</div><div><h4>Phone</h4><p>(514) 555-0192</p></div></div>
-          <div class="contact-socials"><a href="#" class="contact-social-link">IG</a><a href="#" class="contact-social-link">FB</a><a href="#" class="contact-social-link">TT</a><a href="#" class="contact-social-link">YT</a></div>
+          <h3>Nous Joindre</h3><p>Nous répondons dans les 24 heures.</p>
+          <div class="contact-detail"><div class="contact-detail-icon">📍</div><div><h4>Adresse</h4><p>Montréal, QC</p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon">📧</div><div><h4>Courriel</h4><p>hello@arty.com</p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon">📞</div><div><h4>Téléphone</h4><p>(514) 555-0192</p></div></div>
+          <div class="contact-socials"><a href="#" class="contact-social-link">IG</a><a href="#" class="contact-social-link">FB</a><a href="#" class="contact-social-link">TT</a></div>
         </div>
         <div class="contact-form">
-          <h3>Send a Message</h3>
-          <div class="form-row"><div class="form-group"><label>Name</label><input type="text" id="contactName" placeholder="Jane Doe"></div><div class="form-group"><label>Email</label><input type="email" id="contactEmail" placeholder="jane@example.com"></div></div>
-          <div class="form-group"><label>Subject</label><select id="contactSubject"><option value="">Select...</option><option value="kits">Art Kits</option><option value="events">Events</option><option value="wholesale">Wholesale</option><option value="support">Support</option></select></div>
-          <div class="form-group"><label>Message</label><textarea id="contactMessage" placeholder="Tell us what's on your mind..."></textarea></div>
-          <button class="btn btn-orange" onclick="submitContact()">Send Message →</button>
+          <h3>Envoyez un Message</h3>
+          <div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="contactName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="contactEmail" placeholder="nom@exemple.com"></div></div>
+          <div class="form-group"><label>Message</label><textarea id="contactMessage" placeholder="Votre message..."></textarea></div>
+          <button class="btn btn-orange" onclick="submitContact()">Envoyer →</button>
         </div>
       </div>
     </div>
   </section>
 </div>
 
-<div class="page" id="page-inventory">
-  <section class="kits-section section-pad" style="min-height: 100vh;">
+<!-- ====== ALL PAINTINGS ====== -->
+<div class="page" id="page-paintings">
+  <div style="padding-top:100px" class="section-pad">
     <div class="container">
-      <div class="text-center fade-up">
-        <div class="section-tag">Full Collection</div>
-        <h2 class="section-heading">All <span class="accent">Art Kits</span></h2>
+      <div class="text-center fade-up"><div class="section-tag">Notre Collection</div><h2 class="section-heading">Voir tous les <span class="accent">Produits</span></h2><p class="section-sub">Kits de peinture pour enfants, en solo, en duo ou en groupe.</p></div>
+      <div class="text-center fade-up" style="margin-bottom:48px"><h3 style="font-size:1.3rem;font-weight:700;margin-bottom:24px">Voir par Catégories</h3><div class="cat-grid stagger-children" id="paintingsCatGrid"></div></div>
+      <div style="margin-top:56px" class="fade-up">
+        <h3 style="font-size:1.3rem;font-weight:700;margin-bottom:20px;text-align:center">Tous les Kits</h3>
+        <div class="kits-filter" id="kitsFilter"></div>
+        <div class="kits-grid stagger-children" id="kitsGrid"></div>
       </div>
-      <div class="kits-filter fade-up" id="inventoryFilter">
-        <button class="filter-btn active" data-filter="all">All</button>
-        <button class="filter-btn" data-filter="acrylic">Acrylic</button>
-        <button class="filter-btn" data-filter="watercolor">Watercolor</button>
-        <button class="filter-btn" data-filter="oil">Oil</button>
-        <button class="filter-btn" data-filter="drawing">Drawing</button>
-        <button class="filter-btn" data-filter="kids">Kids</button>
-      </div>
-      <div class="kits-grid stagger-children" id="inventoryGrid"></div>
     </div>
-  </section>
+  </div>
 </div>
 
+<!-- ====== PAINTING PARTY ====== -->
+<div class="page" id="page-party">
+  <div class="events-section section-pad" style="padding-top:120px">
+    <div class="container">
+      <div class="text-center fade-up"><div class="section-tag">Événements Créatifs</div><h2 class="section-heading">Quand commander les <span class="accent">kits Arty</span> ?</h2><p class="section-sub">Il y a toujours une bonne raison de peindre ensemble ! Voici toutes les occasions où les kits Arty font toute la différence.</p></div>
+      <div class="occasions-grid stagger-children" id="occasionsGrid">
+        <div class="occasion-card"><h3>🎂 Fête d'Anniversaire Enfants</h3><p class="occasion-sub">Une fête originale et unique !</p><p>Chaque enfant peint son kit et repart avec une belle peinture qu'il a réalisée lui-même. Les vidéos pré-enregistrées Arty animent la fête facilement. Activité pour 4 à 15 enfants, parfait pour les 6 à 12 ans.</p></div>
+        <div class="occasion-card"><h3>🥂 Fête d'Anniversaire Adultes</h3><p class="occasion-sub">Célébrez autrement !</p><p>Un anniversaire adulte avec une touche artistique — c'est chic, amusant et unique ! Choisissez votre thème et recevez le tout directement chez vous. Ambiance décontractée — vin, musique et pinceaux.</p></div>
+        <div class="occasion-card"><h3>👩‍👩‍👧 Soirée Entre Amies & Famille</h3><p class="occasion-sub">Du temps de qualité ensemble</p><p>Rien de mieux qu'une activité créative pour rassembler toute la famille et amis ! Chacun peint à son rythme et contribue à une session artistique chaleureuse.</p></div>
+        <div class="occasion-card"><h3>🧒 Occuper les Enfants</h3><p class="occasion-sub">Les enfants peignent pendant que vous profitez !</p><p>Vous recevez des amis et vous avez besoin d'occuper les enfants ? Les kits Arty sont parfaits ! Les enfants sont absorbés par leur peinture pendant des heures.</p></div>
+        <div class="occasion-card"><h3>🧘 Art-Thérapie & Solo</h3><p class="occasion-sub">Peindre pour se retrouver</p><p>Pas de pression, pas de performances. Juste vous, vos couleurs et le moment présent. Peindre est une thérapie douce, méditative et relaxante.</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== TEAM EVENTS ====== -->
+<div class="page" id="page-team">
+  <div class="team-section section-pad" style="padding-top:120px">
+    <div class="container">
+      <div class="text-center fade-up"><div class="section-tag">Arty pour votre Entreprise</div><h2 class="section-heading">Créativité & <span class="accent">Cohésion</span> pour votre équipe</h2><p class="section-sub">Arty transforme vos événements d'entreprise en expériences créatives uniques. Team building, congrès, réunions — nous créons des activités artistiques sur mesure.</p></div>
+      <div class="team-grid stagger-children" id="teamGrid"></div>
+      <div class="fade-up">
+        <h3 style="font-size:1.3rem;font-weight:700;text-align:center;margin-top:64px;margin-bottom:28px">Les avantages d'un <span style="color:var(--orange)">team building</span> artistique</h3>
+        <div class="team-benefits">
+          <div class="team-benefit"><div class="team-benefit-icon">💡</div><div><h4>Stimule la créativité</h4><p>Peindre active des zones du cerveau rarement sollicitées en milieu professionnel.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">🤝</div><div><h4>Crée de vrais liens</h4><p>Partager une expérience artistique renforce les liens humains entre collègues.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">😌</div><div><h4>Réduit le stress</h4><p>La peinture aide à décompresser et relâcher la tension accumulée.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">⭐</div><div><h4>Valorise chaque individu</h4><p>Créer de ses propres mains augmente la confiance en soi.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">🌍</div><div><h4>Inclusif & accessible</h4><p>Aucune expérience requise. Tout le monde peut participer.</p></div></div>
+          <div class="team-benefit"><div class="team-benefit-icon">🎨</div><div><h4>Souvenir durable</h4><p>Chaque participant repart avec une œuvre créée de ses propres mains.</p></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== PRODUCT ====== -->
 <div class="page" id="page-product"><div class="product-page"><div class="container" id="productPageContent"></div></div></div>
 
+<!-- ====== PROFILE ====== -->
 <div class="page" id="page-profile"><div class="profile-page"><div class="container" id="profilePageContent"></div></div></div>
 
-<!-- ====== PAGE: ADMIN ====== -->
+<!-- ====== ADMIN ====== -->
 <div class="page" id="page-admin">
   <div class="admin-page">
-    <div class="admin-header-bar"><div class="container"><h2>🎨 Arty! Admin</h2><button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Back to Site</button></div></div>
+    <div class="admin-header-bar"><div class="container"><h2>🎨 Arty! Admin</h2><button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour</button></div></div>
     <div class="container" style="padding-bottom:60px">
-      <div class="admin-stats"><div class="admin-stat-card"><div class="num" id="statKits">0</div><div class="label">Kits</div></div><div class="admin-stat-card"><div class="num" id="statEvents">0</div><div class="label">Events</div></div><div class="admin-stat-card"><div class="num" id="statUsers">0</div><div class="label">Users</div></div><div class="admin-stat-card"><div class="num" id="statOrders">0</div><div class="label">Orders</div></div></div>
-      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits')">Kits</button><button class="admin-tab" onclick="switchAdminTab('events')">Events</button></div>
-      <div id="adminKitsPanel">
-        <div class="admin-form-card"><h3 id="kitFormTitle">Add New Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Name</label><input type="text" id="adminKitName"></div><div class="form-group"><label>Price</label><input type="number" id="adminKitPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="adminKitDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Category</label><select id="adminKitCategory"><option value="acrylic">Acrylic</option><option value="watercolor">Watercolor</option><option value="oil">Oil</option><option value="drawing">Drawing</option><option value="kids">Kids</option></select></div><div class="form-group"><label>Difficulty</label><select id="adminKitDifficulty"><option value="Beginner">Beginner</option><option value="Intermediate">Intermediate</option><option value="Advanced">Advanced</option><option value="All Levels">All Levels</option></select></div></div><div class="form-row"><div class="form-group"><label>Image URL</label><input type="text" id="adminKitImage"></div><div class="form-group"><label>Video URL</label><input type="text" id="adminKitVideo"></div></div><div class="form-group"><label>Video Title</label><input type="text" id="adminKitVideoTitle"></div><div style="display:flex;gap:12px"><button class="btn btn-orange" onclick="saveKit()">Save Kit</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKitEdit">Cancel</button></div></div>
-        <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Category</th><th>Price</th><th>Actions</th></tr></thead><tbody id="adminKitsTable"></tbody></table></div>
-      </div>
-      <div id="adminEventsPanel" style="display:none">
-        <div class="admin-form-card"><h3 id="eventFormTitle">Add New Event</h3><input type="hidden" id="editEventId"><div class="form-row"><div class="form-group"><label>Title</label><input type="text" id="adminEventTitle"></div><div class="form-group"><label>Category</label><select id="adminEventCategory"><option value="social">Social</option><option value="workshop">Workshop</option><option value="kids">Kids</option></select></div></div><div class="form-group"><label>Description</label><textarea id="adminEventDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="adminEventDate"></div><div class="form-group"><label>Time</label><input type="time" id="adminEventTime" value="18:00"></div></div><div class="form-row"><div class="form-group"><label>Duration</label><input type="text" id="adminEventDuration" placeholder="2 hours"></div><div class="form-group"><label>Price</label><input type="number" id="adminEventPrice" step="0.01"></div></div><div class="form-row"><div class="form-group"><label>Max Spots</label><input type="number" id="adminEventMaxSpots"></div><div class="form-group"><label>Image URL</label><input type="text" id="adminEventImage"></div></div><div style="display:flex;gap:12px"><button class="btn btn-orange" onclick="saveEvent()">Save Event</button><button class="btn btn-ghost" onclick="resetEventForm()" style="display:none" id="cancelEventEdit">Cancel</button></div></div>
-        <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Event</th><th>Date</th><th>Price</th><th>Spots</th><th>Actions</th></tr></thead><tbody id="adminEventsTable"></tbody></table></div>
-      </div>
+      <div class="admin-stats"><div class="admin-stat-card"><div class="num" id="statKits">0</div><div class="label">Kits</div></div><div class="admin-stat-card"><div class="num" id="statCats">0</div><div class="label">Catégories</div></div><div class="admin-stat-card"><div class="num" id="statUsers">0</div><div class="label">Utilisateurs</div></div><div class="admin-stat-card"><div class="num" id="statOrders">0</div><div class="label">Commandes</div></div></div>
+      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits',this)">Kits</button><button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button><button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button></div>
+      <div id="adminKitsPanel"></div>
+      <div id="adminCategoriesPanel" style="display:none"></div>
+      <div id="adminEventsPanel" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -185,12 +158,12 @@
 <footer class="footer" id="mainFooter">
   <div class="container">
     <div class="footer-grid">
-      <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a><p>Premium art kits and creative events that bring your inner artist to life.</p></div>
-      <div><h4>Shop</h4><ul><li><a href="#/" onclick="scrollToSection('kits')">All Kits</a></li><li><a href="#/" onclick="scrollToSection('kits')">Acrylic</a></li><li><a href="#/" onclick="scrollToSection('kits')">Watercolor</a></li></ul></div>
-      <div><h4>Events</h4><ul><li><a href="#/" onclick="scrollToSection('events')">Upcoming</a></li><li><a href="#/" onclick="scrollToSection('events')">Workshops</a></li><li><a href="#/" onclick="scrollToSection('events')">Paint Nights</a></li></ul></div>
-      <div><h4>Company</h4><ul><li><a href="#/" onclick="scrollToSection('about')">About</a></li><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li><li><a href="#/" onclick="scrollToSection('tutorials')">Tutorials</a></li></ul></div>
+      <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a><p>Kits de peinture créatifs et événements qui libèrent votre artiste intérieur.</p></div>
+      <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les Kits</a></li><li><a href="#/paintings">Enfants</a></li><li><a href="#/paintings">Duo</a></li></ul></div>
+      <div><h4>Événements</h4><ul><li><a href="#/party">Occasions</a></li><li><a href="#/team">Entreprises</a></li></ul></div>
+      <div><h4>Compagnie</h4><ul><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li><li><a href="#">FAQ</a></li></ul></div>
     </div>
-    <div class="footer-bottom"><span>&copy; 2026 Arty!</span><span>Made with 🧡</span></div>
+    <div class="footer-bottom"><span>&copy; 2026 Arty!</span><span>Fait avec 🧡</span></div>
   </div>
 </footer>
 
@@ -198,74 +171,28 @@
 <div class="modal-overlay" id="authModal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('auth')">&times;</button>
-    <h2 id="authModalTitle">Welcome Back</h2>
-    <p class="modal-subtitle" id="authModalSub">Sign in to your account.</p>
+    <h2 id="authModalTitle">Bienvenue</h2>
+    <p class="modal-subtitle" id="authModalSub">Connectez-vous à votre compte.</p>
     <div id="googleBtnWrap"></div>
-    <div class="divider">or</div>
-    <div class="modal-tabs"><button class="modal-tab active" id="tabLogin" onclick="switchAuthTab('login')">Sign In</button><button class="modal-tab" id="tabRegister" onclick="switchAuthTab('register')">Register</button></div>
-    <div id="loginForm">
-      <div class="form-group"><label>Email</label><input type="email" id="loginEmail" placeholder="you@example.com"></div>
-      <div class="form-group"><label>Password</label><input type="password" id="loginPassword" placeholder="Password"></div>
-      <button class="btn btn-orange" onclick="doLogin()">Sign In →</button>
-    </div>
-    <div id="registerForm" style="display:none">
-      <div class="form-group"><label>Full Name</label><input type="text" id="regName" placeholder="Jane Doe"></div>
-      <div class="form-group"><label>Email</label><input type="email" id="regEmail" placeholder="you@example.com"></div>
-      <div class="form-group"><label>Password</label><input type="password" id="regPassword" placeholder="6+ characters"></div>
-      <button class="btn btn-orange" onclick="doRegister()">Create Account →</button>
-    </div>
+    <div class="divider">ou</div>
+    <div class="modal-tabs"><button class="modal-tab active" id="tabLogin" onclick="switchAuthTab('login')">Connexion</button><button class="modal-tab" id="tabRegister" onclick="switchAuthTab('register')">Inscription</button></div>
+    <div id="loginForm"><div class="form-group"><label>Courriel</label><input type="email" id="loginEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="loginPassword" placeholder="Mot de passe"></div><button class="btn btn-orange" onclick="doLogin()">Se Connecter →</button></div>
+    <div id="registerForm" style="display:none"><div class="form-group"><label>Nom complet</label><input type="text" id="regName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="regEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="regPassword" placeholder="6+ caractères"></div><button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button></div>
   </div>
 </div>
 
-<!-- BOOKING MODAL -->
-<div class="modal-overlay" id="bookingModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('booking')">&times;</button>
-    <h2>Book Your Spot</h2><p class="modal-subtitle" id="bookingEventTitle"></p>
-    <div class="form-group"><label>Name</label><input type="text" id="bookingName"></div>
-    <div class="form-group"><label>Email</label><input type="email" id="bookingEmail"></div>
-    <div class="form-group"><label>Guests</label><select id="bookingGuests"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div>
-    <div style="background:rgba(232,134,58,.1);border:1px solid rgba(232,134,58,.2);padding:14px;border-radius:12px;margin-bottom:16px;font-size:.86rem;color:var(--orange-light)"><strong>Price:</strong> $<span id="bookingPrice"></span>/person</div>
-    <button class="btn btn-orange" onclick="confirmBooking()">Confirm →</button>
-  </div>
-</div>
+<!-- BOOKING -->
+<div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer →</button></div></div>
 
-<!-- CHECKOUT MODAL -->
-<div class="modal-overlay" id="checkoutModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('checkout')">&times;</button>
-    <h2>Checkout</h2><p class="modal-subtitle">Ships within 2 business days.</p>
-    <div id="checkoutSummary"></div>
-    <div class="form-group"><label>Full Name</label><input type="text" id="checkoutName"></div>
-    <div class="form-group"><label>Email</label><input type="email" id="checkoutEmail"></div>
-    <div class="form-group"><label>Shipping Address</label><input type="text" id="checkoutAddress" placeholder="Full address"></div>
-    <div class="form-row"><div class="form-group"><label>Card</label><input type="text" id="checkoutCard" placeholder="4242 4242 4242 4242" maxlength="19"></div><div class="form-group"><label>Expiry</label><input type="text" id="checkoutExpiry" placeholder="MM/YY" maxlength="5"></div></div>
-    <div class="form-row"><div class="form-group"><label>CVC</label><input type="text" id="checkoutCVC" placeholder="123" maxlength="4"></div><div class="form-group"><label>Total</label><div class="checkout-total" id="checkoutTotal">$0</div></div></div>
-    <button class="btn btn-orange" style="width:100%;justify-content:center" onclick="placeOrder()">Place Order →</button>
-  </div>
-</div>
+<!-- CHECKOUT -->
+<div class="modal-overlay" id="checkoutModal"><div class="modal"><button class="modal-close" onclick="closeModal('checkout')">&times;</button><h2>Paiement</h2><p class="modal-subtitle">Livraison en 1 à quelques jours.</p><div id="checkoutSummary"></div><div class="form-group"><label>Nom</label><input type="text" id="checkoutName"></div><div class="form-group"><label>Courriel</label><input type="email" id="checkoutEmail"></div><div class="form-group"><label>Adresse de livraison</label><input type="text" id="checkoutAddress" placeholder="Adresse complète"></div><div class="form-row"><div class="form-group"><label>Carte</label><input type="text" id="checkoutCard" placeholder="4242 4242 4242 4242" maxlength="19"></div><div class="form-group"><label>Expiration</label><input type="text" id="checkoutExpiry" placeholder="MM/AA" maxlength="5"></div></div><div class="form-row"><div class="form-group"><label>CVC</label><input type="text" id="checkoutCVC" placeholder="123" maxlength="4"></div><div class="form-group"><label>Total</label><div class="checkout-total" id="checkoutTotal">$0</div></div></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="placeOrder()">Passer la Commande →</button></div></div>
 
-<!-- SUCCESS MODAL -->
-<div class="modal-overlay" id="successModal">
-  <div class="modal" style="text-align:center">
-    <div style="font-size:4rem;margin-bottom:16px">🎉</div><h2>Order Confirmed!</h2>
-    <p class="modal-subtitle">Your kits are on the way!</p>
-    <p style="font-size:.88rem;color:var(--teal-light);margin-bottom:24px" id="successOrderId"></p>
-    <button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continue Shopping →</button>
-  </div>
-</div>
+<!-- SUCCESS -->
+<div class="modal-overlay" id="successModal"><div class="modal" style="text-align:center"><div style="font-size:4rem;margin-bottom:14px">🎉</div><h2>Commande Confirmée!</h2><p class="modal-subtitle">Vos kits sont en route!</p><p style="font-size:.88rem;color:var(--teal);margin-bottom:20px" id="successOrderId"></p><button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continuer →</button></div></div>
 
-<!-- CART SIDEBAR -->
+<!-- CART -->
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
-<div class="cart-sidebar" id="cartSidebar">
-  <div class="cart-header"><h3>🛒 Cart</h3><button class="modal-close" onclick="closeCart()">&times;</button></div>
-  <div class="cart-items" id="cartItems"></div>
-  <div class="cart-footer" id="cartFooter">
-    <div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div>
-    <button class="btn btn-orange" style="width:100%;justify-content:center" onclick="checkout()">Checkout →</button>
-    <button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Clear</button>
-  </div>
-</div>
+<div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>🛒 Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="checkout()">Paiement →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
 
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>

@@ -1,278 +1,38 @@
 {
-  "adminEmails": [
-    "admin@arty.com",
-    "pnorayr@gmail.com",
-    "colypunch@gmail.com"
-  ],
+  "adminEmails": ["pnorayr@gmail.com"],
   "googleClientId": "YOUR_GOOGLE_CLIENT_ID_HERE",
+  "categories": [
+    { "id": 1, "name": "Femme & Fleur", "slug": "femme-fleur", "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600", "parent": "individual", "order": 1 },
+    { "id": 2, "name": "Nature & Animaux", "slug": "nature-animaux", "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600", "parent": "individual", "order": 2 },
+    { "id": 3, "name": "Romantique & Saisonnier", "slug": "romantique", "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600", "parent": "individual", "order": 3 },
+    { "id": 4, "name": "Signes du Zodiaque", "slug": "zodiaque", "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600", "parent": "individual", "order": 4 },
+    { "id": 5, "name": "Peintures pour Enfants", "slug": "enfants", "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600", "parent": "none", "order": 5 },
+    { "id": 6, "name": "Forfait Familial", "slug": "familial", "image": "https://images.unsplash.com/photo-1511895426328-dc8714191300?w=600", "parent": "group", "order": 6 },
+    { "id": 7, "name": "Forfait Duo", "slug": "duo", "image": "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600", "parent": "group", "order": 7 }
+  ],
   "kits": [
-    {
-      "id": 1,
-      "name": "Sunset Acrylic Kit",
-      "description": "Everything you need to paint breathtaking sunsets. Includes 12 premium acrylic paints, 3 brushes, a stretched canvas, and a step-by-step printed guide. The colors were hand-selected by professional artists to give you the perfect warm palette for golden hour scenes.",
-      "shortDesc": "12 acrylic paints, 3 brushes, canvas & guide",
-      "price": 49.99,
-      "category": "acrylic",
-      "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
-      "images": [
-        "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
-        "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
-        "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"
-      ],
-      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
-      "videoTitle": "How to Paint a Stunning Sunset - Full Tutorial",
-      "difficulty": "Beginner",
-      "includes": [
-        "12 acrylic paints",
-        "3 premium brushes",
-        "Stretched canvas 16×20",
-        "Step-by-step guide",
-        "Color mixing chart"
-      ],
-      "inStock": true,
-      "featured": true
-    },
-    {
-      "id": 2,
-      "name": "Watercolor Botanicals Kit",
-      "description": "Explore the delicate art of watercolor botanicals. Contains 18 watercolor pans, a premium watercolor paper pad, detail brushes, and botanical reference cards with real plant illustrations to follow along with.",
-      "shortDesc": "18 watercolors, paper pad, brushes & reference cards",
-      "price": 59.99,
-      "category": "watercolor",
-      "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
-      "images": [
-        "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
-        "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600"
-      ],
-      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
-      "videoTitle": "Watercolor Botanicals for Beginners",
-      "difficulty": "Intermediate",
-      "includes": [
-        "18 watercolor pans",
-        "Watercolor paper pad",
-        "3 detail brushes",
-        "Botanical reference cards",
-        "Mixing palette"
-      ],
-      "inStock": true,
-      "featured": true
-    },
-    {
-      "id": 3,
-      "name": "Abstract Expressionism Kit",
-      "description": "Unleash your inner artist with bold strokes and vibrant colors. Includes palette knives, a large canvas, 8 bold acrylic colors, and an inspiration booklet filled with techniques from the masters.",
-      "shortDesc": "Palette knives, large canvas, 8 bold acrylics",
-      "price": 69.99,
-      "category": "acrylic",
-      "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600",
-      "images": [
-        "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600",
-        "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"
-      ],
-      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
-      "videoTitle": "Abstract Art Techniques - Express Yourself",
-      "difficulty": "All Levels",
-      "includes": [
-        "8 bold acrylic colors",
-        "3 palette knives",
-        "Large canvas 24×30",
-        "Inspiration booklet",
-        "Drop cloth"
-      ],
-      "inStock": true,
-      "featured": false
-    },
-    {
-      "id": 4,
-      "name": "Portrait Drawing Kit",
-      "description": "Master the art of portrait drawing with professional graphite pencils, charcoal sticks, blending stumps, and a premium sketchpad. Includes a proportions guide for realistic faces.",
-      "shortDesc": "Graphite pencils, charcoal, blending tools & sketchpad",
-      "price": 39.99,
-      "category": "drawing",
-      "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
-      "images": [
-        "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600"
-      ],
-      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
-      "videoTitle": "Portrait Drawing Fundamentals",
-      "difficulty": "Intermediate",
-      "includes": [
-        "12 graphite pencils (2H-8B)",
-        "4 charcoal sticks",
-        "Blending stumps",
-        "Premium sketchpad",
-        "Proportions guide"
-      ],
-      "inStock": true,
-      "featured": false
-    },
-    {
-      "id": 5,
-      "name": "Kids Creative Kit",
-      "description": "A fun and safe art kit designed for young artists aged 5-12. Washable paints, foam brushes, stickers, glitter, and coloring templates. Everything is non-toxic and easy to clean up.",
-      "shortDesc": "Washable paints, foam brushes, stickers & templates",
-      "price": 29.99,
-      "category": "kids",
-      "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600",
-      "images": [
-        "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600"
-      ],
-      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
-      "videoTitle": "Fun Art Projects for Kids",
-      "difficulty": "Beginner",
-      "includes": [
-        "8 washable paints",
-        "Foam brushes",
-        "Sticker sheets",
-        "Glitter tubes",
-        "Coloring templates"
-      ],
-      "inStock": true,
-      "featured": true
-    },
-    {
-      "id": 6,
-      "name": "Oil Painting Masterclass Kit",
-      "description": "Premium oil painting set with 24 oil colors, linseed oil, turpentine, professional brushes, palette, and a stretched canvas. For serious artists ready to explore oil painting.",
-      "shortDesc": "24 oil colors, professional brushes, palette & canvas",
-      "price": 89.99,
-      "category": "oil",
-      "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600",
-      "images": [
-        "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"
-      ],
-      "videoUrl": "https://www.youtube.com/embed/dQw4w9WgXcQ",
-      "videoTitle": "Oil Painting Masterclass - Complete Guide",
-      "difficulty": "Advanced",
-      "includes": [
-        "24 oil colors",
-        "Linseed oil & turpentine",
-        "6 professional brushes",
-        "Wooden palette",
-        "Stretched canvas 18×24"
-      ],
-      "inStock": true,
-      "featured": false
-    }
+    { "id": 1, "name": "Bouquet de Roses", "description": "Un magnifique bouquet de roses à peindre. Kit complet avec toile, peintures acryliques, pinceaux et guide étape par étape.", "shortDesc": "Toile, peintures, pinceaux & guide inclus", "price": 49.99, "categoryId": 1, "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600", "images": ["https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600"], "videoUrl": "", "videoTitle": "Tutoriel Bouquet de Roses", "difficulty": "Débutant", "includes": ["Toile 16×20", "12 peintures acryliques", "3 pinceaux", "Photo croquis noir & blanc", "Papier carbone", "Guide étape par étape"], "inStock": true, "featured": true },
+    { "id": 2, "name": "Coucher de Soleil", "description": "Peignez un magnifique coucher de soleil aux couleurs chaudes. Parfait pour débuter.", "shortDesc": "Kit complet coucher de soleil", "price": 49.99, "categoryId": 3, "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600", "images": ["https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600"], "videoUrl": "", "videoTitle": "Tutoriel Coucher de Soleil", "difficulty": "Débutant", "includes": ["Toile 16×20", "10 peintures acryliques", "3 pinceaux", "Guide complet"], "inStock": true, "featured": true },
+    { "id": 3, "name": "Cerf Majestueux", "description": "Un cerf dans une forêt automnale. Niveau intermédiaire avec des techniques de dégradé.", "shortDesc": "Kit peinture cerf en forêt", "price": 54.99, "categoryId": 2, "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600", "images": ["https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600"], "videoUrl": "", "videoTitle": "Tutoriel Cerf Majestueux", "difficulty": "Intermédiaire", "includes": ["Toile 16×20", "14 peintures acryliques", "4 pinceaux", "Guide détaillé"], "inStock": true, "featured": false },
+    { "id": 4, "name": "Kit Enfant - Papillon", "description": "Kit amusant pour enfants de 6 à 12 ans. Peintures lavables et instructions simples.", "shortDesc": "Kit créatif pour enfants 6-12 ans", "price": 29.99, "categoryId": 5, "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600", "images": ["https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600"], "videoUrl": "", "videoTitle": "Tutoriel Papillon pour Enfants", "difficulty": "Enfants", "includes": ["Toile 12×12", "8 peintures lavables", "Pinceaux mousse", "Guide illustré"], "inStock": true, "featured": true },
+    { "id": 5, "name": "Forfait Duo Romantique", "description": "Deux toiles complémentaires à peindre en duo. Parfait pour une soirée en amoureux.", "shortDesc": "2 toiles + matériel pour 2 personnes", "price": 79.99, "categoryId": 7, "image": "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600", "images": ["https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600"], "videoUrl": "", "videoTitle": "Tutoriel Duo Romantique", "difficulty": "Débutant", "includes": ["2 toiles 16×20", "Peintures pour 2", "6 pinceaux", "2 guides"], "inStock": true, "featured": false },
+    { "id": 6, "name": "Bélier - Zodiaque", "description": "Peinture du signe astrologique Bélier. Design moderne et coloré.", "shortDesc": "Kit signe astrologique Bélier", "price": 44.99, "categoryId": 4, "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600", "images": ["https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600"], "videoUrl": "", "videoTitle": "Tutoriel Bélier", "difficulty": "Débutant", "includes": ["Toile 14×14", "10 peintures", "3 pinceaux", "Guide"], "inStock": true, "featured": false }
   ],
   "events": [
-    {
-      "id": 1,
-      "title": "Friday Night Paint & Sip",
-      "description": "Join us for a relaxing evening of painting and socializing. All materials provided. Bring your favorite drink!",
-      "date": "2026-03-20",
-      "time": "18:00",
-      "duration": "2.5 hours",
-      "location": "Arty! Studio Downtown",
-      "price": 45,
-      "maxSpots": 20,
-      "bookedSpots": 13,
-      "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
-      "category": "social"
-    },
-    {
-      "id": 2,
-      "title": "Kids Art Saturday",
-      "description": "A fun-filled morning of creativity for kids aged 5-12. Different techniques and materials each week. Parents welcome!",
-      "date": "2026-03-22",
-      "time": "10:00",
-      "duration": "2 hours",
-      "location": "Arty! Studio Downtown",
-      "price": 25,
-      "maxSpots": 15,
-      "bookedSpots": 8,
-      "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600",
-      "category": "kids"
-    },
-    {
-      "id": 3,
-      "title": "Watercolor Workshop",
-      "description": "Deep dive into watercolor techniques with professional artist Marie Leclair. Learn wet-on-wet, glazing, and more.",
-      "date": "2026-03-25",
-      "time": "14:00",
-      "duration": "3 hours",
-      "location": "Arty! Studio Downtown",
-      "price": 65,
-      "maxSpots": 12,
-      "bookedSpots": 10,
-      "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600",
-      "category": "workshop"
-    },
-    {
-      "id": 4,
-      "title": "Abstract Art Night",
-      "description": "No rules, no boundaries. Express yourself through abstract art with live music and good vibes.",
-      "date": "2026-03-28",
-      "time": "19:00",
-      "duration": "2 hours",
-      "location": "Arty! Studio Downtown",
-      "price": 50,
-      "maxSpots": 18,
-      "bookedSpots": 5,
-      "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600",
-      "category": "social"
-    },
-    {
-      "id": 5,
-      "title": "Oil Painting Intensive",
-      "description": "A full-day workshop covering oil painting from start to finish. Lunch provided. All skill levels welcome.",
-      "date": "2026-04-05",
-      "time": "09:00",
-      "duration": "6 hours",
-      "location": "Arty! Studio Downtown",
-      "price": 120,
-      "maxSpots": 10,
-      "bookedSpots": 3,
-      "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600",
-      "category": "workshop"
-    },
-    {
-      "id": 6,
-      "title": "Date Night: Paint Together",
-      "description": "A romantic painting experience for couples. Paint matching canvases with snacks and soft music.",
-      "date": "2026-04-12",
-      "time": "19:00",
-      "duration": "2.5 hours",
-      "location": "Arty! Studio Downtown",
-      "price": 80,
-      "maxSpots": 16,
-      "bookedSpots": 14,
-      "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600",
-      "category": "social"
-    }
+    { "id": 1, "title": "Fête d'Anniversaire Enfants", "description": "Une fête originale et unique dont ils vont se souvenir ! Chaque enfant peint son kit et repart avec une belle peinture.", "date": "2026-05-15", "time": "14:00", "duration": "2 heures", "location": "À domicile", "price": 25.00, "maxSpots": 15, "bookedSpots": 5, "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600", "category": "enfants" },
+    { "id": 2, "title": "Soirée Peinture Entre Amies", "description": "Du temps de qualité ensemble, loin des écrans. Peignez, riez, créez des souvenirs!", "date": "2026-05-20", "time": "19:00", "duration": "2.5 heures", "location": "Studio Arty!", "price": 45.00, "maxSpots": 20, "bookedSpots": 12, "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600", "category": "social" },
+    { "id": 3, "title": "Art-Thérapie Solo", "description": "Peindre pour se retrouver, se calmer, se ressourcer. Pas de pression, juste vous et vos couleurs.", "date": "2026-05-25", "time": "10:00", "duration": "2 heures", "location": "Studio Arty!", "price": 35.00, "maxSpots": 10, "bookedSpots": 3, "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600", "category": "solo" },
+    { "id": 4, "title": "Fête d'Anniversaire Adultes", "description": "Célébrez autrement — peignez, riez, créez ! Un anniversaire avec une touche artistique.", "date": "2026-06-05", "time": "19:00", "duration": "3 heures", "location": "À domicile", "price": 50.00, "maxSpots": 16, "bookedSpots": 8, "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600", "category": "social" }
   ],
-  "users": [
-    {
-      "id": 1,
-      "name": "Admin",
-      "email": "admin@arty.com",
-      "password": "$2a$10$placeholder",
-      "role": "admin",
-      "provider": "local",
-      "createdAt": "2026-01-01T00:00:00.000Z"
-    },
-    {
-      "id": 1772996720802,
-      "name": "Norayr Petrosyan",
-      "email": "pnorayr@gmail.com",
-      "password": "$2a$10$yalqdHF2owLlCMaISGMt5uPfzcP9C3X/1ZsBWQthGVFgNzXDJys8S",
-      "role": "user",
-      "provider": "local",
-      "picture": "",
-      "createdAt": "2026-03-08T19:05:20.802Z"
-    }
+  "teamActivities": [
+    { "id": 1, "title": "Peinture Individuelle sur Toile", "subtitle": "Classique & Créatif", "description": "Chaque participant peint sa propre toile avec un kit complet.", "image": "https://images.unsplash.com/photo-1460661419201-fd4cecdf8a8b?w=600" },
+    { "id": 2, "title": "Grande Toile Collective", "subtitle": "Collaboration & Cohésion", "description": "Toute l'équipe peint ensemble sur une grande toile commune. Chaque personne prend en charge une section.", "image": "https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600" },
+    { "id": 3, "title": "Peinture Mosaïque", "subtitle": "Diversité & Unité", "description": "Chaque participant peint une petite toile. Assemblées ensemble, elles forment une grande mosaïque collective.", "image": "https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600" },
+    { "id": 4, "title": "Peinture sur Tissu & Accessoires", "subtitle": "Sacs · T-shirts · Casques", "description": "Personnalisez des sacs, t-shirts ou casques. Chaque participant repart avec un objet unique.", "image": "https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=600" },
+    { "id": 5, "title": "Peinture & Décoration sur Bois", "subtitle": "Artisanal & Mémorable", "description": "Créez des œuvres sur des pièces en bois — plaques, tableaux, objets décoratifs.", "image": "https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=600" },
+    { "id": 6, "title": "Peinture & Fleurs Séchées", "subtitle": "Luxe · Originalité · Wow factor", "description": "Peinture sur toile avec des fleurs et plantes séchées intégrées. L'effet final est somptueux.", "image": "https://images.unsplash.com/photo-1529333166437-7750a6dd5a70?w=600" }
   ],
+  "users": [],
   "orders": [],
-  "bookings": [
-    {
-      "id": 1772997580793,
-      "userId": 1772996720802,
-      "eventId": 1,
-      "name": "Norayr Petrosyan",
-      "email": "pnorayr@gmail.com",
-      "guests": 1,
-      "bookedAt": "2026-03-08T19:19:40.793Z",
-      "status": "confirmed"
-    }
-  ]
+  "bookings": []
 }
