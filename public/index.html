@@ -198,20 +198,25 @@
 
 <!-- ===================== ALL PAINTINGS ===================== -->
 <div class="page" id="page-paintings">
-  <div style="padding-top:100px" class="section-pad">
+  <div style="padding-top:100px" class="section-pad paintings-page-wrap">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Notre Collection</div><h2 class="section-heading">Voir tous les <span class="accent">Produits</span></h2></div>
-      <div class="text-center fade-up" style="margin-bottom:48px"><h3 style="font-size:1.3rem;font-weight:700;margin-bottom:24px">Voir par Catégories</h3><div class="cat-grid stagger-children" id="paintingsCatGrid"></div></div>
-
-      <!-- Kids section from Excel -->
-      <div class="fade-up" style="margin-top:48px;background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);border-radius:var(--r-xl);padding:36px;text-align:center">
-        <h3 style="font-size:1.2rem;font-weight:700;color:var(--text);margin-bottom:10px">Des kits de peinture amusants pour les enfants</h3>
-        <p style="font-size:.92rem;color:var(--text-md);max-width:700px;margin:0 auto;line-height:1.7">Nos kits de peinture acrylique permettent aux enfants d'exprimer leur créativité tout en s'amusant. Chaque kit comprend le matériel nécessaire, et les instructions étape par étape pour réaliser leur peinture en toute simplicité. Recommandé pour les enfants de 6 à 12 ans.</p>
+      <div class="text-center fade-up paintings-intro">
+        <div class="section-tag">Voir nos peintures</div>
+        <h2 class="section-heading">Voir nos <span class="accent">peintures</span></h2>
+        <p class="paintings-promo">En commandant 4 kits de peinture pour adultes ou enfants, vous économisez 10 % sur le prix régulier.</p>
+        <p class="section-sub paintings-sub">Nos kits de peinture incluent tout le matériel nécessaire pour créer votre œuvre.</p>
+        <p class="paintings-desc">Découvrez le plaisir de peindre soi-même : une activité créative, relaxante et accessible à tous, parfaite pour s'amuser, réduire le stress, gagner en confiance et offrir en cadeau.</p>
       </div>
 
-      <div style="margin-top:56px" class="fade-up">
-        <h3 style="font-size:1.3rem;font-weight:700;margin-bottom:20px;text-align:center">Tous les Kits</h3>
-        <div class="kits-filter" id="kitsFilter"></div>
+      <div class="text-center fade-up paintings-categories-block">
+        <h3>Voir par catégories</h3>
+        <div class="cat-grid stagger-children" id="paintingsCatGrid"></div>
+      </div>
+
+      <div class="paintings-info-box fade-up" id="paintingsInfoBox" style="display:none"></div>
+
+      <div class="fade-up paintings-kits-block">
+        <h3 id="kitsGridTitle">Tous nos kits</h3>
         <div class="kits-grid stagger-children" id="kitsGrid"></div>
       </div>
     </div>
