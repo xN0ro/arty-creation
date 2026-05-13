@@ -46,8 +46,8 @@ function renderHomePage(){
 }
 
 function renderHomePopularKits(){
-  const featured = allKits.filter(k=>k.featured).slice(0,3);
-  const kits = featured.length >= 3 ? featured : allKits.slice(0,3);
+  const featured = allKits.filter(k=>k.featured).slice(0,5);
+  const kits = featured.length >= 5 ? featured : allKits.slice(0,5);
   document.getElementById('homePopularKits').innerHTML = kits.map(k=>{
     const cat = allCategories.find(c=>c.id===k.categoryId);
     return `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
@@ -64,8 +64,10 @@ function renderHomeCats(){
 }
 
 function renderHomeEvents(){
+  const grid = document.getElementById('homeEventsGrid');
+  if(!grid) return;
   const upcoming = [...allEvents].sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,3);
-  document.getElementById('homeEventsGrid').innerHTML = upcoming.map(ev=>{
+  grid.innerHTML = upcoming.map(ev=>{
     const d = new Date(ev.date+'T00:00:00');
     const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'});
     const spotsLeft = ev.maxSpots - ev.bookedSpots;
