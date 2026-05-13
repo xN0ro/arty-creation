@@ -119,21 +119,53 @@ function initScrollEffects(){
 
 // ===== PAINTINGS PAGE =====
 function renderPaintingsPage(){
-  document.getElementById('paintingsCatGrid').innerHTML=allCategories.map(c=>`<div class="cat-card" onclick="filterByCat(${c.id})"><img src="${c.image}" alt="${c.name}" loading="lazy"><div class="cat-card-overlay"><span class="cat-card-name">${c.name}</span></div></div>`).join('');
-  const fw=document.getElementById('kitsFilter');
-  fw.innerHTML=`<button class="filter-btn active" data-filter="all">Tous</button>`+allCategories.map(c=>`<button class="filter-btn" data-filter="${c.id}">${c.name}</button>`).join('');
-  fw.querySelectorAll('.filter-btn').forEach(b=>b.addEventListener('click',()=>{fw.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderKitsGrid()}));
-  const params=new URLSearchParams(window.location.hash.split('?')[1]);
-  const catParam=params.get('cat');
-  if(catParam){currentFilter=catParam;fw.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===catParam))}else{currentFilter='all'}
-  renderKitsGrid();initScrollEffects();
+  const catGrid=document.getElementById('paintingsCatGrid');
+  catGrid.innerHTML=allCategories.map(c=>`<div class="cat-card" data-cat="${c.id}" onclick="filterByCat(${c.id})"><img src="${c.image}" alt="${c.name}" loading="lazy"><div class="cat-card-overlay"><span class="cat-card-name">${c.name}</span></div></div>`).join('');
+  const params=new URLSearchParams(window.location.hash.split('?')[1]||'');
+  currentFilter=params.get('cat')||'all';
+  updatePaintingsCategoryState();
+  renderKitsGrid();
+  initScrollEffects();
 }
-function filterByCat(catId){currentFilter=String(catId);const fw=document.getElementById('kitsFilter');fw.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===String(catId)));renderKitsGrid();document.getElementById('kitsFilter').scrollIntoView({behavior:'smooth'})}
+function filterByCat(catId){
+  currentFilter=String(catId);
+  history.replaceState(null,'',`${window.location.pathname}${window.location.search}#/paintings?cat=${catId}`);
+  updatePaintingsCategoryState();
+  renderKitsGrid();
+  document.getElementById('kitsGridTitle')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function showAllPaintings(){
+  currentFilter='all';
+  history.replaceState(null,'',`${window.location.pathname}${window.location.search}#/paintings`);
+  updatePaintingsCategoryState();
+  renderKitsGrid();
+  document.getElementById('kitsGridTitle')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function updatePaintingsCategoryState(){
+  const selectedCat=allCategories.find(c=>String(c.id)===String(currentFilter));
+  document.querySelectorAll('#paintingsCatGrid .cat-card').forEach(card=>card.classList.toggle('active',card.dataset.cat===String(currentFilter)));
+  const box=document.getElementById('paintingsInfoBox');
+  if(!box)return;
+  if(!selectedCat){box.style.display='none';box.innerHTML='';return}
+  const catName=(selectedCat.name||'').toLowerCase();
+  const isKids=catName.includes('enfant')||catName.includes('kid');
+  if(isKids){
+    box.style.display='block';
+    box.innerHTML=`<h3>Des kits de peinture amusants pour les enfants</h3><p>Nos kits de peinture acrylique permettent aux enfants d'exprimer leur créativité tout en s'amusant. Chaque kit comprend le matériel nécessaire, et les instructions étape par étape pour réaliser leur peinture en toute simplicité. Recommandé pour les enfants de 6 à 12 ans.</p><button class="btn btn-ghost btn-sm" onclick="showAllPaintings()">Voir tous nos kits</button>`;
+  }else{
+    box.style.display='block';
+    box.innerHTML=`<h3>${selectedCat.name}</h3><p>Découvrez les peintures disponibles dans cette catégorie.</p><button class="btn btn-ghost btn-sm" onclick="showAllPaintings()">Voir tous nos kits</button>`;
+  }
+}
 function renderKitsGrid(){
   const g=document.getElementById('kitsGrid');
-  const filtered=currentFilter==='all'?allKits:allKits.filter(k=>String(k.categoryId)===currentFilter);
+  const title=document.getElementById('kitsGridTitle');
+  const selectedCat=allCategories.find(c=>String(c.id)===String(currentFilter));
+  const filtered=currentFilter==='all'?allKits:allKits.filter(k=>String(k.categoryId)===String(currentFilter));
+  if(title)title.textContent=selectedCat?`Peintures : ${selectedCat.name}`:'Tous nos kits';
   g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>c.id===k.categoryId);return`<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}</div><div class="kit-card-body"><div class="kit-card-category">${cat?cat.name:''}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p><div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta">${k.difficulty}</span></div></div></div>`}).join('');
-  if(!filtered.length) g.innerHTML='<div class="empty-state"><div class="empty-state-icon">🎨</div><p>Aucun kit dans cette catégorie pour le moment.</p></div>';
+  if(!filtered.length) g.innerHTML='<div class="empty-state"><div class="empty-state-icon">🎨</div><p>Aucune peinture dans cette catégorie pour le moment.</p></div>';
+  g.classList.remove('visible');
   setTimeout(()=>g.classList.add('visible'),50);
 }
 
