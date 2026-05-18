@@ -1,405 +1,481 @@
-/* Arty! — Application v3 */
-let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='';
-
-document.addEventListener('DOMContentLoaded',async()=>{
-  authToken=localStorage.getItem('arty_token');
-  const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
-  const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');googleClientId=(await r.json()).googleClientId}catch{}
-  if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
-  await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles()]);
-  initNavbar();updateAuthUI();updateCartUI();initGoogleSignIn();
-  window.addEventListener('hashchange',handleRoute);handleRoute();
-});
-
-function authH(){return authToken?{'Authorization':'Bearer '+authToken,'Content-Type':'application/json'}:{'Content-Type':'application/json'}}
-function navigate(h){window.location.hash=h}
-
-// ===== ROUTER =====
-function handleRoute(){
-  const h=window.location.hash||'#/';
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('mainFooter').style.display='';
-  document.getElementById('navLinks').classList.remove('open');
-  document.getElementById('navAuth').classList.remove('open');
-
-  if(h.startsWith('#/product/')){show('page-product');renderProductPage(parseInt(h.split('/')[2]));window.scrollTo(0,0)}
-  else if(h.startsWith('#/event/')){show('page-event');renderEventPage(parseInt(h.split('/')[2]));window.scrollTo(0,0)}
-  else if(h==='#/profile'){if(!currentUser){navigate('#/');openModal('auth');return}show('page-profile');renderProfilePage();window.scrollTo(0,0)}
-  else if(h==='#/admin'){if(!currentUser||currentUser.role!=='admin'){navigate('#/');showToast('Accès admin requis','error');return}show('page-admin');document.getElementById('mainFooter').style.display='none';loadAdminData();window.scrollTo(0,0)}
-  else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
-  else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
-  else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
-  else if(h==='#/party'){show('page-party');initScrollEffects();window.scrollTo(0,0)}
-  else if(h==='#/team'){show('page-team');renderTeamPage();window.scrollTo(0,0)}
-  else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+:root {
+  --bg:#FDFBF7; --bg2:#F7F3ED; --bg3:#F0EBE3; --card:#FFFFFF;
+  --border:#E8E2D9; --border-light:#F0EBE3;
+  --orange:#E8863A; --orange-light:#F0A264; --orange-pale:#FFF4EB; --orange-glow:rgba(232,134,58,.1);
+  --teal:#1B9AAA; --teal-light:#3EC1D3; --teal-pale:#E8F7F9; --teal-glow:rgba(27,154,170,.08);
+  --text:#2C2418; --text-md:#5C4F3D; --text-light:#8C7E6A; --text-faint:#B5A997;
+  --white:#FFF; --black:#1A1410;
+  --font-d:'Caveat',cursive; --font-b:'Outfit',-apple-system,sans-serif;
+  --r-sm:10px; --r-md:16px; --r-lg:24px; --r-xl:36px;
+  --tr:.3s cubic-bezier(.4,0,.2,1);
+  --shadow-sm:0 2px 8px rgba(44,36,24,.05); --shadow-md:0 8px 30px rgba(44,36,24,.08); --shadow-lg:0 20px 50px rgba(44,36,24,.12);
 }
-function show(id){document.getElementById(id).classList.add('active')}
-function scrollToSection(id){navigate('#/');setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'})},200)}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font-b);color:var(--text);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{text-decoration:none;color:inherit} img{max-width:100%;display:block} ul{list-style:none}
+button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,select{font-family:var(--font-b)}
+.container{max-width:1240px;margin:0 auto;padding:0 24px}
+.section-pad{padding:100px 0} .text-center{text-align:center}
+.page{display:none} .page.active{display:block}
 
-// ===== HOME PAGE RENDERING =====
-function renderHomePage(){
-  renderHomePopularKits();
-  renderHomeCats();
-  renderHomeEvents();
-  initScrollEffects();
-}
+.section-tag{display:inline-flex;align-items:center;gap:10px;font-family:var(--font-d);font-size:1.4rem;font-weight:600;color:var(--teal);margin-bottom:10px}
+.section-tag::before{content:'';width:36px;height:3px;background:linear-gradient(90deg,var(--teal),transparent);border-radius:4px}
+.section-heading{font-family:var(--font-b);font-size:clamp(2rem,4vw,3.2rem);font-weight:800;color:var(--black);line-height:1.1;margin-bottom:16px;letter-spacing:-1px}
+.section-heading .accent{color:var(--orange)}
+.section-sub{font-size:1.02rem;color:var(--text-light);max-width:580px;margin:0 auto 48px;font-weight:400;line-height:1.7}
 
-function renderHomePopularKits(){
-  const featured = allKits.filter(k=>k.featured).slice(0,5);
-  const kits = featured.length >= 5 ? featured : allKits.slice(0,5);
-  document.getElementById('homePopularKits').innerHTML = kits.map(k=>{
-    const cat = allCategories.find(c=>c.id===k.categoryId);
-    return `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
-      <div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}</div>
-      <div class="kit-card-body"><div class="kit-card-category">${cat?cat.name:''}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p>
-      <div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta">${k.difficulty}</span></div></div></div>`;
-  }).join('');
-}
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:14px 34px;border-radius:50px;font-weight:600;font-size:.9rem;transition:var(--tr)}
+.btn-orange{background:var(--orange);color:var(--white);box-shadow:0 4px 20px rgba(232,134,58,.25)}
+.btn-orange:hover{background:#D5772F;transform:translateY(-2px);box-shadow:0 8px 28px rgba(232,134,58,.35)}
+.btn-teal{background:var(--teal);color:var(--white);box-shadow:0 4px 20px rgba(27,154,170,.2)}
+.btn-teal:hover{background:#178A98;transform:translateY(-2px)}
+.btn-ghost{background:var(--white);color:var(--text);border:1.5px solid var(--border);box-shadow:var(--shadow-sm)}
+.btn-ghost:hover{border-color:var(--orange);color:var(--orange)}
+.btn-sm{padding:10px 22px;font-size:.82rem}
+.btn-danger{background:#FFF0EE;color:#D44;border:1px solid #FDD}
+.btn-danger:hover{background:#D44;color:#FFF}
 
-function renderHomeCats(){
-  document.getElementById('homeCatGrid').innerHTML=allCategories.map(c=>
-    `<div class="cat-card" onclick="navigate('#/paintings?cat=${c.id}')"><img src="${c.image}" alt="${c.name}" loading="lazy"><div class="cat-card-overlay"><span class="cat-card-name">${c.name}</span></div></div>`
-  ).join('');
-}
+/* NAVBAR */
+.navbar{position:fixed;top:0;left:0;right:0;z-index:1000;padding:18px 0;transition:var(--tr);background:rgba(253,251,247,.65);backdrop-filter:blur(24px)}
+.navbar.scrolled{background:rgba(253,251,247,.96);box-shadow:var(--shadow-sm);padding:12px 0}
+.navbar .container{display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:6px}
+.nav-logo-img{height:58px;width:auto;transition:height .3s}
+.navbar.scrolled .nav-logo-img{height:48px}
+.nav-logo-text{font-family:var(--font-d);font-size:1.5rem;font-weight:700;color:var(--black);letter-spacing:.5px;line-height:1;margin-top:4px}
+.navbar.scrolled .nav-logo-text{font-size:1.3rem}
+.nav-links{display:flex;align-items:center;gap:8px}
+.nav-links a{font-size:.78rem;font-weight:700;color:var(--white);background:var(--teal);padding:9px 18px;border-radius:50px;transition:var(--tr);border:2px solid var(--teal);letter-spacing:.35px;white-space:nowrap}
+.nav-links a:hover{background:#14818E;border-color:#14818E;transform:translateY(-2px);box-shadow:0 4px 16px rgba(27,154,170,.25)}
+.nav-links a.active-link{background:var(--orange);border-color:var(--orange)}
+.nav-links a.active-link:hover{background:#D5772F;border-color:#D5772F}
+.nav-auth{display:flex;align-items:center;gap:10px}
+.btn-cart{display:flex;align-items:center;gap:6px;padding:8px 16px;border-radius:50px;font-size:.86rem;font-weight:600;background:var(--orange-pale);color:var(--orange);border:1px solid rgba(232,134,58,.15);transition:var(--tr)}
+.btn-cart:hover{background:var(--orange);color:var(--white)}
+.btn-cart span{background:var(--orange);color:var(--white);min-width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700}
+.nav-user{display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 14px 5px 5px;border-radius:50px;background:var(--bg2);border:1px solid var(--border);transition:var(--tr)}
+.nav-user:hover{border-color:var(--orange)}
+.nav-user-avatar{width:30px;height:30px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:var(--white);overflow:hidden}
+.nav-user-avatar img{width:100%;height:100%;object-fit:cover}
+.nav-user-name{font-size:.82rem;font-weight:500;color:var(--text-md)}
+.nav-dropdown{position:relative}
+.nav-dropdown-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:8px;min-width:180px;display:none;box-shadow:var(--shadow-lg);z-index:100}
+.nav-dropdown-menu.open{display:block}
+.nav-dropdown-menu a,.nav-dropdown-menu button{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:.84rem;color:var(--text-md);border-radius:8px;transition:var(--tr);width:100%;text-align:left;background:none}
+.nav-dropdown-menu a:hover,.nav-dropdown-menu button:hover{background:var(--bg2)}
+.nav-dropdown-menu .admin-link{color:var(--teal)}
+.nav-dropdown-menu .logout-btn{color:#D44}
+.nav-hamburger{display:none;flex-direction:column;gap:5px;cursor:pointer;z-index:1001}
+.nav-hamburger span{width:26px;height:2px;background:var(--text-md);border-radius:4px;transition:var(--tr)}
+@media(max-width:900px){.nav-hamburger{display:flex}.nav-links,.nav-auth{position:fixed;top:0;right:-100%;width:300px;height:100vh;background:var(--card);flex-direction:column;padding:100px 24px 40px;gap:10px;transition:var(--tr);border-left:1px solid var(--border);box-shadow:var(--shadow-lg)}.nav-links.open,.nav-auth.open{right:0}.nav-links a{width:100%;text-align:center;font-size:.9rem}}
 
-function renderHomeEvents(){
-  const grid = document.getElementById('homeEventsGrid');
-  if(!grid) return;
-  const upcoming = [...allEvents].sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,3);
-  grid.innerHTML = upcoming.map(ev=>{
-    const d = new Date(ev.date+'T00:00:00');
-    const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'});
-    const spotsLeft = ev.maxSpots - ev.bookedSpots;
-    return `<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
-      <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
-      <div class="event-card-body">
-        <div class="event-card-date">📅 ${dateStr} · ${ev.time||''}</div>
-        <h3 class="event-card-title">${ev.title}</h3>
-        <p class="event-card-desc">${ev.description}</p>
-        <div class="event-card-footer">
-          <span class="event-card-price">$${ev.price.toFixed(2)}</span>
-          <span class="event-card-spots">${spotsLeft} place${spotsLeft!==1?'s':''} restante${spotsLeft!==1?'s':''}</span>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
+/* HERO */
+.hero{position:relative;min-height:100vh;display:flex;align-items:center;overflow:hidden;background:linear-gradient(170deg,var(--bg) 0%,#FFE8D4 35%,#D4F1F4 65%,var(--bg) 100%)}
+.hero::before{content:'';position:absolute;top:-15%;right:-5%;width:650px;height:650px;background:rgba(232,134,58,.18);border-radius:50%;filter:blur(90px)}
+.hero::after{content:'';position:absolute;bottom:-10%;left:-8%;width:550px;height:550px;background:rgba(27,154,170,.14);border-radius:50%;filter:blur(80px)}
+.hero-inner{position:relative;z-index:2;display:grid;grid-template-columns:1.1fr 1fr;gap:60px;align-items:center;padding-top:100px}
+.hero-text h1{font-family:var(--font-b);font-size:clamp(2.8rem,5.5vw,4.5rem);font-weight:800;color:var(--black);line-height:1.08;margin-bottom:12px;letter-spacing:-2px}
+.hero-text h1 .hand{font-family:var(--font-d);color:var(--orange);font-size:1.15em;letter-spacing:0}
+.hero-text h1 .teal{color:var(--teal)}
+.hero-tagline{font-family:var(--font-b);font-size:clamp(1.7rem,3vw,2.6rem);font-weight:800;color:var(--black);line-height:1.15;margin-bottom:18px;letter-spacing:-.8px;text-transform:uppercase}
+.hero-text>p{font-size:1.02rem;color:var(--text-light);margin-bottom:32px;max-width:560px;line-height:1.75}
+.hero-orange-line{font-size:1.22rem!important;color:var(--orange)!important;font-weight:800!important;margin-bottom:14px!important;line-height:1.45!important}
+.hero-desc strong{color:var(--black);font-weight:800}
+.hero-actions{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:48px}
+.hero-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:16px}
+.hero-step{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:20px;box-shadow:var(--shadow-sm);transition:var(--tr)}
+.hero-step:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.hero-step-num{font-family:var(--font-d);font-size:2rem;font-weight:700;color:var(--teal);line-height:1}
+.hero-step h4{font-size:.92rem;font-weight:600;color:var(--text);margin:6px 0 4px}
+.hero-step p{font-size:.82rem;color:var(--text-light);font-weight:400;line-height:1.5}
+.hero-visual{position:relative}
+.hero-img-main{width:100%;max-width:480px;aspect-ratio:3/4;object-fit:cover;border-radius:var(--r-xl);border:4px solid var(--white);box-shadow:var(--shadow-lg)}
+.hero-badge{position:absolute;border-radius:var(--r-lg);padding:16px 24px;box-shadow:var(--shadow-lg);animation:floaty 5s ease-in-out infinite;cursor:pointer;transition:var(--tr);text-align:center;min-width:160px}
+.hero-badge:hover{transform:translateY(-4px) scale(1.05);box-shadow:0 16px 40px rgba(0,0,0,.15)}
+.hero-badge.b1{bottom:50px;left:-20px;background:var(--teal);border:2px solid var(--teal)}
+.hero-badge.b2{top:40px;right:-10px;animation-delay:2s;background:var(--orange);border:2px solid var(--orange)}
+.hero-badge-icon{font-size:1.5rem;margin-bottom:4px}
+.hero-badge-value{font-family:var(--font-d);font-size:1.2rem;font-weight:700;color:var(--white)}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+@media(max-width:900px){.hero-inner{grid-template-columns:1fr;text-align:center}.hero-text>p{margin:0 auto 32px}.hero-actions{justify-content:center}.hero-visual{display:none}.hero-steps{grid-template-columns:1fr}}
 
-// ===== NAVBAR =====
-function initNavbar(){
-  window.addEventListener('scroll',()=>document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>60));
-  document.addEventListener('click',e=>{if(!e.target.closest('.nav-dropdown'))document.querySelectorAll('.nav-dropdown-menu').forEach(m=>m.classList.remove('open'))});
-  document.querySelectorAll('.nav-links a[data-nav]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();const s=a.dataset.nav;if(s==='home'){navigate('#/');window.scrollTo({top:0,behavior:'smooth'})}else scrollToSection(s)}));
-}
-function toggleMobile(){document.getElementById('navLinks').classList.toggle('open');document.getElementById('navAuth').classList.toggle('open')}
-function toggleDropdown(){document.querySelector('.nav-dropdown-menu')?.classList.toggle('open')}
-function updateAuthUI(){
-  const a=document.getElementById('navAuth');
-  const cartH=`<button class="btn-cart" onclick="openCart()" id="cartBtn" style="${cart.length?'display:flex':'display:none'}">🛒 <span id="cartCount">${cart.reduce((s,i)=>s+i.qty,0)}</span></button>`;
-  if(currentUser){
-    const av=currentUser.picture?`<img src="${currentUser.picture}">`:`${currentUser.name.charAt(0).toUpperCase()}`;
-    const adm=currentUser.role==='admin'?`<a href="#/admin" class="admin-link">⚙️ Admin</a>`:'';
-    a.innerHTML=`${cartH}<div class="nav-dropdown"><div class="nav-user" onclick="toggleDropdown()"><div class="nav-user-avatar">${av}</div><span class="nav-user-name">${currentUser.name.split(' ')[0]}</span></div><div class="nav-dropdown-menu"><a href="#/profile">👤 Mon Profil</a>${adm}<button class="logout-btn" onclick="logout()">🚪 Déconnexion</button></div></div>`;
-  }else{a.innerHTML=`${cartH}<button class="btn btn-ghost btn-sm" onclick="openModal('auth')">Connexion</button><button class="btn btn-orange btn-sm" onclick="openModal('auth','register')">S'inscrire</button>`}
-}
+/* CATEGORIES */
+.categories-section{background:var(--bg2)}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
+.cat-card{position:relative;border-radius:var(--r-lg);overflow:hidden;height:220px;cursor:pointer;transition:var(--tr);box-shadow:var(--shadow-sm)}
+.cat-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg)}
+.cat-card img{width:100%;height:100%;object-fit:cover;transition:transform .5s}
+.cat-card:hover img{transform:scale(1.08)}
+.cat-card-overlay{position:absolute;inset:0;background:linear-gradient(0deg,rgba(26,20,16,.7) 0%,rgba(26,20,16,.1) 60%);display:flex;align-items:flex-end;padding:24px}
+.cat-card-name{font-family:var(--font-d);font-size:1.6rem;font-weight:700;color:var(--white);text-shadow:0 2px 8px rgba(0,0,0,.3)}
+.special-cat-grid{display:grid;grid-template-columns:repeat(2,minmax(260px,1fr));gap:20px;margin-top:24px}
+.special-cat-card{display:block;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);padding:28px;text-align:center;transition:var(--tr);box-shadow:var(--shadow-sm)}
+.special-cat-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-md);border-color:var(--teal)}
+.special-cat-card span{font-size:2rem;display:block;margin-bottom:10px}
+.special-cat-card h3{font-size:1.08rem;font-weight:800;color:var(--text);margin-bottom:6px}
+.special-cat-card p{font-size:.88rem;color:var(--text-light);line-height:1.6}
+@media(max-width:700px){.special-cat-grid{grid-template-columns:1fr}}
 
-// ===== DATA =====
-async function loadKits(){try{allKits=await(await fetch('/api/kits')).json()}catch{allKits=[]}}
-async function loadCategories(){try{allCategories=await(await fetch('/api/categories')).json()}catch{allCategories=[]}}
-async function loadEvents(){try{allEvents=await(await fetch('/api/events')).json()}catch{allEvents=[]}}
-async function loadTeam(){try{teamActivities=await(await fetch('/api/team-activities')).json()}catch{teamActivities=[]}}
-async function loadBundles(){try{allBundles=await(await fetch('/api/bundles')).json()}catch{allBundles=[]}}
+/* KITS */
+.kits-section{background:var(--bg)}
+.kits-filter{display:flex;justify-content:center;gap:8px;margin-bottom:44px;flex-wrap:wrap}
+.filter-btn{padding:10px 24px;border-radius:50px;font-size:.82rem;font-weight:500;background:var(--card);color:var(--text-light);border:1px solid var(--border);transition:var(--tr)}
+.filter-btn:hover{border-color:var(--orange);color:var(--orange)}
+.filter-btn.active{background:var(--orange);color:var(--white);border-color:var(--orange)}
+.kits-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:24px}
+.kit-card{background:var(--card);border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border-light);transition:var(--tr);cursor:pointer}
+.kit-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg);border-color:var(--orange)}
+.kit-card-img{position:relative;height:240px;overflow:hidden}
+.kit-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .5s}
+.kit-card:hover .kit-card-img img{transform:scale(1.06)}
+.kit-card-badge{position:absolute;top:14px;left:14px;padding:6px 16px;border-radius:50px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;background:var(--orange);color:var(--white)}
+.kit-card-body{padding:22px}
+.kit-card-category{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--teal);margin-bottom:6px}
+.kit-card-title{font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:8px}
+.kit-card-desc{font-size:.86rem;color:var(--text-light);line-height:1.6;margin-bottom:16px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kit-card-footer{display:flex;align-items:center;justify-content:space-between}
+.kit-card-price{font-family:var(--font-d);font-size:1.5rem;font-weight:700;color:var(--orange)}
+.kit-card-meta{font-size:.76rem;color:var(--text-faint);display:flex;align-items:center;gap:6px}
 
-// ===== SCROLL =====
-function initScrollEffects(){
-  const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.1});
-  document.querySelectorAll('.fade-up,.stagger-children').forEach(el=>{el.classList.remove('visible');obs.observe(el)});
-}
+/* PRODUCT PAGE */
+.product-page{padding-top:100px;min-height:100vh;background:var(--bg)}
+.product-back{display:inline-flex;align-items:center;gap:6px;font-size:.88rem;color:var(--text-light);margin-bottom:28px;transition:var(--tr);cursor:pointer;background:none;padding:0}
+.product-back:hover{color:var(--orange)}
+.product-layout{display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-bottom:60px}
+.product-gallery{display:flex;flex-direction:column;gap:12px}
+.product-main-img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--r-lg);border:1px solid var(--border)}
+.product-thumbs{display:flex;gap:10px}
+.product-thumb{width:72px;height:72px;border-radius:var(--r-sm);object-fit:cover;border:2px solid transparent;cursor:pointer;opacity:.5;transition:var(--tr)}
+.product-thumb:hover,.product-thumb.active{opacity:1;border-color:var(--orange)}
+.product-info .product-cat{font-size:.74rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--teal);margin-bottom:10px}
+.product-info h1{font-size:2rem;font-weight:800;color:var(--text);letter-spacing:-.5px;margin-bottom:8px}
+.product-info .product-price{font-family:var(--font-d);font-size:2.4rem;font-weight:700;color:var(--orange);margin-bottom:18px}
+.product-info .product-desc{font-size:.94rem;color:var(--text-light);line-height:1.8;margin-bottom:22px}
+.product-tags{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
+.product-tag{padding:6px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:50px;font-size:.78rem;color:var(--text-md)}
+.product-includes{margin-bottom:24px}
+.product-includes h3{font-size:1rem;font-weight:600;color:var(--text);margin-bottom:12px}
+.product-includes ul{display:grid;grid-template-columns:1fr 1fr;gap:8px;list-style:none}
+.product-includes li{font-size:.86rem;color:var(--text-light);padding-left:20px;position:relative}
+.product-includes li::before{content:'✓';position:absolute;left:0;color:var(--teal);font-weight:600}
+.product-qty-row{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.product-qty-row label{font-size:.88rem;font-weight:600;color:var(--text-md)}
+.qty-ctrl{display:flex;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.qty-btn{width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:var(--bg2);font-size:1.1rem;color:var(--text-md);transition:var(--tr)}
+.qty-btn:hover{background:var(--orange);color:var(--white)}
+.qty-val{width:50px;text-align:center;font-size:1rem;font-weight:600;color:var(--text);border:none;background:none}
+.product-buttons{display:flex;gap:12px;flex-wrap:wrap}
+@media(max-width:800px){.product-layout{grid-template-columns:1fr}}
 
-// ===== PAINTINGS PAGE =====
-function renderPaintingsPage(){
-  document.getElementById('paintingsCatGrid').innerHTML=allCategories.map(c=>`<div class="cat-card" onclick="filterByCat(${c.id})"><img src="${c.image}" alt="${c.name}" loading="lazy"><div class="cat-card-overlay"><span class="cat-card-name">${c.name}</span></div></div>`).join('');
-  const fw=document.getElementById('kitsFilter');
-  fw.innerHTML=`<button class="filter-btn active" data-filter="all">Tous</button>`+allCategories.map(c=>`<button class="filter-btn" data-filter="${c.id}">${c.name}</button>`).join('');
-  fw.querySelectorAll('.filter-btn').forEach(b=>b.addEventListener('click',()=>{fw.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderKitsGrid()}));
-  const params=new URLSearchParams(window.location.hash.split('?')[1]);
-  const catParam=params.get('cat');
-  if(catParam){currentFilter=catParam;fw.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===catParam))}else{currentFilter='all'}
-  renderKitsGrid();initScrollEffects();
-}
-function filterByCat(catId){currentFilter=String(catId);const fw=document.getElementById('kitsFilter');fw.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===String(catId)));renderKitsGrid();document.getElementById('kitsFilter').scrollIntoView({behavior:'smooth'})}
-function renderKitsGrid(){
-  const g=document.getElementById('kitsGrid');
-  const filtered=currentFilter==='all'?allKits:allKits.filter(k=>String(k.categoryId)===currentFilter);
-  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>c.id===k.categoryId);return`<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}</div><div class="kit-card-body"><div class="kit-card-category">${cat?cat.name:''}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p><div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta">${k.difficulty}</span></div></div></div>`}).join('');
-  if(!filtered.length) g.innerHTML='<div class="empty-state"><div class="empty-state-icon">🎨</div><p>Aucun kit dans cette catégorie pour le moment.</p></div>';
-  setTimeout(()=>g.classList.add('visible'),50);
-}
+/* EVENTS */
+.events-section{background:var(--bg2);position:relative}
+.occasions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px}
+.occasion-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);padding:32px;transition:var(--tr)}
+.occasion-card:hover{box-shadow:var(--shadow-md);transform:translateY(-4px);border-color:var(--orange)}
+.occasion-card h3{font-size:1.15rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.occasion-card .occasion-sub{font-family:var(--font-d);font-size:1.1rem;color:var(--teal);margin-bottom:12px}
+.occasion-card p{font-size:.88rem;color:var(--text-light);line-height:1.7}
 
-// ===== PRODUCT PAGE =====
-function renderProductPage(id){
-  const kit=allKits.find(k=>k.id===id);const c=document.getElementById('productPageContent');
-  if(!kit){c.innerHTML='<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">🎨</div><p>Kit non trouvé</p></div>';return}
-  const cat=allCategories.find(ct=>ct.id===kit.categoryId);
-  const imgs=kit.images?.length?kit.images:[kit.image];
-  const thumbs=imgs.length>1?`<div class="product-thumbs">${imgs.map((img,i)=>`<img src="${img}" class="product-thumb${i===0?' active':''}" onclick="switchImg(this,'${img}')">`).join('')}</div>`:'';
-  const inc=kit.includes?.length?`<div class="product-includes"><h3>Inclus dans ce kit</h3><ul>${kit.includes.map(i=>`<li>${i}</li>`).join('')}</ul></div>`:'';
-  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${imgs[0]}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${cat?cat.name:''}</div><h1>${kit.name}</h1><div class="product-price">$${kit.price.toFixed(2)}</div><p class="product-desc">${kit.description}</p><div class="product-tags"><span class="product-tag">📦 ${kit.difficulty}</span><span class="product-tag">${kit.inStock?'✅ En stock':'❌ Épuisé'}</span></div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>${kit.inStock?'🛒 Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button></div></div></div>`;
-}
-function switchImg(th,src){document.getElementById('pMainImg').src=src;document.querySelectorAll('.product-thumb').forEach(t=>t.classList.remove('active'));th.classList.add('active')}
-function chgQty(d){const i=document.getElementById('pQty');if(!i)return;i.value=Math.min(10,Math.max(1,parseInt(i.value)+d))}
+/* TEAM PAGE */
+.team-section{background:var(--bg)}
+.team-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px}
+.team-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);overflow:hidden;transition:var(--tr)}
+.team-card:hover{box-shadow:var(--shadow-md);transform:translateY(-4px)}
+.team-card-img{height:200px;overflow:hidden}
+.team-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .4s}
+.team-card:hover .team-card-img img{transform:scale(1.06)}
+.team-card-body{padding:24px}
+.team-card-sub{font-family:var(--font-d);font-size:1.1rem;color:var(--teal);margin-bottom:4px}
+.team-card h3{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:10px}
+.team-card p{font-size:.86rem;color:var(--text-light);line-height:1.6}
+.team-benefits{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;margin-top:48px}
+.team-benefit{display:flex;gap:14px;padding:20px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-md)}
+.team-benefit-icon{width:44px;height:44px;border-radius:12px;background:var(--orange-pale);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.2rem}
+.team-benefit h4{font-size:.88rem;font-weight:600;color:var(--text);margin-bottom:2px}
+.team-benefit p{font-size:.82rem;color:var(--text-light);line-height:1.5}
 
-// ===== EVENT DETAIL PAGE =====
-function renderEventPage(id){
-  const ev = allEvents.find(e=>e.id===id);
-  const c = document.getElementById('eventPageContent');
-  if(!ev){c.innerHTML='<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">📅</div><p>Événement non trouvé</p></div>';return}
-  const d = new Date(ev.date+'T00:00:00');
-  const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const spotsLeft = ev.maxSpots - ev.bookedSpots;
-  const pct = (ev.bookedSpots / ev.maxSpots) * 100;
-  c.innerHTML=`
-    <button class="product-back" onclick="navigate('#/party')">← Retour aux événements</button>
-    <div class="event-detail-layout">
-      <img src="${ev.image}" alt="${ev.title}" class="event-detail-img">
-      <div class="event-detail-info">
-        <div class="event-detail-date">📅 ${dateStr} à ${ev.time||'18:00'}</div>
-        <h1>${ev.title}</h1>
-        <div class="event-detail-price">$${ev.price.toFixed(2)} <span style="font-size:.9rem;color:var(--text-light);font-family:var(--font-b)">/personne</span></div>
-        <p>${ev.description}</p>
-        <div class="event-detail-meta">
-          <span class="event-meta-tag">⏱ ${ev.duration||'2 heures'}</span>
-          <span class="event-meta-tag">📍 ${ev.location||'À déterminer'}</span>
-          <span class="event-meta-tag">👥 Max ${ev.maxSpots} personnes</span>
-        </div>
-        <div class="event-spots-info">
-          <span class="spots-text">${spotsLeft} place${spotsLeft!==1?'s':''} restante${spotsLeft!==1?'s':''}</span>
-          <div class="event-spots-bar"><div class="event-spots-bar-fill" style="width:${pct}%"></div></div>
-        </div>
-        <button class="btn btn-orange" onclick="openBooking(${ev.id})" ${spotsLeft<=0?'disabled style="opacity:.4"':''} style="width:100%;justify-content:center">
-          ${spotsLeft<=0?'Complet':'Réserver ma place →'}
-        </button>
-      </div>
-    </div>`;
-}
+/* PROFILE */
+.profile-page{padding-top:100px;min-height:100vh;background:var(--bg)}
+.profile-header{display:flex;align-items:center;gap:24px;margin-bottom:36px;padding:28px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);box-shadow:var(--shadow-sm)}
+.profile-avatar{width:72px;height:72px;border-radius:50%;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:1.8rem;font-weight:700;color:var(--white);flex-shrink:0;overflow:hidden}
+.profile-avatar img{width:100%;height:100%;object-fit:cover}
+.profile-meta h2{font-size:1.4rem;font-weight:700;color:var(--text)}
+.profile-meta p{font-size:.86rem;color:var(--text-light)}
+.profile-badge{display:inline-block;padding:3px 10px;border-radius:50px;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.profile-badge.admin{background:var(--teal-pale);color:var(--teal);border:1px solid rgba(27,154,170,.2)}
+.profile-badge.user{background:var(--bg2);color:var(--text-light);border:1px solid var(--border)}
+.profile-tabs{display:flex;gap:6px;margin-bottom:24px}
+.profile-tab{padding:10px 22px;border-radius:50px;font-size:.84rem;font-weight:500;background:var(--card);color:var(--text-light);border:1px solid var(--border);transition:var(--tr)}
+.profile-tab.active{background:var(--teal);color:var(--white);border-color:var(--teal)}
+.profile-panel{display:none} .profile-panel.active{display:block}
+.profile-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);padding:28px;margin-bottom:18px;box-shadow:var(--shadow-sm)}
+.profile-card h3{font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:18px}
+.order-item{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--border-light)}
+.order-item:last-child{border:none}
+.order-id{font-weight:600;color:var(--teal);font-size:.86rem}
+.order-date{font-size:.78rem;color:var(--text-faint)}
+.order-total{font-family:var(--font-d);font-size:1.2rem;font-weight:700;color:var(--orange)}
+.order-status{padding:3px 10px;border-radius:50px;font-size:.68rem;font-weight:600;text-transform:uppercase;background:var(--teal-pale);color:var(--teal);border:1px solid rgba(27,154,170,.15)}
+.order-items-list{font-size:.8rem;color:var(--text-light);margin-top:3px}
+.empty-state{text-align:center;padding:40px;color:var(--text-faint)}
+.empty-state-icon{font-size:2.5rem;margin-bottom:10px}
 
-// ===== PARTY PAGE EVENTS =====
-function renderPartyEvents(){
-  const partyGrid = document.getElementById('partyEventsGrid');
-  if(!partyGrid) return;
-  const sorted = [...allEvents].sort((a,b)=>new Date(a.date)-new Date(b.date));
-  partyGrid.innerHTML = sorted.map(ev=>{
-    const d = new Date(ev.date+'T00:00:00');
-    const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'});
-    const spotsLeft = ev.maxSpots - ev.bookedSpots;
-    return `<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
-      <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
-      <div class="event-card-body">
-        <div class="event-card-date">📅 ${dateStr} · ${ev.time||''}</div>
-        <h3 class="event-card-title">${ev.title}</h3>
-        <p class="event-card-desc">${ev.description}</p>
-        <div class="event-card-footer">
-          <span class="event-card-price">$${ev.price.toFixed(2)}</span>
-          <span class="event-card-spots">${spotsLeft<=0?'Complet':spotsLeft+' places'}</span>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  if(!sorted.length) partyGrid.innerHTML='<div class="empty-state"><div class="empty-state-icon">📅</div><p>Aucun événement programmé pour le moment.</p></div>';
-  initScrollEffects();
-}
+/* CONTACT */
+.contact-section{background:var(--bg)}
+.contact-layout{display:grid;grid-template-columns:1fr 1.3fr;gap:44px}
+.contact-info-card{background:linear-gradient(135deg,var(--orange) 0%,#D5772F 100%);border-radius:var(--r-xl);padding:40px;color:var(--white)}
+.contact-info-card h3{font-size:1.4rem;font-weight:700;margin-bottom:8px}
+.contact-info-card>p{color:rgba(255,255,255,.8);font-size:.9rem;margin-bottom:28px}
+.contact-detail{display:flex;gap:14px;margin-bottom:20px}
+.contact-detail-icon{width:40px;height:40px;background:rgba(255,255,255,.15);border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.contact-detail h4{font-size:.74rem;text-transform:uppercase;letter-spacing:1.5px;color:rgba(255,255,255,.6);margin-bottom:2px}
+.contact-detail p{font-size:.88rem;color:rgba(255,255,255,.9)}
+.contact-socials{display:flex;gap:8px;margin-top:28px}
+.contact-social-link{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;color:var(--white);transition:var(--tr);font-size:.82rem}
+.contact-social-link:hover{background:rgba(255,255,255,.3)}
+.contact-form{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:40px;box-shadow:var(--shadow-sm)}
+.contact-form h3{font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:24px}
+@media(max-width:900px){.contact-layout{grid-template-columns:1fr}}
 
-// ===== TEAM PAGE =====
-function renderTeamPage(){
-  const activities = [
-    {
-      icon:'🎨',
-      title:'Peinture sur toile',
-      subtitle:'Kits de peinture pour équipes',
-      description:'Une activité artistique simple et amusante où chaque participant crée sa propre œuvre, avec tout le matériel livré directement à votre bureau.'
-    },
-    {
-      icon:'👜',
-      title:'Peinture sur tissu et bois',
-      subtitle:'Activité créative à faire ensemble',
-      description:'Personnalisez des objets en tissu ou en bois dans une ambiance collaborative, parfaite pour les team buildings et les journées de reconnaissance.'
-    },
-    {
-      icon:'🌸',
-      title:'Compositions avec fleurs séchées',
-      subtitle:'Atelier décoratif personnalisé',
-      description:'Création d’articles décoratifs avec fleurs séchées, comme des supports-bougies, bracelets, couronnes florales, cartes de vœux et autres petits objets personnalisés.'
-    }
-  ];
-  document.getElementById('teamGrid').innerHTML = activities.map(a=>`
-    <div class="team-card team-activity-card">
-      <div class="team-activity-icon">${a.icon}</div>
-      <div class="team-card-body">
-        <div class="team-card-sub">${a.subtitle}</div>
-        <h3>${a.title}</h3>
-        <p>${a.description}</p>
-      </div>
-    </div>`).join('');
-  initScrollEffects();
-}
+/* FORMS */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:.78rem;font-weight:600;color:var(--text-md);margin-bottom:5px}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:12px 16px;border:1px solid var(--border);border-radius:var(--r-sm);font-size:.9rem;color:var(--text);background:var(--bg);transition:var(--tr);outline:none}
+.form-group input::placeholder,.form-group textarea::placeholder{color:var(--text-faint)}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-glow)}
+.form-group textarea{resize:vertical;min-height:100px}
+.form-group select option{background:var(--card)}
+@media(max-width:600px){.form-row{grid-template-columns:1fr}}
 
-// ===== TUTORIALS PAGE =====
-function renderTutorialsPage(){
-  const kitsWithVideo = allKits.filter(k=>k.videoUrl && k.videoUrl.trim());
-  const grid = document.getElementById('tutorialsGrid');
-  if(!kitsWithVideo.length){grid.innerHTML='<div class="empty-state"><div class="empty-state-icon">🎬</div><p>Aucun tutoriel disponible pour le moment.</p></div>';initScrollEffects();return}
-  grid.innerHTML = kitsWithVideo.map(k=>`<div class="tutorial-card">
-    <div class="tutorial-video-wrap" onclick="playVideo(this,'${k.videoUrl}')">
-      <img src="${k.image}" alt="${k.videoTitle||k.name}" loading="lazy">
-      <div class="tutorial-play-btn"></div>
-    </div>
-    <div class="tutorial-body">
-      <div class="tutorial-kit-name">Kit: ${k.name}</div>
-      <h3 class="tutorial-title">${k.videoTitle||'Tutoriel '+k.name}</h3>
-      <p class="tutorial-diff">${k.difficulty}</p>
-    </div>
-  </div>`).join('');
-  initScrollEffects();
-}
-function playVideo(el,url){el.innerHTML=`<iframe src="${url}?autoplay=1" allow="autoplay;encrypted-media" allowfullscreen></iframe>`}
+.google-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px;background:var(--card);color:var(--text);border-radius:50px;font-size:.9rem;font-weight:600;transition:var(--tr);margin-bottom:18px;border:1px solid var(--border)}
+.google-btn:hover{background:var(--bg2);border-color:var(--text-faint)}
+.google-btn svg{width:20px;height:20px}
+.divider{display:flex;align-items:center;gap:14px;margin-bottom:18px;color:var(--text-faint);font-size:.8rem}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
-// ===== BUNDLES PAGE =====
-function renderBundlesPage(){
-  const allGrid = document.getElementById('bundlesGrid');
-  const miniGrid = document.getElementById('miniBundlesGrid');
-  const coupleGrid = document.getElementById('coupleBundlesGrid');
-  const noMsg = document.getElementById('noBundles');
+/* FOOTER */
+.footer{background:var(--black);padding:56px 0 22px;color:rgba(255,255,255,.5)}
+.footer-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:44px;margin-bottom:44px}
+.footer-brand p{font-size:.84rem;line-height:1.7;margin-top:14px;max-width:280px}
+.footer h4{font-size:.76rem;font-weight:600;text-transform:uppercase;letter-spacing:2.5px;color:rgba(255,255,255,.7);margin-bottom:16px}
+.footer ul li{margin-bottom:9px}
+.footer ul li a{font-size:.84rem;color:rgba(255,255,255,.5);transition:var(--tr)}
+.footer ul li a:hover{color:var(--orange)}
+.footer-bottom{border-top:1px solid rgba(255,255,255,.08);padding-top:22px;display:flex;justify-content:space-between;font-size:.76rem}
+@media(max-width:768px){.footer-grid{grid-template-columns:1fr 1fr}}
 
-  if(!allBundles.length){
-    [allGrid, miniGrid, coupleGrid].forEach(g=>{ if(g) g.innerHTML=''; });
-    noMsg.style.display='block';
-    initScrollEffects();
-    return;
-  }
+/* CART SIDEBAR */
+.cart-overlay{position:fixed;inset:0;background:rgba(44,36,24,.3);z-index:2000;display:none;backdrop-filter:blur(4px)}
+.cart-overlay.open{display:block}
+.cart-sidebar{position:fixed;top:0;right:-420px;width:390px;max-width:90vw;height:100vh;background:var(--card);z-index:2001;display:flex;flex-direction:column;border-left:1px solid var(--border);transition:right .35s ease;box-shadow:var(--shadow-lg)}
+.cart-sidebar.open{right:0}
+.cart-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;border-bottom:1px solid var(--border-light)}
+.cart-header h3{font-size:1.1rem;font-weight:700;color:var(--text)}
+.cart-items{flex:1;overflow-y:auto;padding:14px 24px}
+.cart-empty{text-align:center;padding:50px 20px;color:var(--text-faint)}
+.cart-empty-icon{font-size:2.5rem;margin-bottom:10px}
+.cart-item{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--border-light);align-items:center}
+.cart-item-img{width:60px;height:60px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid var(--border-light)}
+.cart-item-info{flex:1}
+.cart-item-name{font-size:.86rem;font-weight:600;color:var(--text)}
+.cart-item-price{font-size:.82rem;color:var(--orange);font-weight:600}
+.cart-item-qty{font-size:.74rem;color:var(--text-faint)}
+.cart-item-remove{width:28px;height:28px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:.78rem;color:var(--text-faint);transition:var(--tr);border:none}
+.cart-item-remove:hover{background:#FFF0EE;color:#D44}
+.cart-footer{padding:18px 24px;border-top:1px solid var(--border-light)}
+.cart-total{display:flex;justify-content:space-between;margin-bottom:12px}
+.cart-total span:first-child{font-size:.9rem;color:var(--text-md)}
+.cart-total span:last-child{font-family:var(--font-d);font-size:1.5rem;font-weight:700;color:var(--orange)}
 
-  noMsg.style.display='none';
-  const hasWords = (bundle, words) => {
-    const txt = `${bundle.name||''} ${bundle.description||''} ${bundle.tag||''}`.toLowerCase();
-    return words.some(w=>txt.includes(w));
-  };
-  const miniBundles = allBundles.filter(b=>hasWords(b,['mini']));
-  const coupleBundles = allBundles.filter(b=>hasWords(b,['couple','duo','amoureux','soirée à deux','soiree a deux']));
+/* MODALS */
+.modal-overlay{position:fixed;inset:0;background:rgba(44,36,24,.35);backdrop-filter:blur(6px);z-index:2000;display:none;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.active{display:flex}
+.modal{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);max-width:480px;width:100%;padding:36px;position:relative;animation:modalIn .3s ease;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg)}
+@keyframes modalIn{from{opacity:0;transform:translateY(20px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.modal-close{position:absolute;top:14px;right:14px;width:32px;height:32px;border-radius:50%;background:var(--bg2);display:flex;align-items:center;justify-content:center;font-size:1rem;color:var(--text-faint);transition:var(--tr);border:none}
+.modal-close:hover{background:var(--bg3);color:var(--text)}
+.modal h2{font-size:1.3rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.modal .modal-subtitle{font-size:.86rem;color:var(--text-light);margin-bottom:22px}
+.modal .btn{width:100%;justify-content:center;margin-top:6px}
+.modal-tabs{display:flex;gap:4px;background:var(--bg2);border-radius:50px;padding:4px;margin-bottom:20px}
+.modal-tab{flex:1;padding:9px;text-align:center;font-size:.82rem;font-weight:500;border-radius:50px;transition:var(--tr);color:var(--text-light);background:none}
+.modal-tab.active{background:var(--orange);color:var(--white)}
+.checkout-total{font-family:var(--font-d);font-size:1.5rem;font-weight:700;color:var(--orange);padding:8px 0}
+.checkout-summary-item{display:flex;justify-content:space-between;padding:6px 0;font-size:.84rem;color:var(--text-md);border-bottom:1px solid var(--border-light)}
+.checkout-summary-item:last-child{border:none;margin-bottom:16px}
 
-  allGrid.innerHTML = allBundles.map(renderBundleCard).join('');
-  miniGrid.innerHTML = miniBundles.length ? miniBundles.map(renderBundleCard).join('') : `<div class="bundle-empty-note">Ajoutez vos mini kits dans l'admin pour les afficher ici.</div>`;
-  coupleGrid.innerHTML = coupleBundles.length ? coupleBundles.map(renderBundleCard).join('') : `<div class="bundle-empty-note">Ajoutez vos ensembles pour soirée en couple dans l'admin pour les afficher ici.</div>`;
-  initScrollEffects();
-}
+.toast{position:fixed;bottom:30px;right:30px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:14px 24px;border-radius:var(--r-md);font-size:.86rem;font-weight:500;z-index:3000;transform:translateY(120%);transition:var(--tr);box-shadow:var(--shadow-lg)}
+.toast.show{transform:translateY(0)}
+.toast.success{border-left:3px solid var(--teal)}
+.toast.error{border-left:3px solid #D44}
 
-function renderBundleCard(b){
-  const kitNames = (b.kitIds||[]).map(id=>{const k=allKits.find(x=>x.id===id);return k?k.name:'Kit'});
-  const price = Number(b.price)||0;
-  const originalPrice = Number(b.originalPrice)||0;
-  return `<div class="bundle-card">
-    ${b.tag?`<div class="bundle-card-ribbon">${b.tag}</div>`:''}
-    <div class="bundle-card-img"><img src="${b.image}" alt="${b.name}" loading="lazy"></div>
-    <div class="bundle-card-body">
-      <div class="bundle-card-tag">🎁 Ensemble de peinture</div>
-      <h3>${b.name}</h3>
-      <p class="bundle-card-desc">${b.description||''}</p>
-      <div class="bundle-card-includes">${kitNames.map(n=>`<span>${n}</span>`).join('')}</div>
-      <div class="bundle-card-footer">
-        <div class="bundle-card-price">
-          <span class="current">$${price.toFixed(2)}</span>
-          ${originalPrice?`<span class="original">$${originalPrice.toFixed(2)}</span>`:''}
-        </div>
-        <button class="btn btn-orange btn-sm" onclick="addBundleToCart(${b.id})">Ajouter 🛒</button>
-      </div>
-    </div>
-  </div>`;
-}
+/* ADMIN */
+.admin-page{padding-top:20px;background:var(--bg);min-height:100vh}
+.admin-header-bar{background:var(--card);border-bottom:1px solid var(--border);padding:16px 0;margin-bottom:24px}
+.admin-header-bar .container{display:flex;align-items:center;justify-content:space-between}
+.admin-header-bar h2{font-size:1.1rem;font-weight:700;color:var(--text)}
+.admin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.admin-stat-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-md);padding:20px;text-align:center;box-shadow:var(--shadow-sm)}
+.admin-stat-card .num{font-family:var(--font-d);font-size:2rem;font-weight:700;color:var(--teal)}
+.admin-stat-card .label{font-size:.72rem;color:var(--text-faint);text-transform:uppercase;letter-spacing:1.5px}
+.admin-tabs{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
+.admin-tab{padding:9px 22px;border-radius:50px;font-size:.82rem;font-weight:500;background:var(--card);color:var(--text-light);border:1px solid var(--border);transition:var(--tr)}
+.admin-tab.active{background:var(--teal);color:var(--white);border-color:var(--teal)}
+.admin-table-wrap{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-sm)}
+.admin-table{width:100%;border-collapse:collapse}
+.admin-table th{background:var(--bg2);padding:11px 18px;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);text-align:left}
+.admin-table td{padding:12px 18px;font-size:.86rem;color:var(--text-md);border-bottom:1px solid var(--border-light)}
+.admin-table tr:hover td{background:var(--bg)}
+.admin-actions{display:flex;gap:6px}
+.admin-btn{padding:5px 12px;border-radius:6px;font-size:.74rem;font-weight:500;transition:var(--tr)}
+.admin-btn-edit{background:var(--teal-pale);color:var(--teal);border:1px solid rgba(27,154,170,.15)}
+.admin-btn-edit:hover{background:var(--teal);color:var(--white)}
+.admin-btn-delete{background:#FFF0EE;color:#D44;border:1px solid #FDD}
+.admin-btn-delete:hover{background:#D44;color:var(--white)}
+.admin-form-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);padding:28px;margin-bottom:20px;box-shadow:var(--shadow-sm)}
+.admin-form-card h3{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:18px}
+@media(max-width:768px){.admin-stats{grid-template-columns:1fr 1fr}}
 
-function addBundleToCart(bundleId){
-  const b=allBundles.find(x=>x.id===bundleId);if(!b)return;
-  const ex=cart.find(i=>i.id==='bundle-'+b.id);
-  if(ex){ex.qty+=1}else{cart.push({id:'bundle-'+b.id,name:b.name+' (Bundle)',price:b.price,image:b.image,qty:1})}
-  saveCart();updateCartUI();showToast(`${b.name} ajouté au panier!`,'success');
-}
+/* WHY SECTION */
+.why-section{background:var(--card)}
+.why-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px}
+.why-card{text-align:center;padding:28px;background:var(--bg);border:1px solid var(--border-light);border-radius:var(--r-lg);transition:var(--tr);position:relative}
+.why-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-md)}
+.why-card-num{position:absolute;top:16px;left:20px;font-family:var(--font-d);font-size:2.4rem;font-weight:700;color:var(--orange);opacity:.3}
+.why-card-img{width:100%;height:200px;object-fit:cover;border-radius:var(--r-md);margin-bottom:20px}
+.why-card h3{font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:10px}
+.why-card p{font-size:.88rem;color:var(--text-light);line-height:1.65}
+@media(max-width:800px){.why-grid{grid-template-columns:1fr}}
 
-// ===== PROFILE =====
-async function renderProfilePage(){
-  const c=document.getElementById('profilePageContent');if(!currentUser)return;
-  const av=currentUser.picture?`<img src="${currentUser.picture}">`:`${currentUser.name.charAt(0).toUpperCase()}`;
-  const badge=currentUser.role==='admin'?'<span class="profile-badge admin">Admin</span>':'<span class="profile-badge user">Membre</span>';
-  const prov=currentUser.provider==='google'?'Google':'Courriel & mot de passe';
-  c.innerHTML=`<div style="padding-top:20px"><div class="profile-header"><div class="profile-avatar">${av}</div><div class="profile-meta"><h2>${currentUser.name}</h2><p>${currentUser.email} · ${prov}</p>${badge}</div></div><div class="profile-tabs"><button class="profile-tab active" onclick="switchPTab('orders',this)">Commandes</button><button class="profile-tab" onclick="switchPTab('bookings',this)">Réservations</button><button class="profile-tab" onclick="switchPTab('settings',this)">Paramètres</button></div><div class="profile-panel active" id="panel-orders"><div class="profile-card"><h3>Historique des Commandes</h3><div id="ordersWrap"><p style="color:var(--text-faint)">Chargement...</p></div></div></div><div class="profile-panel" id="panel-bookings"><div class="profile-card"><h3>Mes Réservations</h3><div id="bookingsWrap"><p style="color:var(--text-faint)">Chargement...</p></div></div></div><div class="profile-panel" id="panel-settings"><div class="profile-card"><h3>Paramètres du Compte</h3><div class="form-group"><label>Nom</label><input type="text" id="profileName" value="${currentUser.name}"></div><div class="form-group"><label>Courriel</label><input type="email" value="${currentUser.email}" disabled style="opacity:.5"></div>${currentUser.provider==='local'?`<div class="form-group"><label>Mot de passe actuel</label><input type="password" id="pCurPw" placeholder="Requis pour changer"></div><div class="form-group"><label>Nouveau mot de passe</label><input type="password" id="pNewPw" placeholder="Laisser vide pour garder"></div>`:'<p style="font-size:.86rem;color:var(--text-light);margin:14px 0">Mot de passe géré par Google.</p>'}<button class="btn btn-teal" onclick="updateProfile()">Sauvegarder</button></div></div></div>`;
-  try{const r=await fetch('/api/orders/mine',{headers:authH()});const orders=await r.json();document.getElementById('ordersWrap').innerHTML=orders.length?orders.map(o=>`<div class="order-item"><div><div class="order-id">${o.id}</div><div class="order-date">${new Date(o.createdAt).toLocaleDateString('fr-CA')}</div><div class="order-items-list">${o.items.map(i=>i.name+' ×'+i.qty).join(', ')}</div></div><div style="text-align:right"><div class="order-total">$${o.total.toFixed(2)}</div><span class="order-status">${o.status}</span></div></div>`).join(''):'<div class="empty-state"><div class="empty-state-icon">📦</div><p>Aucune commande</p></div>'}catch{}
-  try{const r=await fetch('/api/bookings/mine',{headers:authH()});const bks=await r.json();document.getElementById('bookingsWrap').innerHTML=bks.length?bks.map(b=>`<div class="order-item"><div><div class="order-id">${b.event?.title||'Événement'}</div><div class="order-date">${b.event?.date||''} · ${b.guests} personne(s)</div></div><div><span class="order-status">${b.status}</span></div></div>`).join(''):'<div class="empty-state"><div class="empty-state-icon">🎫</div><p>Aucune réservation</p></div>'}catch{}
-}
-function switchPTab(t,btn){document.querySelectorAll('.profile-tab').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.profile-panel').forEach(p=>p.classList.remove('active'));btn.classList.add('active');document.getElementById('panel-'+t).classList.add('active')}
-async function updateProfile(){const body={name:document.getElementById('profileName').value};if(currentUser.provider==='local'){const cp=document.getElementById('pCurPw')?.value,np=document.getElementById('pNewPw')?.value;if(np){body.currentPassword=cp;body.newPassword=np}}try{const r=await fetch('/api/users/me',{method:'PUT',headers:authH(),body:JSON.stringify(body)});const d=await r.json();if(!r.ok)return showToast(d.error,'error');currentUser=d.user;localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();showToast('Profil mis à jour!','success')}catch{showToast('Erreur','error')}}
+/* POPULAR SECTION */
+.popular-section{background:var(--bg2)}
 
-// ===== CART =====
-function addToCart(kitId){const kit=allKits.find(k=>k.id===kitId);if(!kit)return;const qty=parseInt(document.getElementById('pQty')?.value||1);const ex=cart.find(i=>i.id===kitId);if(ex)ex.qty+=qty;else cart.push({id:kit.id,name:kit.name,price:kit.price,image:kit.image,qty});saveCart();updateCartUI();showToast(`${kit.name} ajouté au panier!`,'success')}
-function buyNow(id){addToCart(id);setTimeout(()=>checkout(),300)}
-function removeFromCart(id){cart=cart.filter(i=>i.id!==id&&i.id!==''+id);saveCart();updateCartUI();renderCartItems()}
-function clearCart(){cart=[];saveCart();updateCartUI();renderCartItems()}
-function saveCart(){localStorage.setItem('arty_cart',JSON.stringify(cart))}
-function updateCartUI(){const n=cart.reduce((s,i)=>s+i.qty,0);const b=document.getElementById('cartBtn'),c=document.getElementById('cartCount');if(b)b.style.display=n>0?'flex':'none';if(c)c.textContent=n}
-function getTotal(){return cart.reduce((s,i)=>s+i.price*i.qty,0)}
-function openCart(){renderCartItems();document.getElementById('cartOverlay').classList.add('open');document.getElementById('cartSidebar').classList.add('open');document.body.style.overflow='hidden'}
-function closeCart(){document.getElementById('cartOverlay').classList.remove('open');document.getElementById('cartSidebar').classList.remove('open');document.body.style.overflow=''}
-function renderCartItems(){const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div><p>Panier vide</p></div>';f.style.display='none';return}f.style.display='block';c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${i.image}" class="cart-item-img"><div class="cart-item-info"><div class="cart-item-name">${i.name}</div><div class="cart-item-price">$${i.price.toFixed(2)}</div><div class="cart-item-qty">Qté: ${i.qty}</div></div><button class="cart-item-remove" onclick="removeFromCart('${i.id}')">✕</button></div>`).join('');document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`}
+/* EVENTS GRID (home + party page) */
+.home-events-section{background:var(--card)}
+.events-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px}
+.event-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);overflow:hidden;transition:var(--tr)}
+.event-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--teal)}
+.event-card-img{height:200px;overflow:hidden}
+.event-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .4s}
+.event-card:hover .event-card-img img{transform:scale(1.06)}
+.event-card-body{padding:22px}
+.event-card-date{font-family:var(--font-d);font-size:1.1rem;color:var(--teal);margin-bottom:4px}
+.event-card-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:6px}
+.event-card-desc{font-size:.84rem;color:var(--text-light);line-height:1.6;margin-bottom:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.event-card-footer{display:flex;align-items:center;justify-content:space-between}
+.event-card-price{font-family:var(--font-d);font-size:1.4rem;font-weight:700;color:var(--orange)}
+.event-card-spots{font-size:.78rem;color:var(--text-faint)}
 
-// ===== CHECKOUT =====
-function checkout(){if(!cart.length)return showToast('Panier vide','error');if(!currentUser){closeCart();openModal('auth');return showToast('Connectez-vous pour commander','error')}closeCart();document.getElementById('checkoutSummary').innerHTML=cart.map(i=>`<div class="checkout-summary-item"><span>${i.name} × ${i.qty}</span><span>$${(i.price*i.qty).toFixed(2)}</span></div>`).join('');document.getElementById('checkoutTotal').textContent=`$${getTotal().toFixed(2)}`;document.getElementById('checkoutName').value=currentUser.name;document.getElementById('checkoutEmail').value=currentUser.email;document.getElementById('checkoutModal').classList.add('active');document.body.style.overflow='hidden'}
-async function placeOrder(){const addr=document.getElementById('checkoutAddress').value,card=document.getElementById('checkoutCard').value;if(!addr)return showToast('Entrez l\'adresse de livraison','error');if(!card)return showToast('Entrez les informations de paiement','error');try{const r=await fetch('/api/orders',{method:'POST',headers:authH(),body:JSON.stringify({items:cart,address:addr,total:getTotal()})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');closeModal('checkout');cart=[];saveCart();updateCartUI();['checkoutName','checkoutEmail','checkoutAddress','checkoutCard','checkoutExpiry','checkoutCVC'].forEach(id=>document.getElementById(id).value='');document.getElementById('successOrderId').textContent=`Commande #${d.order.id}`;document.getElementById('successModal').classList.add('active');document.body.style.overflow='hidden'}catch{showToast('Erreur lors de la commande','error')}}
+/* OCCASIONS ICONS */
+.occasions-teaser{background:var(--bg2)}
+.occasions-icons{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;text-align:center}
+.occ-icon-card{padding:24px 16px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);transition:var(--tr)}
+.occ-icon-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--orange)}
+.occ-icon-card span{font-size:2.2rem;display:block;margin-bottom:10px}
+.occ-icon-card h4{font-size:.82rem;font-weight:600;color:var(--text-md)}
+@media(max-width:900px){.occasions-icons{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:500px){.occasions-icons{grid-template-columns:repeat(2,1fr)}}
 
-// ===== AUTH =====
-function openModal(t,tab){document.getElementById(t+'Modal').classList.add('active');document.body.style.overflow='hidden';if(tab==='register')switchAuthTab('register');else if(t==='auth')switchAuthTab('login')}
-function closeModal(t){document.getElementById(t+'Modal').classList.remove('active');document.body.style.overflow=''}
-function switchAuthTab(t){document.getElementById('tabLogin').classList.toggle('active',t==='login');document.getElementById('tabRegister').classList.toggle('active',t==='register');document.getElementById('loginForm').style.display=t==='login'?'block':'none';document.getElementById('registerForm').style.display=t==='register'?'block':'none';document.getElementById('authModalTitle').textContent=t==='login'?'Bienvenue':'Créer un Compte';document.getElementById('authModalSub').textContent=t==='login'?'Connectez-vous à votre compte.':'Inscrivez-vous gratuitement.'}
-async function doLogin(){const e=document.getElementById('loginEmail').value,p=document.getElementById('loginPassword').value;if(!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Erreur de connexion','error')}}
-async function doRegister(){const n=document.getElementById('regName').value,e=document.getElementById('regEmail').value,p=document.getElementById('regPassword').value;if(!n||!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue chez Arty!, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}}
-function logout(s){fetch('/api/users/logout',{method:'POST',headers:authH()}).catch(()=>{});authToken=null;currentUser=null;localStorage.removeItem('arty_token');localStorage.removeItem('arty_user');updateAuthUI();navigate('#/');if(!s)showToast('Déconnecté','success')}
+/* INCLUDED SECTION */
+.included-section{background:var(--card)}
+.included-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.included-item{text-align:center;padding:28px 20px;background:var(--bg);border-radius:var(--r-lg);border:1px solid var(--border-light);transition:var(--tr)}
+.included-item:hover{transform:translateY(-4px);box-shadow:var(--shadow-md)}
+.included-item span{font-size:2rem;display:block;margin-bottom:10px}
+.included-item h4{font-size:.92rem;font-weight:600;color:var(--text);margin-bottom:4px}
+.included-item p{font-size:.82rem;color:var(--text-light);line-height:1.5}
+@media(max-width:800px){.included-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.included-grid{grid-template-columns:1fr}}
+.included-single{max-width:720px;margin:0 auto;background:var(--bg);border:1px solid var(--border-light);border-radius:var(--r-lg);padding:34px;box-shadow:var(--shadow-sm)}
+.included-single-icon{width:58px;height:58px;border-radius:18px;background:var(--orange-pale);display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 14px}
+.included-single h3{text-align:center;font-size:1.25rem;font-weight:800;color:var(--text);margin-bottom:22px}
+.included-list{display:grid;grid-template-columns:1fr 1fr;gap:12px 22px;list-style:none}
+.included-list li{font-size:.92rem;color:var(--text-md);padding-left:24px;position:relative;line-height:1.5}
+.included-list li::before{content:'✓';position:absolute;left:0;top:0;color:var(--teal);font-weight:800}
+@media(max-width:650px){.included-list{grid-template-columns:1fr}.included-single{padding:28px 22px}}
 
-// ===== GOOGLE =====
-function initGoogleSignIn(){const w=document.getElementById('googleBtnWrap');if(!googleClientId||googleClientId==='YOUR_GOOGLE_CLIENT_ID_HERE'){w.innerHTML=`<button class="google-btn" onclick="showToast('Google non configuré. Ajoutez votre Client ID dans data/db.json','error')" style="opacity:.6"><svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continuer avec Google</button>`;return}try{google.accounts.id.initialize({client_id:googleClientId,callback:handleGoogle});w.innerHTML='';google.accounts.id.renderButton(w,{theme:'outline',size:'large',width:380,text:'continue_with',shape:'pill',locale:'fr'})}catch{w.innerHTML='<button class="google-btn" style="opacity:.5">Google non disponible</button>'}}
-async function handleGoogle(r){try{const res=await fetch('/api/users/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential})});const d=await res.json();if(!res.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Échec Google','error')}}
+/* EVENT DETAIL PAGE */
+.event-detail-layout{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-bottom:48px}
+.event-detail-img{width:100%;aspect-ratio:16/10;object-fit:cover;border-radius:var(--r-lg);border:1px solid var(--border)}
+.event-detail-info h1{font-size:1.8rem;font-weight:800;color:var(--text);margin-bottom:8px}
+.event-detail-info .event-detail-date{font-family:var(--font-d);font-size:1.3rem;color:var(--teal);margin-bottom:6px}
+.event-detail-info .event-detail-price{font-family:var(--font-d);font-size:2.2rem;color:var(--orange);margin-bottom:16px}
+.event-detail-info p{font-size:.94rem;color:var(--text-light);line-height:1.8;margin-bottom:20px}
+.event-detail-meta{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px}
+.event-meta-tag{padding:7px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:50px;font-size:.82rem;color:var(--text-md)}
+.event-spots-info{padding:16px;background:var(--teal-pale);border:1px solid rgba(27,154,170,.15);border-radius:var(--r-md);margin-bottom:20px;display:flex;align-items:center;justify-content:space-between}
+.event-spots-info .spots-text{font-size:.9rem;color:var(--teal);font-weight:600}
+.event-spots-bar{width:120px;height:6px;background:var(--border);border-radius:4px;overflow:hidden}
+.event-spots-bar-fill{height:100%;background:var(--teal);border-radius:4px}
+@media(max-width:800px){.event-detail-layout{grid-template-columns:1fr}}
 
-// ===== BOOKING =====
-function openBooking(eventId){if(!currentUser){openModal('auth');return showToast('Connectez-vous pour réserver','error')}const ev=allEvents.find(e=>e.id===eventId);if(!ev)return;document.getElementById('bookingEventTitle').textContent=ev.title;document.getElementById('bookingPrice').textContent=ev.price.toFixed(2);document.getElementById('bookingName').value=currentUser.name;document.getElementById('bookingEmail').value=currentUser.email;document.getElementById('bookingModal').classList.add('active');document.getElementById('bookingModal').dataset.eid=eventId;document.body.style.overflow='hidden'}
-async function confirmBooking(){const eid=document.getElementById('bookingModal').dataset.eid,n=document.getElementById('bookingName').value,e=document.getElementById('bookingEmail').value,g=document.getElementById('bookingGuests').value;if(!n||!e)return showToast('Remplissez nom et courriel','error');try{const r=await fetch('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:currentUser?.id,eventId:eid,name:n,email:e,guests:g})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');closeModal('booking');showToast('Réservation confirmée! 🎉','success');await loadEvents();handleRoute()}catch{showToast('Erreur de connexion','error')}}
-async function submitContact(){const n=document.getElementById('contactName').value,e=document.getElementById('contactEmail').value,m=document.getElementById('contactMessage').value;if(!n||!e||!m)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,message:m})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');showToast(d.message,'success');['contactName','contactEmail','contactMessage'].forEach(id=>document.getElementById(id).value='')}catch{showToast('Erreur','error')}}
+.fade-up{opacity:0;transform:translateY(30px);transition:opacity .7s ease,transform .7s ease}
+.fade-up.visible{opacity:1;transform:translateY(0)}
+.stagger-children>*{opacity:0;transform:translateY(20px);transition:opacity .5s ease,transform .5s ease}
+.stagger-children.visible>*:nth-child(1){transition-delay:.06s}.stagger-children.visible>*:nth-child(2){transition-delay:.14s}.stagger-children.visible>*:nth-child(3){transition-delay:.22s}.stagger-children.visible>*:nth-child(4){transition-delay:.3s}.stagger-children.visible>*:nth-child(5){transition-delay:.38s}.stagger-children.visible>*:nth-child(6){transition-delay:.46s}
+.stagger-children.visible>*{opacity:1;transform:translateY(0)}
 
-// ===== ADMIN =====
-async function loadAdminData(){try{const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents()}
-function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none'}
+/* TUTORIALS PAGE */
+.tutorials-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px}
+.tutorial-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);overflow:hidden;transition:var(--tr)}
+.tutorial-card:hover{transform:translateY(-4px);box-shadow:var(--shadow-md);border-color:var(--teal)}
+.tutorial-video-wrap{position:relative;padding-top:56.25%;background:var(--bg3);cursor:pointer}
+.tutorial-video-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tutorial-play-btn{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;background:var(--orange);border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(232,134,58,.35);transition:var(--tr);z-index:2}
+.tutorial-play-btn::after{content:'';border-left:18px solid var(--white);border-top:11px solid transparent;border-bottom:11px solid transparent;margin-left:4px}
+.tutorial-card:hover .tutorial-play-btn{transform:translate(-50%,-50%) scale(1.1)}
+.tutorial-video-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:none}
+.tutorial-body{padding:22px}
+.tutorial-kit-name{font-size:.74rem;font-weight:600;text-transform:uppercase;letter-spacing:2px;color:var(--orange);margin-bottom:4px}
+.tutorial-title{font-size:1.1rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.tutorial-diff{font-size:.82rem;color:var(--text-light)}
 
-function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="aKitDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>c.id===k.categoryId);return`<tr><td><strong>${k.name}</strong></td><td>${cat?cat.name:'-'}</td><td>$${k.price.toFixed(2)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
-async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value,price:document.getElementById('aKitPrice').value,description:document.getElementById('aKitDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadKits();loadAdminData()}catch{showToast('Erreur','error')}}
-function editKit(id){const k=allKits.find(x=>x.id===id);if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name;document.getElementById('aKitPrice').value=k.price;document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitCat').value=k.categoryId;document.getElementById('aKitDiff').value=k.difficulty;document.getElementById('aKitImg').value=k.image||'';document.getElementById('kitFormTitle').textContent='Modifier le Kit';document.getElementById('cancelKit').style.display='inline-flex';window.scrollTo(0,0)}
-function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitDesc','aKitImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('kitFormTitle').textContent='Ajouter un Kit';document.getElementById('cancelKit').style.display='none'}
-async function deleteKit(id){if(!confirm('Supprimer ce kit?'))return;await fetch(`/api/admin/kits/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadKits();loadAdminData()}
+/* BUNDLES PAGE */
+.bundles-page-wrap{padding-top:120px;background:linear-gradient(180deg,var(--bg2) 0%,var(--bg) 100%)}
+.bundles-hero{max-width:980px;margin:0 auto 42px}
+.bundles-main-sub{max-width:940px;margin-bottom:18px;color:var(--text-md)}
+.bundle-discount{display:inline-block;background:var(--orange-pale);border:1px solid rgba(232,134,58,.18);border-radius:var(--r-lg);padding:18px 26px;color:var(--text-md);font-size:1rem;line-height:1.7;box-shadow:var(--shadow-sm)}
+.bundle-discount strong{color:var(--orange);font-weight:800}
+.bundle-info-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:32px 0 58px}
+.bundle-info-panel{background:var(--card);border:1px solid rgba(232,134,58,.18);border-radius:var(--r-xl);padding:30px;box-shadow:var(--shadow-sm)}
+.bundle-info-panel.teal-panel{border-color:rgba(27,154,170,.2);background:var(--teal-pale)}
+.bundle-info-label{display:inline-block;background:rgba(232,134,58,.22);color:var(--black);font-weight:800;border-radius:8px;padding:4px 10px;margin-bottom:14px}
+.teal-panel .bundle-info-label{background:rgba(27,154,170,.18)}
+.bundle-info-panel p{color:var(--text-md);line-height:1.75;font-size:.98rem}
+.bundle-section-block{margin-top:58px}
+.bundle-section-title-row{text-align:center;margin-bottom:24px}
+.bundle-section-title-row h3{font-size:1.45rem;font-weight:800;color:var(--black)}
+.bundle-empty-note{grid-column:1/-1;text-align:center;background:var(--card);border:1px dashed var(--border);border-radius:var(--r-lg);padding:28px;color:var(--text-light)}
+.bundle-card{background:var(--card);border:2px solid var(--border-light);border-radius:var(--r-xl);overflow:hidden;transition:var(--tr);position:relative}
+.bundle-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg);border-color:var(--orange)}
+.bundle-card-ribbon{position:absolute;top:18px;right:-30px;background:var(--orange);color:var(--white);font-size:.72rem;font-weight:700;padding:6px 40px;transform:rotate(35deg);letter-spacing:1px;z-index:2;text-transform:uppercase}
+.bundle-card-img{height:260px;overflow:hidden}
+.bundle-card-img img{width:100%;height:100%;object-fit:cover;transition:transform .5s}
+.bundle-card:hover .bundle-card-img img{transform:scale(1.06)}
+.bundle-card-body{padding:28px}
+.bundle-card-tag{font-family:var(--font-d);font-size:1.1rem;color:var(--teal);margin-bottom:6px}
+.bundle-card h3{font-size:1.3rem;font-weight:800;color:var(--text);margin-bottom:8px}
+.bundle-card-desc{font-size:.88rem;color:var(--text-light);line-height:1.65;margin-bottom:16px}
+.bundle-card-includes{margin-bottom:18px}
+.bundle-card-includes span{display:inline-block;padding:4px 12px;background:var(--bg2);border:1px solid var(--border-light);border-radius:50px;font-size:.76rem;color:var(--text-md);margin:3px 4px 3px 0}
+.bundle-card-footer{display:flex;align-items:center;justify-content:space-between}
+.bundle-card-price{display:flex;align-items:baseline;gap:8px}
+.bundle-card-price .current{font-family:var(--font-d);font-size:1.8rem;font-weight:700;color:var(--orange)}
+.bundle-card-price .original{font-size:.9rem;color:var(--text-faint);text-decoration:line-through}
+.bundles-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:28px}
+@media(max-width:800px){.bundle-info-panels{grid-template-columns:1fr}.bundle-discount{font-size:.92rem}.bundles-grid{grid-template-columns:1fr}}
 
-function renderAdminCategories(){document.getElementById('adminCategoriesPanel').innerHTML=`<div class="admin-form-card"><h3 id="catFormTitle">Ajouter une Catégorie</h3><input type="hidden" id="editCatId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aCatName"></div><div class="form-group"><label>Type</label><select id="aCatParent"><option value="individual">Individuel</option><option value="group">Groupe</option><option value="none">Autre</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aCatImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveCat()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetCatForm()" style="display:none" id="cancelCat">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Catégorie</th><th>Type</th><th>Actions</th></tr></thead><tbody>${allCategories.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.parent}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editCat(${c.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteCat(${c.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
-async function saveCat(){const eid=document.getElementById('editCatId').value;const p={name:document.getElementById('aCatName').value,parent:document.getElementById('aCatParent').value,image:document.getElementById('aCatImg').value};if(!p.name)return showToast('Nom requis','error');await fetch(eid?`/api/admin/categories/${eid}`:'/api/admin/categories',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadCategories();loadAdminData()}
-function editCat(id){const c=allCategories.find(x=>x.id===id);if(!c)return;document.getElementById('editCatId').value=c.id;document.getElementById('aCatName').value=c.name;document.getElementById('aCatParent').value=c.parent;document.getElementById('aCatImg').value=c.image||'';document.getElementById('catFormTitle').textContent='Modifier';document.getElementById('cancelCat').style.display='inline-flex'}
-function resetCatForm(){['editCatId','aCatName','aCatImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('catFormTitle').textContent='Ajouter une Catégorie';document.getElementById('cancelCat').style.display='none'}
-async function deleteCat(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/categories/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadCategories();loadAdminData()}
 
-// Admin Bundles
-function renderAdminBundles(){
-  const kitOpts=allKits.map(k=>`<option value="${k.id}">${k.name} ($${k.price.toFixed(2)})</option>`).join('');
-  document.getElementById('adminBundlesPanel').innerHTML=`<div class="admin-form-card"><h3 id="bunFormTitle">Ajouter un Bundle</h3><input type="hidden" id="editBunId"><div class="form-row"><div class="form-group"><label>Nom du Bundle</label><input type="text" id="aBunName" placeholder="Ex: Forfait Famille"></div><div class="form-group"><label>Prix Bundle ($)</label><input type="number" id="aBunPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="aBunDesc" placeholder="Décrivez le bundle..."></textarea></div><div class="form-row"><div class="form-group"><label>Prix Original ($)</label><input type="number" id="aBunOrigPrice" step="0.01" placeholder="Pour montrer l'économie"></div><div class="form-group"><label>Étiquette</label><input type="text" id="aBunTag" placeholder="Ex: Économisez 30$"></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aBunImg"></div><div class="form-group"><label>Kits inclus (sélectionnez plusieurs avec Ctrl+clic)</label><select id="aBunKits" multiple style="min-height:100px">${kitOpts}</select></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveBun()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetBunForm()" style="display:none" id="cancelBun">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Bundle</th><th>Prix</th><th>Kits</th><th>Actions</th></tr></thead><tbody>${allBundles.map(b=>`<tr><td><strong>${b.name}</strong>${b.tag?` <span style="color:var(--orange);font-size:.75rem">${b.tag}</span>`:''}</td><td>$${b.price.toFixed(2)}</td><td>${(b.kitIds||[]).length} kits</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editBun(${b.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteBun(${b.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`;
-}
-async function saveBun(){const eid=document.getElementById('editBunId').value;const sel=document.getElementById('aBunKits');const kitIds=Array.from(sel.selectedOptions).map(o=>parseInt(o.value));const p={name:document.getElementById('aBunName').value,price:document.getElementById('aBunPrice').value,description:document.getElementById('aBunDesc').value,originalPrice:document.getElementById('aBunOrigPrice').value,tag:document.getElementById('aBunTag').value,image:document.getElementById('aBunImg').value,kitIds};if(!p.name||!p.price)return showToast('Nom et prix requis','error');await fetch(eid?`/api/admin/bundles/${eid}`:'/api/admin/bundles',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadBundles();loadAdminData()}
-function editBun(id){const b=allBundles.find(x=>x.id===id);if(!b)return;document.getElementById('editBunId').value=b.id;document.getElementById('aBunName').value=b.name;document.getElementById('aBunPrice').value=b.price;document.getElementById('aBunDesc').value=b.description||'';document.getElementById('aBunOrigPrice').value=b.originalPrice||'';document.getElementById('aBunTag').value=b.tag||'';document.getElementById('aBunImg').value=b.image||'';const sel=document.getElementById('aBunKits');Array.from(sel.options).forEach(o=>{o.selected=(b.kitIds||[]).includes(parseInt(o.value))});document.getElementById('bunFormTitle').textContent='Modifier le Bundle';document.getElementById('cancelBun').style.display='inline-flex';window.scrollTo(0,0)}
-function resetBunForm(){['editBunId','aBunName','aBunPrice','aBunDesc','aBunOrigPrice','aBunTag','aBunImg'].forEach(id=>document.getElementById(id).value='');const sel=document.getElementById('aBunKits');if(sel)Array.from(sel.options).forEach(o=>o.selected=false);document.getElementById('bunFormTitle').textContent='Ajouter un Bundle';document.getElementById('cancelBun').style.display='none'}
-async function deleteBun(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/bundles/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadBundles();loadAdminData()}
-
-function renderAdminEvents(){document.getElementById('adminEventsPanel').innerHTML=`<div class="admin-form-card"><h3 id="evFormTitle">Ajouter un Événement</h3><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix ($)</label><input type="number" id="aEvPrice" step="0.01"></div><div class="form-group"><label>Places max</label><input type="number" id="aEvSpots"></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg"></div></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveEv()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Événement</th><th>Date</th><th>Prix</th><th>Places</th><th>Actions</th></tr></thead><tbody>${allEvents.map(e=>`<tr><td><strong>${e.title}</strong></td><td>${e.date}</td><td>$${e.price.toFixed(2)}</td><td>${e.bookedSpots||0}/${e.maxSpots}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editEv(${e.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteEv(${e.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
-async function saveEv(){const eid=document.getElementById('editEvId').value;const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value};if(!p.title||!p.date)return showToast('Titre et date requis','error');await fetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadEvents();loadAdminData()}
-function editEv(id){const e=allEvents.find(x=>x.id===id);if(!e)return;document.getElementById('editEvId').value=e.id;document.getElementById('aEvTitle').value=e.title;document.getElementById('aEvDate').value=e.date;document.getElementById('aEvDesc').value=e.description||'';document.getElementById('aEvTime').value=e.time||'18:00';document.getElementById('aEvDur').value=e.duration||'';document.getElementById('aEvPrice').value=e.price;document.getElementById('aEvSpots').value=e.maxSpots;document.getElementById('aEvLoc').value=e.location||'';document.getElementById('aEvImg').value=e.image||'';document.getElementById('evFormTitle').textContent='Modifier';document.getElementById('cancelEv').style.display='inline-flex'}
-function resetEvForm(){['editEvId','aEvTitle','aEvDate','aEvDesc','aEvDur','aEvPrice','aEvSpots','aEvLoc','aEvImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('aEvTime').value='18:00';document.getElementById('evFormTitle').textContent='Ajouter un Événement';document.getElementById('cancelEv').style.display='none'}
-async function deleteEv(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/events/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadEvents();loadAdminData()}
-
-// ===== UTILS =====
-function showToast(m,t='success'){const el=document.getElementById('toast');el.textContent=m;el.className=`toast ${t} show`;setTimeout(()=>el.classList.remove('show'),3500)}
-document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o){o.classList.remove('active');document.body.style.overflow=''}}));
+/* EVENT PAINTING PAGE */
+.event-party-page .section-heading{margin-bottom:14px}
+.event-intro-highlight{font-size:1.1rem;font-weight:800;color:var(--orange);max-width:860px;margin:0 auto 46px;line-height:1.7}
+.event-party-page .occasion-card p{margin-top:12px;color:var(--text-md);line-height:1.75}
+.event-party-page .occasion-card p strong{color:var(--black)}
+.event-bottom-cta{margin-top:56px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:36px;text-align:center;box-shadow:var(--shadow-sm)}
+.event-bottom-cta p{font-size:1rem;color:var(--text-md);line-height:1.8;max-width:900px;margin:0 auto 24px}
+.event-cta-actions{display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+@media(max-width:700px){.event-bottom-cta{padding:28px 20px}.event-cta-actions .btn{width:100%;justify-content:center}}
