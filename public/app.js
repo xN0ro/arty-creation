@@ -74,7 +74,7 @@ function renderHomeEvents(){
     return `<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
       <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
       <div class="event-card-body">
-        <div class="event-card-date">📅 ${dateStr} · ${ev.time||''}</div>
+        <div class="event-card-date">${dateStr} · ${ev.time||''}</div>
         <h3 class="event-card-title">${ev.title}</h3>
         <p class="event-card-desc">${ev.description}</p>
         <div class="event-card-footer">
@@ -96,11 +96,11 @@ function toggleMobile(){document.getElementById('navLinks').classList.toggle('op
 function toggleDropdown(){document.querySelector('.nav-dropdown-menu')?.classList.toggle('open')}
 function updateAuthUI(){
   const a=document.getElementById('navAuth');
-  const cartH=`<button class="btn-cart" onclick="openCart()" id="cartBtn" style="${cart.length?'display:flex':'display:none'}">🛒 <span id="cartCount">${cart.reduce((s,i)=>s+i.qty,0)}</span></button>`;
+  const cartH=`<button class="btn-cart" onclick="openCart()" id="cartBtn" style="${cart.length?'display:flex':'display:none'}"><span class="cart-label">Panier</span><span id="cartCount">${cart.reduce((s,i)=>s+i.qty,0)}</span></button>`;
   if(currentUser){
     const av=currentUser.picture?`<img src="${currentUser.picture}">`:`${currentUser.name.charAt(0).toUpperCase()}`;
-    const adm=currentUser.role==='admin'?`<a href="#/admin" class="admin-link">⚙️ Admin</a>`:'';
-    a.innerHTML=`${cartH}<div class="nav-dropdown"><div class="nav-user" onclick="toggleDropdown()"><div class="nav-user-avatar">${av}</div><span class="nav-user-name">${currentUser.name.split(' ')[0]}</span></div><div class="nav-dropdown-menu"><a href="#/profile">👤 Mon Profil</a>${adm}<button class="logout-btn" onclick="logout()">🚪 Déconnexion</button></div></div>`;
+    const adm=currentUser.role==='admin'?`<a href="#/admin" class="admin-link">Admin</a>`:'';
+    a.innerHTML=`${cartH}<div class="nav-dropdown"><div class="nav-user" onclick="toggleDropdown()"><div class="nav-user-avatar">${av}</div><span class="nav-user-name">${currentUser.name.split(' ')[0]}</span></div><div class="nav-dropdown-menu"><a href="#/profile">Mon Profil</a>${adm}<button class="logout-btn" onclick="logout()">Déconnexion</button></div></div>`;
   }else{a.innerHTML=`${cartH}<button class="btn btn-ghost btn-sm" onclick="openModal('auth')">Connexion</button><button class="btn btn-orange btn-sm" onclick="openModal('auth','register')">S'inscrire</button>`}
 }
 
@@ -145,7 +145,7 @@ function renderProductPage(id){
   const imgs=kit.images?.length?kit.images:[kit.image];
   const thumbs=imgs.length>1?`<div class="product-thumbs">${imgs.map((img,i)=>`<img src="${img}" class="product-thumb${i===0?' active':''}" onclick="switchImg(this,'${img}')">`).join('')}</div>`:'';
   const inc=kit.includes?.length?`<div class="product-includes"><h3>Inclus dans ce kit</h3><ul>${kit.includes.map(i=>`<li>${i}</li>`).join('')}</ul></div>`:'';
-  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${imgs[0]}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${cat?cat.name:''}</div><h1>${kit.name}</h1><div class="product-price">$${kit.price.toFixed(2)}</div><p class="product-desc">${kit.description}</p><div class="product-tags"><span class="product-tag">📦 ${kit.difficulty}</span><span class="product-tag">${kit.inStock?'✅ En stock':'❌ Épuisé'}</span></div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>${kit.inStock?'🛒 Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button></div></div></div>`;
+  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${imgs[0]}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${cat?cat.name:''}</div><h1>${kit.name}</h1><div class="product-price">$${kit.price.toFixed(2)}</div><p class="product-desc">${kit.description}</p><div class="product-tags"><span class="product-tag">${kit.difficulty}</span><span class="product-tag">${kit.inStock?'En stock':'Épuisé'}</span></div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>${kit.inStock?'Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button></div></div></div>`;
 }
 function switchImg(th,src){document.getElementById('pMainImg').src=src;document.querySelectorAll('.product-thumb').forEach(t=>t.classList.remove('active'));th.classList.add('active')}
 function chgQty(d){const i=document.getElementById('pQty');if(!i)return;i.value=Math.min(10,Math.max(1,parseInt(i.value)+d))}
@@ -196,7 +196,7 @@ function renderPartyEvents(){
     return `<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
       <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
       <div class="event-card-body">
-        <div class="event-card-date">📅 ${dateStr} · ${ev.time||''}</div>
+        <div class="event-card-date">${dateStr} · ${ev.time||''}</div>
         <h3 class="event-card-title">${ev.title}</h3>
         <p class="event-card-desc">${ev.description}</p>
         <div class="event-card-footer">
@@ -309,7 +309,7 @@ function renderBundleCard(b){
           <span class="current">$${price.toFixed(2)}</span>
           ${originalPrice?`<span class="original">$${originalPrice.toFixed(2)}</span>`:''}
         </div>
-        <button class="btn btn-orange btn-sm" onclick="addBundleToCart(${b.id})">Ajouter 🛒</button>
+        <button class="btn btn-orange btn-sm" onclick="addBundleToCart(${b.id})">Ajouter</button>
       </div>
     </div>
   </div>`;
@@ -345,7 +345,7 @@ function updateCartUI(){const n=cart.reduce((s,i)=>s+i.qty,0);const b=document.g
 function getTotal(){return cart.reduce((s,i)=>s+i.price*i.qty,0)}
 function openCart(){renderCartItems();document.getElementById('cartOverlay').classList.add('open');document.getElementById('cartSidebar').classList.add('open');document.body.style.overflow='hidden'}
 function closeCart(){document.getElementById('cartOverlay').classList.remove('open');document.getElementById('cartSidebar').classList.remove('open');document.body.style.overflow=''}
-function renderCartItems(){const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">🛒</div><p>Panier vide</p></div>';f.style.display='none';return}f.style.display='block';c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${i.image}" class="cart-item-img"><div class="cart-item-info"><div class="cart-item-name">${i.name}</div><div class="cart-item-price">$${i.price.toFixed(2)}</div><div class="cart-item-qty">Qté: ${i.qty}</div></div><button class="cart-item-remove" onclick="removeFromCart('${i.id}')">✕</button></div>`).join('');document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`}
+function renderCartItems(){const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">Panier</div><p>Panier vide</p></div>';f.style.display='none';return}f.style.display='block';c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${i.image}" class="cart-item-img"><div class="cart-item-info"><div class="cart-item-name">${i.name}</div><div class="cart-item-price">$${i.price.toFixed(2)}</div><div class="cart-item-qty">Qté: ${i.qty}</div></div><button class="cart-item-remove" onclick="removeFromCart('${i.id}')">✕</button></div>`).join('');document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`}
 
 // ===== CHECKOUT =====
 function checkout(){if(!cart.length)return showToast('Panier vide','error');if(!currentUser){closeCart();openModal('auth');return showToast('Connectez-vous pour commander','error')}closeCart();document.getElementById('checkoutSummary').innerHTML=cart.map(i=>`<div class="checkout-summary-item"><span>${i.name} × ${i.qty}</span><span>$${(i.price*i.qty).toFixed(2)}</span></div>`).join('');document.getElementById('checkoutTotal').textContent=`$${getTotal().toFixed(2)}`;document.getElementById('checkoutName').value=currentUser.name;document.getElementById('checkoutEmail').value=currentUser.email;document.getElementById('checkoutModal').classList.add('active');document.body.style.overflow='hidden'}
