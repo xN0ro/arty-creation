@@ -468,3 +468,14 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 .bundle-card-price .original{font-size:.9rem;color:var(--text-faint);text-decoration:line-through}
 .bundles-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:28px}
 @media(max-width:800px){.bundle-info-panels{grid-template-columns:1fr}.bundle-discount{font-size:.92rem}.bundles-grid{grid-template-columns:1fr}}
+
+
+/* EVENT PAINTING PAGE */
+.event-party-page .section-heading{margin-bottom:14px}
+.event-intro-highlight{font-size:1.1rem;font-weight:800;color:var(--orange);max-width:860px;margin:0 auto 46px;line-height:1.7}
+.event-party-page .occasion-card p{margin-top:12px;color:var(--text-md);line-height:1.75}
+.event-party-page .occasion-card p strong{color:var(--black)}
+.event-bottom-cta{margin-top:56px;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:36px;text-align:center;box-shadow:var(--shadow-sm)}
+.event-bottom-cta p{font-size:1rem;color:var(--text-md);line-height:1.8;max-width:900px;margin:0 auto 24px}
+.event-cta-actions{display:flex;justify-content:center;gap:16px;flex-wrap:wrap}
+@media(max-width:700px){.event-bottom-cta{padding:28px 20px}.event-cta-actions .btn{width:100%;justify-content:center}}
