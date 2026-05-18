@@ -435,6 +435,21 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 .tutorial-diff{font-size:.82rem;color:var(--text-light)}
 
 /* BUNDLES PAGE */
+.bundles-page-wrap{padding-top:120px;background:linear-gradient(180deg,var(--bg2) 0%,var(--bg) 100%)}
+.bundles-hero{max-width:980px;margin:0 auto 42px}
+.bundles-main-sub{max-width:940px;margin-bottom:18px;color:var(--text-md)}
+.bundle-discount{display:inline-block;background:var(--orange-pale);border:1px solid rgba(232,134,58,.18);border-radius:var(--r-lg);padding:18px 26px;color:var(--text-md);font-size:1rem;line-height:1.7;box-shadow:var(--shadow-sm)}
+.bundle-discount strong{color:var(--orange);font-weight:800}
+.bundle-info-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin:32px 0 58px}
+.bundle-info-panel{background:var(--card);border:1px solid rgba(232,134,58,.18);border-radius:var(--r-xl);padding:30px;box-shadow:var(--shadow-sm)}
+.bundle-info-panel.teal-panel{border-color:rgba(27,154,170,.2);background:var(--teal-pale)}
+.bundle-info-label{display:inline-block;background:rgba(232,134,58,.22);color:var(--black);font-weight:800;border-radius:8px;padding:4px 10px;margin-bottom:14px}
+.teal-panel .bundle-info-label{background:rgba(27,154,170,.18)}
+.bundle-info-panel p{color:var(--text-md);line-height:1.75;font-size:.98rem}
+.bundle-section-block{margin-top:58px}
+.bundle-section-title-row{text-align:center;margin-bottom:24px}
+.bundle-section-title-row h3{font-size:1.45rem;font-weight:800;color:var(--black)}
+.bundle-empty-note{grid-column:1/-1;text-align:center;background:var(--card);border:1px dashed var(--border);border-radius:var(--r-lg);padding:28px;color:var(--text-light)}
 .bundle-card{background:var(--card);border:2px solid var(--border-light);border-radius:var(--r-xl);overflow:hidden;transition:var(--tr);position:relative}
 .bundle-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg);border-color:var(--orange)}
 .bundle-card-ribbon{position:absolute;top:18px;right:-30px;background:var(--orange);color:var(--white);font-size:.72rem;font-weight:700;padding:6px 40px;transform:rotate(35deg);letter-spacing:1px;z-index:2;text-transform:uppercase}
@@ -452,17 +467,4 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 .bundle-card-price .current{font-family:var(--font-d);font-size:1.8rem;font-weight:700;color:var(--orange)}
 .bundle-card-price .original{font-size:.9rem;color:var(--text-faint);text-decoration:line-through}
 .bundles-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:28px}
-/* NOS PEINTURES PAGE */
-.paintings-page-wrap{background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%)}
-.paintings-intro{max-width:900px;margin:0 auto 56px}
-.paintings-promo{display:inline-block;background:var(--orange-pale);color:var(--orange);border:1px solid rgba(232,134,58,.18);border-radius:50px;padding:10px 24px;font-size:1.05rem;font-weight:800;margin:8px auto 18px}
-.paintings-sub{margin-bottom:10px;font-weight:700;color:var(--text-md)}
-.paintings-desc{max-width:780px;margin:0 auto;color:var(--text-light);font-size:1rem;line-height:1.75}
-.paintings-categories-block{margin-bottom:48px}
-.paintings-categories-block h3,.paintings-kits-block h3{font-size:1.35rem;font-weight:800;margin-bottom:24px;text-align:center;color:var(--text)}
-#paintingsCatGrid .cat-card.active{outline:4px solid var(--teal);box-shadow:0 14px 38px rgba(27,154,170,.22);transform:translateY(-4px)}
-.paintings-info-box{background:var(--card);border:1px solid var(--border-light);border-left:6px solid var(--teal);border-radius:var(--r-xl);padding:32px;box-shadow:var(--shadow-md);max-width:860px;margin:0 auto 56px;text-align:center}
-.paintings-info-box h3{font-size:1.25rem;font-weight:800;margin-bottom:10px;color:var(--text)}
-.paintings-info-box p{font-size:.95rem;color:var(--text-md);max-width:720px;margin:0 auto 20px;line-height:1.7}
-.paintings-kits-block{margin-top:56px}
-@media(max-width:700px){.paintings-promo{border-radius:var(--r-md);font-size:.95rem}.paintings-info-box{padding:24px}.paintings-categories-block h3,.paintings-kits-block h3{font-size:1.2rem}}
+@media(max-width:800px){.bundle-info-panels{grid-template-columns:1fr}.bundle-discount{font-size:.92rem}.bundles-grid{grid-template-columns:1fr}}
