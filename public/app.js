@@ -212,7 +212,35 @@ function renderPartyEvents(){
 
 // ===== TEAM PAGE =====
 function renderTeamPage(){
-  document.getElementById('teamGrid').innerHTML=teamActivities.map(a=>`<div class="team-card"><div class="team-card-img"><img src="${a.image}" loading="lazy"></div><div class="team-card-body"><div class="team-card-sub">${a.subtitle}</div><h3>${a.title}</h3><p>${a.description}</p></div></div>`).join('');
+  const activities = [
+    {
+      icon:'🎨',
+      title:'Peinture sur toile',
+      subtitle:'Kits de peinture pour équipes',
+      description:'Une activité artistique simple et amusante où chaque participant crée sa propre œuvre, avec tout le matériel livré directement à votre bureau.'
+    },
+    {
+      icon:'👜',
+      title:'Peinture sur tissu et bois',
+      subtitle:'Activité créative à faire ensemble',
+      description:'Personnalisez des objets en tissu ou en bois dans une ambiance collaborative, parfaite pour les team buildings et les journées de reconnaissance.'
+    },
+    {
+      icon:'🌸',
+      title:'Compositions avec fleurs séchées',
+      subtitle:'Atelier décoratif personnalisé',
+      description:'Création d’articles décoratifs avec fleurs séchées, comme des supports-bougies, bracelets, couronnes florales, cartes de vœux et autres petits objets personnalisés.'
+    }
+  ];
+  document.getElementById('teamGrid').innerHTML = activities.map(a=>`
+    <div class="team-card team-activity-card">
+      <div class="team-activity-icon">${a.icon}</div>
+      <div class="team-card-body">
+        <div class="team-card-sub">${a.subtitle}</div>
+        <h3>${a.title}</h3>
+        <p>${a.description}</p>
+      </div>
+    </div>`).join('');
   initScrollEffects();
 }
 
