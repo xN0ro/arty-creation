@@ -30,7 +30,7 @@ function handleRoute(){
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
-  else if(h==='#/party'){show('page-party');renderPartyEvents();initScrollEffects();window.scrollTo(0,0)}
+  else if(h==='#/party'){show('page-party');initScrollEffects();window.scrollTo(0,0)}
   else if(h==='#/team'){show('page-team');renderTeamPage();window.scrollTo(0,0)}
   else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
 }
@@ -186,8 +186,10 @@ function renderEventPage(id){
 
 // ===== PARTY PAGE EVENTS =====
 function renderPartyEvents(){
+  const partyGrid = document.getElementById('partyEventsGrid');
+  if(!partyGrid) return;
   const sorted = [...allEvents].sort((a,b)=>new Date(a.date)-new Date(b.date));
-  document.getElementById('partyEventsGrid').innerHTML = sorted.map(ev=>{
+  partyGrid.innerHTML = sorted.map(ev=>{
     const d = new Date(ev.date+'T00:00:00');
     const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'});
     const spotsLeft = ev.maxSpots - ev.bookedSpots;
@@ -204,7 +206,7 @@ function renderPartyEvents(){
       </div>
     </div>`;
   }).join('');
-  if(!sorted.length) document.getElementById('partyEventsGrid').innerHTML='<div class="empty-state"><div class="empty-state-icon">📅</div><p>Aucun événement programmé pour le moment.</p></div>';
+  if(!sorted.length) partyGrid.innerHTML='<div class="empty-state"><div class="empty-state-icon">📅</div><p>Aucun événement programmé pour le moment.</p></div>';
   initScrollEffects();
 }
 
