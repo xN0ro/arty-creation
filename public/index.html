@@ -15,8 +15,13 @@
     <a class="nav-logo" href="#/" onclick="navigate('#/');return false"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Création</span></a>
     <div class="nav-links" id="navLinks">
       <a href="#/" data-nav="home">ACCUEIL</a>
-      <a href="#/paintings">NOS PEINTURES</a>
-      <a href="#/bundles">ENSEMBLES DE KITS</a>
+      <div class="nav-item nav-has-submenu">
+        <a href="#/paintings" class="nav-main-link">NOS PEINTURES</a>
+        <div class="nav-submenu" aria-label="Sous-menu Nos peintures">
+          <a href="#/paintings">Toutes les peintures</a>
+          <a href="#/bundles">Ensembles de kits</a>
+        </div>
+      </div>
       <a href="#/party">ÉVÉNEMENT PEINTURE</a>
       <a href="#/team">ÉVÉNEMENT D'ÉQUIPE</a>
       <a href="#/" data-nav="contact">CONTACT</a>
@@ -40,13 +45,13 @@
           <p class="hero-desc">Que vous cherchiez une activité en famille, une soirée créative entre amis, une fête pour enfants ou pour adultes, un moment romantique en amoureux, ou simplement une belle façon de vous détendre, <strong>Arty a le kit parfait pour vous.</strong></p>
           <div class="hero-actions">
             <a href="#/paintings" class="btn btn-orange">Voir les kits →</a>
-            <a href="#/bundles" class="btn btn-teal">Ensembles de kits 🎁</a>
+            <a href="#/bundles" class="btn btn-teal">Ensembles de kits</a>
           </div>
         </div>
         <div class="hero-visual">
           <img src="https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=600&h=800&fit=crop" alt="Peinture" class="hero-img-main">
-          <a href="#/tutorials" class="hero-badge b1"><div class="hero-badge-icon">🎬</div><div class="hero-badge-value">Tutoriels Vidéo</div></a>
-          <a href="#/party" class="hero-badge b2"><div class="hero-badge-icon">📅</div><div class="hero-badge-value">Calendrier des événements</div></a>
+          <a href="#/tutorials" class="hero-badge b1"><div class="hero-badge-icon"><span class="art-icon art-icon-light"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="13" height="14" rx="3"></rect><path d="M17 9.5l4-2.2v9.4l-4-2.2"></path></svg></span></div><div class="hero-badge-value">Tutoriels Vidéo</div></a>
+          <a href="#/party" class="hero-badge b2"><div class="hero-badge-icon"><span class="art-icon art-icon-light"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="3"></rect><path d="M8 3v4M16 3v4M4 10h16"></path><path d="M8 14h3M13 14h3M8 17h5"></path></svg></span></div><div class="hero-badge-value">Calendrier des événements</div></a>
         </div>
       </div>
     </div>
@@ -107,12 +112,12 @@
       <div class="cat-grid stagger-children" id="homeCatGrid"></div>
       <div class="special-cat-grid fade-up">
         <a class="special-cat-card" href="#/paintings">
-          <span>🖼️</span>
+          <span class="art-icon art-icon-orange"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"></rect><circle cx="9" cy="10" r="1.6"></circle><path d="M6 17l4.2-4.2 3.2 3.2 1.7-1.7L20 19"></path></svg></span>
           <h3>Peinture de ta propre photo</h3>
           <p>Transformez une photo personnelle en activité créative.</p>
         </a>
         <a class="special-cat-card" href="#/paintings">
-          <span>👜</span>
+          <span class="art-icon art-icon-teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9h12l-1 11H7L6 9z"></path><path d="M9 9V7a3 3 0 0 1 6 0v2"></path><path d="M10 14c1.4-1.1 3.1-1.1 4.5 0"></path></svg></span>
           <h3>Peinture sur les sacs</h3>
           <p>Personnalisez un sac avec une création unique.</p>
         </a>
@@ -131,12 +136,12 @@
         <h2 class="section-heading">Il y a toujours une bonne raison de <span class="accent">peindre</span></h2>
       </div>
       <div class="occasions-icons fade-up">
-        <div class="occ-icon-card"><span>🎂</span><h4>Anniversaires</h4></div>
-        <div class="occ-icon-card"><span>👩‍👩‍👧</span><h4>Entre Amies</h4></div>
-        <div class="occ-icon-card"><span>💑</span><h4>En Amoureux</h4></div>
-        <div class="occ-icon-card"><span>🧒</span><h4>Enfants</h4></div>
-        <div class="occ-icon-card"><span>🧘</span><h4>Art-Thérapie</h4></div>
-        <div class="occ-icon-card"><span>🏢</span><h4>Entreprises</h4></div>
+        <div class="occ-icon-card"><span class="art-icon art-icon-orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 5.1L19 10l-5.3 1.9L12 17l-1.7-5.1L5 10l5.3-1.9L12 3z"></path><path d="M5 15l.8 2.2L8 18l-2.2.8L5 21l-.8-2.2L2 18l2.2-.8L5 15z"></path></svg></span><h4>Anniversaires</h4></div>
+        <div class="occ-icon-card"><span class="art-icon art-icon-teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 0 0 0 16h1.2a2 2 0 0 0 1.5-3.3 1.5 1.5 0 0 1 1.1-2.5H17a3 3 0 0 0 3-3C20 7.2 16.4 4 12 4z"></path><circle cx="8.5" cy="10" r=".7"></circle><circle cx="11" cy="8" r=".7"></circle><circle cx="14" cy="8.7" r=".7"></circle></svg></span><h4>Entre Amies</h4></div>
+        <div class="occ-icon-card"><span class="art-icon art-icon-orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"></path><path d="M8 14c2-1.2 4-1.2 6 0"></path></svg></span><h4>En Amoureux</h4></div>
+        <div class="occ-icon-card"><span class="art-icon art-icon-teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20z"></path><path d="M14 7l3 3"></path></svg></span><h4>Enfants</h4></div>
+        <div class="occ-icon-card"><span class="art-icon art-icon-teal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4c-7.5.4-12 3.9-12 9.5 0 3 2.2 5.5 5.2 5.5C17.7 19 20.5 13.4 20 4z"></path><path d="M4 20c3.5-5.6 7.2-8.5 12-10"></path></svg></span><h4>Art-Thérapie</h4></div>
+        <div class="occ-icon-card"><span class="art-icon art-icon-orange"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="4" width="12" height="9" rx="2"></rect><path d="M12 13v7M8 20l4-7 4 7M9 8h6"></path></svg></span><h4>Entreprises</h4></div>
       </div>
       <div class="text-center fade-up" style="margin-top:36px">
         <a href="#/party" class="btn btn-orange">Explorer les occasions →</a>
@@ -153,7 +158,7 @@
         <h2 class="section-heading">Inclus dans chaque <span class="accent">kit Arty</span></h2>
       </div>
       <div class="included-single fade-up">
-        <div class="included-single-icon">🎨</div>
+        <div class="included-single-icon"><span class="art-icon art-icon-orange"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4l6 6-8.5 8.5a3.2 3.2 0 0 1-4.5 0l-1.5-1.5a3.2 3.2 0 0 1 0-4.5L14 4z"></path><path d="M13 5l6 6M6 18c-1.5.4-2.6 1.1-3 2.4 1.6.3 3-.1 4-1.4"></path></svg></span></div>
         <h3>Matériel inclus dans chaque kit Arty</h3>
         <ul class="included-list">
           <li>Toile prête à peindre</li>
@@ -180,9 +185,9 @@
       <div class="contact-layout fade-up">
         <div class="contact-info-card">
           <h3>Nous Joindre</h3><p>Nous répondons dans les 24 heures.</p>
-          <div class="contact-detail"><div class="contact-detail-icon">📍</div><div><h4>Adresse</h4><p>Montréal, QC</p></div></div>
-          <div class="contact-detail"><div class="contact-detail-icon">📧</div><div><h4>Courriel</h4><p>hello@arty.com</p></div></div>
-          <div class="contact-detail"><div class="contact-detail-icon">📞</div><div><h4>Téléphone</h4><p>(514) 555-0192</p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon art-icon-light"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.4 6-11a6 6 0 0 0-12 0c0 5.6 6 11 6 11z"></path><circle cx="12" cy="10" r="2"></circle></svg></span></div><div><h4>Adresse</h4><p>Montréal, QC</p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon art-icon-light"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="3"></rect><path d="M5 8l7 5 7-5"></path></svg></span></div><div><h4>Courriel</h4><p>hello@arty.com</p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon art-icon-light"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l2 4-2 1.5c1 2.1 2.4 3.5 4.5 4.5l1.5-2 4 2c.3.2.5.5.5.9V19c0 .6-.4 1-1 1C10.8 20 4 13.2 4 6c0-.6.4-1 1-1h2.1c.4 0 .7.2.9.5z"></path></svg></span></div><div><h4>Téléphone</h4><p>(514) 555-0192</p></div></div>
           <div class="contact-socials"><a href="#" class="contact-social-link">IG</a><a href="#" class="contact-social-link">FB</a><a href="#" class="contact-social-link">TT</a></div>
         </div>
         <div class="contact-form">
@@ -404,7 +409,7 @@
 <div class="modal-overlay" id="checkoutModal"><div class="modal"><button class="modal-close" onclick="closeModal('checkout')">&times;</button><h2>Paiement</h2><p class="modal-subtitle">Livraison en 1 à quelques jours.</p><div id="checkoutSummary"></div><div class="form-group"><label>Nom</label><input type="text" id="checkoutName"></div><div class="form-group"><label>Courriel</label><input type="email" id="checkoutEmail"></div><div class="form-group"><label>Adresse de livraison</label><input type="text" id="checkoutAddress" placeholder="Adresse complète"></div><div class="form-row"><div class="form-group"><label>Carte</label><input type="text" id="checkoutCard" placeholder="4242 4242 4242 4242" maxlength="19"></div><div class="form-group"><label>Expiration</label><input type="text" id="checkoutExpiry" placeholder="MM/AA" maxlength="5"></div></div><div class="form-row"><div class="form-group"><label>CVC</label><input type="text" id="checkoutCVC" placeholder="123" maxlength="4"></div><div class="form-group"><label>Total</label><div class="checkout-total" id="checkoutTotal">$0</div></div></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="placeOrder()">Passer la Commande →</button></div></div>
 <div class="modal-overlay" id="successModal"><div class="modal" style="text-align:center"><div style="font-size:4rem;margin-bottom:14px">🎉</div><h2>Commande Confirmée!</h2><p class="modal-subtitle">Vos kits sont en route!</p><p style="font-size:.88rem;color:var(--teal);margin-bottom:20px" id="successOrderId"></p><button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continuer →</button></div></div>
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
-<div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>🛒 Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="checkout()">Paiement →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
+<div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="checkout()">Paiement →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
 </body>
