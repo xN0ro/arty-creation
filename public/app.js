@@ -1,5 +1,6 @@
 /* Arty! — Application v3 */
 let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
+let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 
 document.addEventListener('DOMContentLoaded',async()=>{
@@ -12,7 +13,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||''}catch{}
+  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
   await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles()]);
   initNavbar();updateAuthUI();updateCartUI();initGoogleSignIn();initAuthValidation();
@@ -52,6 +53,7 @@ function handleRoute(){
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
   else if(h==='#/checkout'){show('page-checkout');renderCheckoutPage();window.scrollTo(0,0)}
+  else if(h.startsWith('#/payment-complete')){show('page-checkout');renderPaymentCompletePage();window.scrollTo(0,0)}
   else if(h==='#/privacy'){show('page-privacy');initScrollEffects();window.scrollTo(0,0)}
   else if(h==='#/policies'){show('page-policies');initScrollEffects();window.scrollTo(0,0)}
   else if(h.startsWith('#/party')){show('page-party');renderPartyPage();handlePartySection(h);window.scrollTo(0,0)}
@@ -654,10 +656,16 @@ function renderCheckoutPage(){
         <div class="form-row"><div class="form-group"><label>Ville</label><input type="text" id="coCity" placeholder="Ville"></div><div class="form-group"><label>Province</label><input type="text" id="coProvince" value="QC"></div></div>
         <div class="form-row"><div class="form-group"><label>Code postal</label><input type="text" id="coPostal" placeholder="A1A 1A1"></div><div class="form-group"><label>Pays</label><input type="text" id="coCountry" value="Canada"></div></div>
         <div class="form-group"><label>Note de livraison</label><textarea id="coNotes" placeholder="Instructions spéciales, date souhaitée, etc."></textarea></div>
-        <div class="checkout-step-title"><span>3</span><div><h3>Paiement sécurisé</h3><p>Aucune carte n'est entrée dans Arty pour le moment.</p></div></div>
-        <div class="payment-provider-box"><strong>Fournisseur de paiement à connecter</strong><p>La commande sera enregistrée en statut “en attente de paiement”. Quand Stripe/Square/Moneris sera branché, ce bouton redirigera vers leur page sécurisée.</p></div>
+        <div class="checkout-step-title"><span>3</span><div><h3>Paiement sécurisé</h3><p>${stripeConfigured?'Paiement intégré avec Stripe. Vous restez sur le site Arty.':'Aucune carte n’est entrée dans Arty pour le moment.'}</p></div></div>
+        <div class="payment-provider-box ${stripeConfigured?'stripe-ready':''}"><strong>${stripeConfigured?'Stripe connecté ('+safeText(stripeMode)+')':'Fournisseur de paiement à connecter'}</strong><p>${stripeConfigured?'Cliquez sur Continuer au paiement pour afficher le champ de carte sécurisé. Arty ne voit jamais le numéro complet de la carte.':'La commande sera enregistrée en statut “en attente de paiement”.'}</p></div>
+        <div class="stripe-payment-panel" id="stripePaymentPanel" style="display:none">
+          <div class="stripe-payment-head"><strong>Paiement par carte</strong><span id="stripeOrderLabel"></span></div>
+          <div id="payment-element"></div>
+          <div id="stripePaymentMessage" class="stripe-payment-message"></div>
+          <button class="btn btn-orange checkout-submit" id="stripePayBtn" onclick="confirmStripePayment()">Payer maintenant →</button>
+        </div>
         <label class="checkout-policy-check"><input type="checkbox" id="coPolicyAccept"> J'accepte les <a href="#/policies">politiques d'achat</a> et la <a href="#/privacy">politique de confidentialité</a>.</label>
-        <button class="btn btn-orange checkout-submit" onclick="placeOrder()">Créer la commande →</button>
+        <button class="btn btn-orange checkout-submit" id="placeOrderBtn" onclick="placeOrder()">${stripeConfigured?'Continuer au paiement sécurisé →':'Créer la commande →'}</button>
       </section>
       <aside class="checkout-summary-card">
         <h3>Résumé</h3>${summary}
@@ -682,20 +690,87 @@ async function placeOrder(){
   if(!address)return showToast('Entrez l’adresse de livraison','error');
   if(!document.getElementById('coPolicyAccept')?.checked)return showToast('Veuillez accepter les politiques avant de continuer','error');
   const payload={items:cart,total:getTotal(),customer:{name,email,phone},address:{line1:address,city,province,postal,country,notes},checkoutMode:currentUser?'account':'guest'};
+  const btn=document.getElementById('placeOrderBtn');
+  if(btn){btn.disabled=true;btn.textContent='Préparation du paiement...'}
   try{
     const r=await fetch('/api/orders',{method:'POST',headers:authH(),body:JSON.stringify(payload)});
     const d=await r.json();
-    if(!r.ok)return showToast(d.error||'Erreur','error');
+    if(!r.ok){if(btn){btn.disabled=false;btn.textContent=stripeConfigured?'Continuer au paiement sécurisé →':'Créer la commande →'};return showToast(d.error||'Erreur','error')}
+    if(d.payment?.provider==='stripe' && d.payment?.clientSecret){
+      await mountStripePayment(d.order,d.payment);
+      if(btn)btn.style.display='none';
+      return;
+    }
     cart=[];saveCart();updateCartUI();
-    document.getElementById('successTitle').textContent='Commande reçue!';
-    document.getElementById('successSubtitle').textContent='Nous avons enregistré votre commande.';
-    document.getElementById('successOrderId').textContent=`Commande #${d.order.id}`;
-    document.getElementById('successPaymentNote').innerHTML=d.payment?.redirectUrl?`Redirection vers paiement sécurisé...`:`Paiement: en attente. Le fournisseur de paiement sera connecté séparément.`;
-    document.getElementById('successModal').classList.add('active');
-    document.body.style.overflow='hidden';
-    if(d.payment?.redirectUrl)setTimeout(()=>{window.location.href=d.payment.redirectUrl},700);
+    showOrderSuccess(d.order,'Paiement: en attente. Stripe n’est pas encore disponible pour cette commande.');
     renderCheckoutPage();
-  }catch{showToast('Erreur lors de la commande','error')}
+  }catch(err){
+    console.error(err);
+    showToast('Erreur lors de la commande','error');
+    if(btn){btn.disabled=false;btn.textContent=stripeConfigured?'Continuer au paiement sécurisé →':'Créer la commande →'}
+  }
+}
+function showOrderSuccess(order,paymentNote){
+  document.getElementById('successTitle').textContent='Commande reçue!';
+  document.getElementById('successSubtitle').textContent='Nous avons enregistré votre commande.';
+  document.getElementById('successOrderId').textContent=`Commande #${order.id}`;
+  document.getElementById('successPaymentNote').innerHTML=paymentNote||'';
+  document.getElementById('successModal').classList.add('active');
+  document.body.style.overflow='hidden';
+}
+async function mountStripePayment(order,payment){
+  if(!window.Stripe)return showToast('Stripe ne s’est pas chargé. Rechargez la page.','error');
+  if(!payment.publishableKey)return showToast('Clé publishable Stripe manquante','error');
+  stripeInstance=Stripe(payment.publishableKey);
+  currentStripeOrder=order;
+  currentStripePayment=payment;
+  const appearance={theme:'flat',variables:{colorPrimary:'#1B9AAA',colorText:'#2C2418',colorDanger:'#D44',borderRadius:'14px',fontFamily:'Outfit, sans-serif'}};
+  stripeElements=stripeInstance.elements({clientSecret:payment.clientSecret,appearance,locale:'fr'});
+  const paymentElement=stripeElements.create('payment',{layout:{type:'accordion',defaultCollapsed:false,radios:'always'},business:{name:'Arty Création'}});
+  const panel=document.getElementById('stripePaymentPanel');
+  const label=document.getElementById('stripeOrderLabel');
+  const message=document.getElementById('stripePaymentMessage');
+  if(label)label.textContent=`Commande ${order.id} · $${toMoney(order.total)}`;
+  if(message)message.textContent='';
+  if(panel)panel.style.display='block';
+  paymentElement.mount('#payment-element');
+  panel?.scrollIntoView({behavior:'smooth',block:'center'});
+  showToast('Commande créée. Entrez la carte pour payer.','success');
+}
+async function confirmStripePayment(){
+  if(!stripeInstance||!stripeElements||!currentStripeOrder||!currentStripePayment)return showToast('Paiement Stripe non prêt','error');
+  const btn=document.getElementById('stripePayBtn');
+  const msg=document.getElementById('stripePaymentMessage');
+  if(btn){btn.disabled=true;btn.textContent='Paiement en cours...'}
+  if(msg){msg.textContent='Traitement du paiement...';msg.className='stripe-payment-message'}
+  try{
+    const result=await stripeInstance.confirmPayment({
+      elements:stripeElements,
+      confirmParams:{return_url:window.location.origin+window.location.pathname+`#/payment-complete?order=${encodeURIComponent(currentStripeOrder.id)}`},
+      redirect:'if_required'
+    });
+    if(result.error){
+      if(msg){msg.textContent=result.error.message||'Paiement refusé';msg.className='stripe-payment-message error'}
+      if(btn){btn.disabled=false;btn.textContent='Réessayer le paiement →'}
+      return;
+    }
+    const pi=result.paymentIntent;
+    const r=await fetch('/api/stripe/confirm-order',{method:'POST',headers:authH(),body:JSON.stringify({orderId:currentStripeOrder.id,paymentIntentId:pi?.id||currentStripePayment.paymentIntentId})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'Paiement traité, mais confirmation serveur impossible');
+    cart=[];saveCart();updateCartUI();
+    showOrderSuccess(d.order||currentStripeOrder,'Paiement Stripe confirmé. La commande est maintenant marquée comme payée.');
+    renderCheckoutPage();
+  }catch(err){
+    console.error(err);
+    if(msg){msg.textContent=err.message||'Erreur de paiement';msg.className='stripe-payment-message error'}
+    if(btn){btn.disabled=false;btn.textContent='Réessayer le paiement →'}
+  }
+}
+function renderPaymentCompletePage(){
+  const c=document.getElementById('checkoutPageContent');
+  if(!c)return;
+  c.innerHTML=`<div class="checkout-empty"><div class="section-tag">Paiement</div><h2 class="section-heading">Vérification du <span class="accent">paiement</span></h2><p class="section-sub">Si Stripe a demandé une vérification bancaire, la commande sera confirmée automatiquement par webhook. Vous pouvez vérifier le statut dans l’admin.</p><a href="#/" class="btn btn-orange">Retour à l’accueil</a></div>`;
 }
 
 // ===== AUTH =====

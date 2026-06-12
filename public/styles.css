@@ -1012,3 +1012,16 @@ a,button,.btn,.kit-card,.cat-card,.event-card,.nav-user,.nav-links a,.footer a{u
 .custom-btn-row{display:flex!important;flex-direction:row!important;gap:8px;flex-wrap:wrap}
 .custom-btn-row .btn[disabled]{opacity:.45;pointer-events:none}
 @media(max-width:700px){.trace-slider-grid{grid-template-columns:1fr}.custom-step-banner{align-items:flex-start}.custom-step-banner strong{flex:0 0 auto}}
+
+
+/* STRIPE PAYMENT ELEMENT */
+.payment-provider-box.stripe-ready{background:var(--teal-pale);border-color:rgba(27,154,170,.22)}
+.stripe-payment-panel{margin:18px 0 20px;padding:22px;background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow-sm)}
+.stripe-payment-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border-light)}
+.stripe-payment-head strong{color:var(--text);font-size:1rem}
+.stripe-payment-head span{color:var(--text-light);font-size:.84rem;text-align:right}
+#payment-element{padding:4px 0 10px}
+.stripe-payment-message{font-size:.88rem;color:var(--text-light);margin:12px 0;min-height:20px}
+.stripe-payment-message.error{color:#D44;font-weight:600}
+#stripePayBtn[disabled],#placeOrderBtn[disabled]{opacity:.62;cursor:not-allowed;transform:none;box-shadow:none}
+@media(max-width:700px){.stripe-payment-head{align-items:flex-start;flex-direction:column}.stripe-payment-head span{text-align:left}}
