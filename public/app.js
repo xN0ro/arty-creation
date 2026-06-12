@@ -3,6 +3,12 @@ let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],tea
 let catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 
 document.addEventListener('DOMContentLoaded',async()=>{
+  document.addEventListener('mousedown',e=>{
+    if(!e.target.closest('input, textarea, select, [contenteditable="true"]')){
+      const a=document.activeElement;
+      if(a && a!==document.body && typeof a.blur==='function') a.blur();
+    }
+  });
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
@@ -28,6 +34,9 @@ function uniqueList(values){return [...new Set(values.map(v=>String(v).trim()).f
 // ===== ROUTER =====
 function handleRoute(){
   const h=window.location.hash||'#/';
+  const toastEl=document.getElementById('toast');
+  if(toastEl){toastEl.classList.remove('show');}
+  if(document.activeElement && typeof document.activeElement.blur==='function') document.activeElement.blur();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('mainFooter').style.display='';
   document.getElementById('navLinks').classList.remove('open');
@@ -925,7 +934,18 @@ async function updateEventRequestStatus(id,status){await fetch(`/api/admin/event
 async function deleteEventRequest(id){if(!confirm('Supprimer cette demande?'))return;await fetch(`/api/admin/event-requests/${id}`,{method:'DELETE',headers:authH()});showToast('Demande supprimée','success');await loadAdminData()}
 
 // ===== UTILS =====
-function showToast(m,t='success'){const el=document.getElementById('toast');el.textContent=m;el.className=`toast ${t} show`;setTimeout(()=>el.classList.remove('show'),3500)}
+let toastTimer=null;
+function showToast(m,t='success'){
+  const el=document.getElementById('toast');
+  if(!el)return;
+  clearTimeout(toastTimer);
+  el.textContent=m||'';
+  el.className=`toast ${t} show`;
+  toastTimer=setTimeout(()=>{
+    el.classList.remove('show');
+    setTimeout(()=>{ if(!el.classList.contains('show')){ el.textContent=''; el.className='toast'; } },320);
+  },3200);
+}
 document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o){o.classList.remove('active');document.body.style.overflow=''}}));
 
 /* =========================================================
