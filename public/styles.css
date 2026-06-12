@@ -750,3 +750,65 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 .success-payment-note{background:var(--teal-pale);border:1px solid rgba(27,154,170,.15);border-radius:var(--r-md);padding:12px;margin-bottom:18px;font-size:.86rem;color:var(--teal);line-height:1.5}
 .admin-status-select{padding:8px 10px;border:1px solid var(--border);border-radius:10px;background:var(--card);color:var(--text-md);font-size:.8rem}
 @media(max-width:900px){.checkout-layout{grid-template-columns:1fr}.checkout-summary-card{position:static}.checkout-hero-clean{align-items:flex-start;flex-direction:column}.nav-cart-btn{width:100%;border-radius:50px}.nav-cart-btn .cart-icon::after{content:' Panier';font-family:var(--font-b);font-size:.86rem;font-weight:800}.nav-cart-btn .cart-count-badge{top:8px;right:18px}}
+
+/* === Logo protection / navbar spacing fix ===
+   The Arty logo + “Création” is treated as one protected brand block.
+   It keeps its own space and the cart/auth/menu cannot push into it. */
+.navbar .container{
+  max-width:1320px;
+  gap:18px;
+}
+.nav-logo{
+  flex:0 0 auto!important;
+  min-width:174px!important;
+  width:174px;
+  margin-right:24px;
+  position:relative;
+  z-index:1003;
+  white-space:nowrap;
+}
+.nav-logo-img{
+  flex:0 0 auto;
+}
+.nav-logo-text{
+  display:inline-block!important;
+  white-space:nowrap;
+  flex:0 0 auto;
+}
+.nav-links{
+  flex:1 1 auto;
+  justify-content:flex-start!important;
+  min-width:0;
+}
+.nav-auth{
+  flex:0 0 auto!important;
+  margin-left:12px;
+}
+.nav-cart-btn{
+  flex:0 0 44px;
+}
+@media(max-width:1280px){
+  .navbar .container{gap:14px}
+  .nav-logo{min-width:166px!important;width:166px;margin-right:18px}
+  .nav-logo-img{height:52px}
+  .navbar.scrolled .nav-logo-img{height:46px}
+  .nav-logo-text{font-size:1.34rem!important}
+  .nav-links{gap:7px}
+  .nav-links > a,.nav-links > .nav-item > a{padding:8px 12px;font-size:.70rem}
+  .nav-auth{gap:8px;margin-left:8px}
+  .nav-auth .btn:not(.btn-cart){padding:9px 13px;font-size:.76rem}
+}
+@media(max-width:1080px){
+  .nav-hamburger{display:flex}
+  .nav-logo{min-width:176px!important;width:176px;margin-right:auto}
+  .nav-logo-img{height:54px}
+  .nav-logo-text{display:inline-block!important;font-size:1.38rem!important}
+  .nav-links,.nav-auth{position:fixed;top:0;right:-100%;width:300px;height:100vh;background:var(--card);flex-direction:column;padding:100px 24px 40px;gap:10px;transition:var(--tr);border-left:1px solid var(--border);box-shadow:var(--shadow-lg);justify-content:flex-start!important;align-items:stretch}
+  .nav-links.open,.nav-auth.open{right:0}
+  .nav-links > a,.nav-links > .nav-item > a{width:100%;font-size:.88rem;text-align:center}
+}
+@media(max-width:520px){
+  .nav-logo{min-width:158px!important;width:158px;margin-right:auto}
+  .nav-logo-img{height:48px}
+  .nav-logo-text{font-size:1.22rem!important}
+}
