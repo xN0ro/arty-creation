@@ -28,7 +28,10 @@ const DEFAULT_DB = {
   orders: [],
   bookings: [],
   eventRequests: [],
-  sessions: []
+  sessions: [],
+  discounts: [],
+  refunds: [],
+  inventoryMovements: []
 };
 
 const APP_DATA_DIR = path.join(__dirname, 'data');
@@ -105,7 +108,10 @@ function getCollectionCountsSafe() {
       eventRequests: db.eventRequests.length,
       orders: db.orders.length,
       bundles: db.bundles.length,
-      sessions: db.sessions.length
+      sessions: db.sessions.length,
+      discounts: db.discounts.length,
+      refunds: db.refunds.length,
+      inventoryMovements: db.inventoryMovements.length
     };
   } catch (err) {
     return { error: err.message };
@@ -126,7 +132,10 @@ function normalizeDB(db = {}) {
     orders: Array.isArray(db.orders) ? db.orders : [],
     bookings: Array.isArray(db.bookings) ? db.bookings : [],
     eventRequests: Array.isArray(db.eventRequests) ? db.eventRequests : [],
-    sessions: Array.isArray(db.sessions) ? db.sessions : []
+    sessions: Array.isArray(db.sessions) ? db.sessions : [],
+    discounts: Array.isArray(db.discounts) ? db.discounts : [],
+    refunds: Array.isArray(db.refunds) ? db.refunds : [],
+    inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : []
   };
 }
 
@@ -281,8 +290,8 @@ function verifyGoogleToken(idToken) {
 // ========== PUBLIC ==========
 app.get('/api/config', (req, res) => res.json({ googleClientId: readDB().googleClientId || '' }));
 app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }));
-app.get('/api/kits', (req, res) => res.json(readDB().kits));
-app.get('/api/kits/:id', (req, res) => { const k = readDB().kits.find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
+app.get('/api/kits', (req, res) => res.json(getPublicKits(readDB())));
+app.get('/api/kits/:id', (req, res) => { const db = readDB(); const k = getPublicKits(db).find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
 app.get('/api/events', (req, res) => {
   const now = new Date();
@@ -409,13 +418,18 @@ app.post('/api/orders', optionalAuth, (req, res) => {
   if (!validEmail(customerEmail)) return res.status(400).json({ error: 'Courriel valide requis' });
   if (!address || !String(address.line1 || '').trim()) return res.status(400).json({ error: 'Adresse de livraison requise' });
 
+  const pricing = priceOrder(db, built.items);
+  const orderId = 'ARTY-' + Date.now().toString(36).toUpperCase();
+  const inventoryResult = reserveInventoryForItems(db, pricing.items, orderId);
+  if (inventoryResult.error) return res.status(400).json({ error: inventoryResult.error });
+
   const order = {
-    id: 'ARTY-' + Date.now().toString(36).toUpperCase(),
+    id: orderId,
     userId: user?.id || null,
     checkoutMode: user ? 'account' : (checkoutMode === 'guest' ? 'guest' : 'guest'),
     customer: { name: customerName, email: customerEmail, phone: customerPhone },
     guestEmail: user ? '' : customerEmail,
-    items: built.items,
+    items: pricing.items,
     address: {
       line1: String(address.line1 || '').trim(),
       city: String(address.city || '').trim(),
@@ -424,12 +438,18 @@ app.post('/api/orders', optionalAuth, (req, res) => {
       country: String(address.country || 'Canada').trim(),
       notes: String(address.notes || '').trim()
     },
-    subtotal: Number(built.subtotal.toFixed(2)),
-    total: Number(built.subtotal.toFixed(2)),
+    subtotal: pricing.subtotal,
+    discountTotal: pricing.discountTotal,
+    discountsApplied: pricing.discountsApplied,
+    total: pricing.total,
     status: 'en attente de paiement',
     paymentStatus: 'pending',
     paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
     paymentReference: '',
+    inventoryReserved: true,
+    inventoryRestocked: false,
+    refundStatus: 'none',
+    refundedTotal: 0,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -550,7 +570,7 @@ function normalizeEventPayload(body, existing = {}) {
 }
 
 // ========== ADMIN ==========
-app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length}); });
+app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
 
 app.get('/api/admin/orders', adminOnly, (req, res) => {
@@ -562,17 +582,131 @@ app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
   const id = String(req.params.id || '');
   const i = (db.orders || []).findIndex(o => String(o.id) === id);
   if (i === -1) return res.status(404).json({ error: 'Commande non trouvée' });
-  const allowed = ['en attente de paiement', 'payée', 'préparation', 'expédiée', 'annulée'];
+  const allowed = ['en attente de paiement', 'payée', 'préparation', 'expédiée', 'annulée', 'remboursée'];
   const status = String(req.body.status || '').trim();
   if (!allowed.includes(status)) return res.status(400).json({ error: 'Statut invalide' });
-  db.orders[i].status = status;
-  if (status === 'payée') db.orders[i].paymentStatus = 'paid';
-  if (status === 'annulée' && db.orders[i].paymentStatus !== 'paid') db.orders[i].paymentStatus = 'cancelled';
-  db.orders[i].updatedAt = new Date().toISOString();
+
+  const order = db.orders[i];
+  const oldStatus = order.status;
+  order.status = status;
+  if (status === 'payée') order.paymentStatus = 'paid';
+  if (status === 'annulée') {
+    order.paymentStatus = order.paymentStatus === 'paid' ? 'refund_needed' : 'cancelled';
+    if (order.inventoryReserved && !order.inventoryRestocked) {
+      releaseInventoryForItems(db, order.items || [], order.id, 'Commande annulée');
+      order.inventoryRestocked = true;
+    }
+  }
+  if (status === 'remboursée') order.refundStatus = 'refunded';
+  order.statusHistory = order.statusHistory || [];
+  order.statusHistory.push({ from: oldStatus || '', to: status, at: new Date().toISOString(), by: req.session.email || 'admin' });
+  order.updatedAt = new Date().toISOString();
   writeDB(db);
-  res.json({ success: true, order: db.orders[i] });
+  res.json({ success: true, order });
 });
 
+
+
+
+app.get('/api/admin/analytics', adminOnly, (req, res) => {
+  res.json(computeAdminAnalytics(readDB()));
+});
+
+app.get('/api/admin/inventory', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.kits || []).map(k => enrichPublicKit(k, db)).sort((a,b) => Number(a.stockQty ?? 999999) - Number(b.stockQty ?? 999999)));
+});
+
+app.post('/api/admin/kits/:id/inventory', adminOnly, (req, res) => {
+  const db = readDB();
+  const kitId = parseInt(req.params.id);
+  const kit = (db.kits || []).find(k => k.id === kitId);
+  if (!kit) return res.status(404).json({ error: 'Kit non trouvé' });
+  const mode = String(req.body.mode || 'adjust');
+  const qty = parseInt(req.body.quantity);
+  if (!Number.isFinite(qty)) return res.status(400).json({ error: 'Quantité invalide' });
+  const before = Number.isFinite(Number(kit.stockQty)) ? Number(kit.stockQty) : 0;
+  const after = mode === 'set' ? Math.max(0, qty) : Math.max(0, before + qty);
+  kit.stockQty = after;
+  kit.inStock = after > 0;
+  kit.updatedAt = new Date().toISOString();
+  db.inventoryMovements = db.inventoryMovements || [];
+  db.inventoryMovements.push({ id: Date.now(), kitId, kitName: kit.name, type: mode, quantity: mode === 'set' ? after - before : qty, before, after, reason: String(req.body.reason || 'Ajustement admin'), createdAt: new Date().toISOString(), by: req.session.email || 'admin' });
+  writeDB(db);
+  res.json({ success: true, kit: enrichPublicKit(kit, db) });
+});
+
+app.get('/api/admin/discounts', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.discounts || []).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+});
+app.post('/api/admin/discounts', adminOnly, (req, res) => {
+  const db = readDB();
+  const discount = normalizeDiscountPayload(req.body);
+  if (!discount.title) return res.status(400).json({ error: 'Nom du rabais requis' });
+  if (!discount.type) return res.status(400).json({ error: 'Type de rabais requis' });
+  discount.id = (db.discounts || []).length ? Math.max(...db.discounts.map(d => Number(d.id) || 0)) + 1 : 1;
+  discount.createdAt = new Date().toISOString();
+  discount.updatedAt = new Date().toISOString();
+  db.discounts = db.discounts || [];
+  db.discounts.push(discount);
+  writeDB(db);
+  res.json({ success: true, discount });
+});
+app.put('/api/admin/discounts/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  const i = (db.discounts || []).findIndex(d => d.id === parseInt(req.params.id));
+  if (i === -1) return res.status(404).json({ error: 'Rabais non trouvé' });
+  db.discounts[i] = { ...db.discounts[i], ...normalizeDiscountPayload(req.body, db.discounts[i]), id: db.discounts[i].id, createdAt: db.discounts[i].createdAt, updatedAt: new Date().toISOString() };
+  writeDB(db);
+  res.json({ success: true, discount: db.discounts[i] });
+});
+app.delete('/api/admin/discounts/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  db.discounts = (db.discounts || []).filter(d => d.id !== parseInt(req.params.id));
+  writeDB(db);
+  res.json({ success: true });
+});
+
+app.get('/api/admin/refunds', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.refunds || []).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
+});
+app.post('/api/admin/orders/:id/refund', adminOnly, (req, res) => {
+  const db = readDB();
+  const order = (db.orders || []).find(o => String(o.id) === String(req.params.id));
+  if (!order) return res.status(404).json({ error: 'Commande non trouvée' });
+  const already = Number(order.refundedTotal || 0);
+  const maxRefundable = Math.max(0, Number(order.total || 0) - already);
+  let amount = parseFloat(req.body.amount);
+  if (!Number.isFinite(amount) || amount <= 0) amount = maxRefundable;
+  amount = Math.min(maxRefundable, Number(amount.toFixed(2)));
+  if (amount <= 0) return res.status(400).json({ error: 'Aucun montant remboursable' });
+
+  const refund = {
+    id: 'RF-' + Date.now().toString(36).toUpperCase(),
+    orderId: order.id,
+    amount,
+    reason: String(req.body.reason || 'Remboursement admin'),
+    status: order.paymentProvider === 'not_connected' ? 'manual_refund_logged' : 'refund_requested',
+    paymentProvider: order.paymentProvider || 'not_connected',
+    restock: !!req.body.restock,
+    createdAt: new Date().toISOString(),
+    by: req.session.email || 'admin'
+  };
+  db.refunds = db.refunds || [];
+  db.refunds.push(refund);
+  order.refundedTotal = Number((already + amount).toFixed(2));
+  order.refundStatus = order.refundedTotal >= Number(order.total || 0) ? 'refunded' : 'partial_refund';
+  if (order.refundStatus === 'refunded') order.status = 'remboursée';
+  if (refund.restock && order.inventoryReserved && !order.inventoryRestocked) {
+    releaseInventoryForItems(db, order.items || [], order.id, 'Remboursement / retour');
+    order.inventoryRestocked = true;
+  }
+  order.updatedAt = new Date().toISOString();
+  writeDB(db);
+  res.json({ success: true, refund, order });
+});
 
 // Categories CRUD
 app.post('/api/admin/categories', adminOnly, (req, res) => {
@@ -657,5 +791,289 @@ app.put('/api/admin/bundles/:id', adminOnly, (req, res) => {
 });
 app.delete('/api/admin/bundles/:id', adminOnly, (req, res) => { const db=readDB(); db.bundles=(db.bundles||[]).filter(b=>b.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
+
+
+// ========== ADMIN PRO HELPERS: analytics, discounts, inventory ==========
+function isFiniteNumber(v) { return Number.isFinite(Number(v)); }
+function money(n) { return Number((Number(n) || 0).toFixed(2)); }
+function parseIdList(raw) {
+  if (Array.isArray(raw)) return raw.map(v => parseInt(v)).filter(Number.isFinite);
+  return String(raw || '').split(',').map(v => parseInt(v.trim())).filter(Number.isFinite);
+}
+function parseStringList(raw) {
+  if (Array.isArray(raw)) return raw.map(v => String(v).trim()).filter(Boolean);
+  return String(raw || '').split(',').map(v => v.trim()).filter(Boolean);
+}
+function getStockQty(kit) {
+  return isFiniteNumber(kit.stockQty) ? Number(kit.stockQty) : null;
+}
+function isKitAvailable(kit) {
+  const stock = getStockQty(kit);
+  return kit.inStock !== false && (stock === null || stock > 0);
+}
+function normalizeKitPayload(body, existing = {}) {
+  const payload = { ...body };
+  payload.price = parseFloat(body.price) || 0;
+  payload.compareAtPrice = parseFloat(body.compareAtPrice) || parseFloat(body.originalPrice) || 0;
+  payload.categoryId = body.categoryId ? parseInt(body.categoryId) : (existing.categoryId || null);
+  payload.tags = normalizeTags(body.tags ?? body.badges ?? existing.tags);
+  payload.featured = body.featured === undefined ? !!existing.featured : (body.featured === true || body.featured === 'true');
+  payload.shortDesc = body.shortDesc || '';
+  payload.description = body.description || '';
+  payload.image = body.image || '';
+  payload.difficulty = body.difficulty || existing.difficulty || 'Débutant';
+  payload.stockQty = isFiniteNumber(body.stockQty) ? Math.max(0, parseInt(body.stockQty)) : (isFiniteNumber(existing.stockQty) ? Math.max(0, parseInt(existing.stockQty)) : null);
+  payload.lowStockThreshold = isFiniteNumber(body.lowStockThreshold) ? Math.max(0, parseInt(body.lowStockThreshold)) : (isFiniteNumber(existing.lowStockThreshold) ? Math.max(0, parseInt(existing.lowStockThreshold)) : 3);
+  payload.trackInventory = body.trackInventory === undefined ? (existing.trackInventory !== false) : (body.trackInventory === true || body.trackInventory === 'true');
+  const manualStock = body.inStock === undefined ? (existing.inStock !== false) : (body.inStock === true || body.inStock === 'true');
+  payload.inStock = manualStock && (payload.stockQty === null || payload.stockQty > 0);
+  return payload;
+}
+function normalizeDiscountPayload(body, existing = {}) {
+  const type = String(body.type ?? existing.type ?? 'percent').trim();
+  const codeRaw = String(body.code ?? existing.code ?? '').trim().toUpperCase();
+  return {
+    title: String(body.title ?? body.name ?? existing.title ?? '').trim(),
+    code: codeRaw,
+    type,
+    value: parseFloat(body.value ?? existing.value ?? 0) || 0,
+    scope: String(body.scope ?? existing.scope ?? 'all').trim(),
+    kitIds: parseIdList(body.kitIds ?? existing.kitIds),
+    categoryIds: parseIdList(body.categoryIds ?? existing.categoryIds),
+    tags: parseStringList(body.tags ?? existing.tags).map(t => t.toLowerCase()),
+    minQty: Math.max(1, parseInt(body.minQty ?? existing.minQty ?? 1) || 1),
+    buyQty: Math.max(1, parseInt(body.buyQty ?? existing.buyQty ?? 1) || 1),
+    freeQty: Math.max(1, parseInt(body.freeQty ?? existing.freeQty ?? 1) || 1),
+    active: body.active === undefined ? (existing.active !== false) : (body.active === true || body.active === 'true'),
+    startsAt: String(body.startsAt ?? existing.startsAt ?? '').trim(),
+    endsAt: String(body.endsAt ?? existing.endsAt ?? '').trim(),
+    customerLabel: String(body.customerLabel ?? existing.customerLabel ?? '').trim(),
+    stackable: body.stackable === true || body.stackable === 'true'
+  };
+}
+function isDiscountActive(discount, now = new Date()) {
+  if (!discount || discount.active === false) return false;
+  if (discount.startsAt && new Date(discount.startsAt) > now) return false;
+  if (discount.endsAt && new Date(discount.endsAt + 'T23:59:59') < now) return false;
+  return true;
+}
+function getActiveDiscounts(db) {
+  return (db.discounts || []).filter(d => isDiscountActive(d));
+}
+function discountAppliesToKit(discount, kit) {
+  const scope = discount.scope || 'all';
+  if (scope === 'all') return true;
+  if (scope === 'kits') return (discount.kitIds || []).map(Number).includes(Number(kit.id));
+  if (scope === 'categories') return (discount.categoryIds || []).map(Number).includes(Number(kit.categoryId));
+  if (scope === 'tags') {
+    const kitTags = normalizeTags(kit.tags).map(t => t.toLowerCase());
+    return (discount.tags || []).some(t => kitTags.includes(String(t).toLowerCase()));
+  }
+  return true;
+}
+function getBestSingleKitDiscount(db, kit) {
+  const price = Number(kit.price) || 0;
+  let best = null;
+  for (const d of getActiveDiscounts(db)) {
+    if (!discountAppliesToKit(d, kit)) continue;
+    if (d.type === 'bogo') {
+      if (!best) best = { amount: 0, discount: d, label: d.customerLabel || `Achetez ${d.buyQty || 1}, obtenez ${d.freeQty || 1} gratuit` };
+      continue;
+    }
+    let amount = 0;
+    if (d.type === 'percent') amount = price * Math.min(100, Math.max(0, Number(d.value) || 0)) / 100;
+    if (d.type === 'fixed') amount = Math.min(price, Math.max(0, Number(d.value) || 0));
+    if (amount > (best?.amount || 0)) best = { amount, discount: d, label: d.customerLabel || d.title || 'Rabais' };
+  }
+  return best;
+}
+function enrichPublicKit(kit, db) {
+  const stockQty = getStockQty(kit);
+  const lowStockThreshold = isFiniteNumber(kit.lowStockThreshold) ? Number(kit.lowStockThreshold) : 3;
+  const available = isKitAvailable(kit);
+  const best = getBestSingleKitDiscount(db, kit);
+  const salePrice = best && best.amount > 0 ? money((Number(kit.price) || 0) - best.amount) : null;
+  return {
+    ...kit,
+    stockQty,
+    lowStockThreshold,
+    inStock: available,
+    isLowStock: available && stockQty !== null && stockQty > 0 && stockQty <= lowStockThreshold,
+    stockLabel: !available ? 'Épuisé' : (stockQty !== null && stockQty <= lowStockThreshold ? `Stock limité: ${stockQty}` : 'En stock'),
+    salePrice,
+    effectivePrice: salePrice ?? (Number(kit.price) || 0),
+    originalPrice: Number(kit.price) || 0,
+    discountLabel: best?.label || '',
+    hasDiscount: !!(best && (best.amount > 0 || best.discount?.type === 'bogo'))
+  };
+}
+function getPublicKits(db) {
+  return (db.kits || []).map(k => enrichPublicKit(k, db));
+}
+function buildOrderItems(db, rawItems = []) {
+  const items = [];
+  for (const raw of rawItems) {
+    const rawId = String(raw.id || '').trim();
+    const qty = Math.max(1, parseInt(raw.qty) || 1);
+    if (!rawId) return { error: 'Article invalide' };
+
+    if (rawId.startsWith('bundle-')) {
+      const bundleId = parseInt(rawId.replace('bundle-', ''));
+      const bundle = (db.bundles || []).find(b => b.id === bundleId);
+      if (!bundle) return { error: `Ensemble non trouvé: ${rawId}` };
+      items.push({ id: rawId, bundleId, type: 'bundle', name: bundle.name, unitPrice: parseFloat(bundle.price) || 0, price: parseFloat(bundle.price) || 0, image: bundle.image || '', qty, kitIds: bundle.kitIds || [] });
+      continue;
+    }
+
+    const kitId = parseInt(rawId);
+    const kit = (db.kits || []).find(k => k.id === kitId);
+    if (!kit) return { error: `Kit non trouvé: ${rawId}` };
+    if (!isKitAvailable(kit)) return { error: `${kit.name} est épuisé` };
+    const stock = getStockQty(kit);
+    if (stock !== null && qty > stock) return { error: `Il reste seulement ${stock} ${kit.name}` };
+    items.push({ id: String(kit.id), kitId: kit.id, type: 'kit', categoryId: kit.categoryId, tags: kit.tags || [], name: kit.name, unitPrice: parseFloat(kit.price) || 0, price: parseFloat(kit.price) || 0, image: kit.image || '', qty });
+  }
+  return { items };
+}
+function discountAmountForItem(discount, kitLike, item) {
+  const qty = Number(item.qty) || 1;
+  const unitPrice = Number(item.unitPrice) || Number(item.price) || 0;
+  const line = unitPrice * qty;
+  if (!discountAppliesToKit(discount, kitLike)) return 0;
+  if (qty < (discount.minQty || 1)) return 0;
+  if (discount.type === 'percent') return line * Math.min(100, Math.max(0, Number(discount.value) || 0)) / 100;
+  if (discount.type === 'fixed') return Math.min(line, Math.max(0, Number(discount.value) || 0) * qty);
+  if (discount.type === 'bogo') {
+    const buy = Math.max(1, parseInt(discount.buyQty) || 1);
+    const free = Math.max(1, parseInt(discount.freeQty) || 1);
+    const cycle = buy + free;
+    const freeUnits = Math.floor(qty / cycle) * free;
+    return Math.min(line, freeUnits * unitPrice);
+  }
+  return 0;
+}
+function priceOrder(db, items = []) {
+  const active = getActiveDiscounts(db);
+  let subtotal = 0;
+  let discountTotal = 0;
+  const discountsApplied = [];
+  const pricedItems = items.map(item => {
+    const lineSubtotal = money((Number(item.unitPrice) || Number(item.price) || 0) * (Number(item.qty) || 1));
+    subtotal += lineSubtotal;
+    let kitLike = item;
+    if (item.type === 'kit') kitLike = (db.kits || []).find(k => k.id === item.kitId) || item;
+    let best = { amount: 0, discount: null };
+    if (item.type === 'kit') {
+      for (const d of active) {
+        const amount = discountAmountForItem(d, kitLike, item);
+        if (amount > best.amount) best = { amount, discount: d };
+      }
+    }
+    const itemDiscount = money(Math.min(lineSubtotal, best.amount || 0));
+    discountTotal += itemDiscount;
+    if (best.discount && itemDiscount > 0) discountsApplied.push({ id: best.discount.id, title: best.discount.title, type: best.discount.type, amount: itemDiscount, itemId: item.id });
+    return { ...item, originalUnitPrice: Number(item.unitPrice) || 0, discountAmount: itemDiscount, discountLabel: best.discount?.customerLabel || best.discount?.title || '', lineSubtotal, lineTotal: money(lineSubtotal - itemDiscount) };
+  });
+  subtotal = money(subtotal);
+  discountTotal = money(discountTotal);
+  return { items: pricedItems, subtotal, discountTotal, discountsApplied, total: money(subtotal - discountTotal) };
+}
+function findKit(db, kitId) { return (db.kits || []).find(k => Number(k.id) === Number(kitId)); }
+function updateKitStock(kit, delta, db, orderId, reason) {
+  const stock = getStockQty(kit);
+  if (stock === null) return null;
+  const before = stock;
+  const after = Math.max(0, before + delta);
+  kit.stockQty = after;
+  kit.inStock = after > 0;
+  kit.updatedAt = new Date().toISOString();
+  db.inventoryMovements = db.inventoryMovements || [];
+  db.inventoryMovements.push({ id: Date.now() + Math.floor(Math.random()*1000), orderId, kitId: kit.id, kitName: kit.name, type: delta < 0 ? 'sale' : 'restock', quantity: delta, before, after, reason, createdAt: new Date().toISOString() });
+  return { before, after };
+}
+function reserveInventoryForItems(db, items, orderId) {
+  const needs = new Map();
+  for (const item of items) {
+    const qty = Math.max(1, parseInt(item.qty) || 1);
+    if (item.type === 'kit') needs.set(item.kitId, (needs.get(item.kitId) || 0) + qty);
+    if (item.type === 'bundle') for (const kitId of (item.kitIds || [])) needs.set(kitId, (needs.get(kitId) || 0) + qty);
+  }
+  for (const [kitId, qty] of needs.entries()) {
+    const kit = findKit(db, kitId);
+    if (!kit) continue;
+    if (!isKitAvailable(kit)) return { error: `${kit.name} est épuisé` };
+    const stock = getStockQty(kit);
+    if (stock !== null && qty > stock) return { error: `Inventaire insuffisant pour ${kit.name}. Reste: ${stock}` };
+  }
+  for (const [kitId, qty] of needs.entries()) {
+    const kit = findKit(db, kitId);
+    if (kit) updateKitStock(kit, -qty, db, orderId, 'Commande client');
+  }
+  return { success: true };
+}
+function releaseInventoryForItems(db, items, orderId, reason = 'Retour stock') {
+  const needs = new Map();
+  for (const item of items) {
+    const qty = Math.max(1, parseInt(item.qty) || 1);
+    if (item.type === 'kit') needs.set(item.kitId || parseInt(item.id), (needs.get(item.kitId || parseInt(item.id)) || 0) + qty);
+    if (item.type === 'bundle') for (const kitId of (item.kitIds || [])) needs.set(kitId, (needs.get(kitId) || 0) + qty);
+  }
+  for (const [kitId, qty] of needs.entries()) {
+    const kit = findKit(db, kitId);
+    if (kit) updateKitStock(kit, qty, db, orderId, reason);
+  }
+}
+function computeAdminAnalytics(db) {
+  const orders = db.orders || [];
+  const refunds = db.refunds || [];
+  const now = new Date();
+  const monthKey = now.toISOString().slice(0,7);
+  const goodOrders = orders.filter(o => o.status !== 'annulée');
+  const revenue = money(goodOrders.reduce((s,o)=>s+Number(o.total||0),0));
+  const paidRevenue = money(orders.filter(o=>o.paymentStatus==='paid').reduce((s,o)=>s+Number(o.total||0),0));
+  const monthOrders = goodOrders.filter(o => String(o.createdAt||'').slice(0,7) === monthKey);
+  const todayKey = now.toISOString().slice(0,10);
+  const todayOrders = goodOrders.filter(o => String(o.createdAt||'').slice(0,10) === todayKey);
+  const statusCounts = orders.reduce((a,o)=>{const k=o.status||'nouvelle';a[k]=(a[k]||0)+1;return a;},{});
+  const daily = [];
+  for (let i=13;i>=0;i--) {
+    const d = new Date(now); d.setDate(now.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    const dayOrders = goodOrders.filter(o => String(o.createdAt||'').slice(0,10) === key);
+    daily.push({ date:key.slice(5), revenue: money(dayOrders.reduce((s,o)=>s+Number(o.total||0),0)), orders: dayOrders.length });
+  }
+  const productMap = {};
+  for (const o of goodOrders) for (const item of (o.items||[])) {
+    const name = item.name || 'Produit';
+    if (!productMap[name]) productMap[name] = { name, qty:0, revenue:0 };
+    productMap[name].qty += Number(item.qty)||0;
+    productMap[name].revenue += Number(item.lineTotal ?? (Number(item.price||0)*Number(item.qty||0))) || 0;
+  }
+  const topProducts = Object.values(productMap).sort((a,b)=>b.revenue-a.revenue).slice(0,8).map(x=>({ ...x, revenue: money(x.revenue) }));
+  const lowInventory = (db.kits||[]).map(k=>enrichPublicKit(k,db)).filter(k=>k.isLowStock || !k.inStock).sort((a,b)=>Number(a.stockQty??999)-Number(b.stockQty??999)).slice(0,20);
+  const refundTotal = money(refunds.reduce((s,r)=>s+Number(r.amount||0),0));
+  return {
+    revenue,
+    paidRevenue,
+    pendingRevenue: money(orders.filter(o=>o.paymentStatus==='pending').reduce((s,o)=>s+Number(o.total||0),0)),
+    monthRevenue: money(monthOrders.reduce((s,o)=>s+Number(o.total||0),0)),
+    todayRevenue: money(todayOrders.reduce((s,o)=>s+Number(o.total||0),0)),
+    ordersCount: orders.length,
+    monthOrdersCount: monthOrders.length,
+    todayOrdersCount: todayOrders.length,
+    averageOrder: goodOrders.length ? money(revenue / goodOrders.length) : 0,
+    discountTotal: money(goodOrders.reduce((s,o)=>s+Number(o.discountTotal||0),0)),
+    refundTotal,
+    statusCounts,
+    dailySales: daily,
+    topProducts,
+    lowInventory,
+    lowInventoryCount: lowInventory.length,
+    activeDiscounts: (db.discounts||[]).filter(d=>isDiscountActive(d)).length,
+    newEventRequests: (db.eventRequests||[]).filter(r=>(r.status||'nouvelle')==='nouvelle').length,
+    bookingsCount: (db.bookings||[]).length,
+    latestOrders: orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,6)
+  };
+}
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.listen(PORT, () => console.log(`Arty! server → http://localhost:${PORT}`));
