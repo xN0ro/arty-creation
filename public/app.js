@@ -1255,3 +1255,315 @@ function renderAdminOrders(){
   }).join('');
   panel.innerHTML=`<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Articles</th><th>Total</th><th>Paiement</th><th>Gestion</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="admin-muted">Aucune commande.</td></tr>'}</tbody></table></div>`;
 }
+
+/* ===== CUSTOM PRODUCTS PRO V2 — traced line art + real canvas editor ===== */
+const traceProOptions = {
+  photoThreshold: 48,
+  photoDetail: 1.08,
+  bagThreshold: 44,
+  bagDetail: 1.05
+};
+let customPhotoTraceData = '';
+let customPhotoSourceData = '';
+let bagCanvasEditor = { canvas:null, ctx:null, dragging:false, resizing:false, selectedId:null, startX:0, startY:0, startItem:null, dpr:1 };
+
+function renderCustomPhotoPage(){
+  const c=document.getElementById('customPhotoPageContent'); if(!c) return;
+  const currentSize = customPhotoSizes[customPhotoState.size] || customPhotoSizes.moyen;
+  const sizeCards=Object.entries(customPhotoSizes).map(([key,val])=>`<button type="button" class="custom-option-card ${customPhotoState.size===key?'active':''}" onclick="selectCustomPhotoSizePro('${key}')"><strong>${safeText(val.label)}</strong><span>$${toMoney(val.price)}</span></button>`).join('');
+  c.innerHTML=`<div class="custom-hero text-center fade-up"><div class="section-tag">Produit personnalisé</div><h2 class="section-heading">Peinture de ta <span class="accent">propre photo</span></h2><p class="section-sub">La photo est transformée en tracé noir et blanc, sans couleur, pour que le client puisse peindre par-dessus.</p></div>
+    <div class="custom-layout fade-up">
+      <section class="custom-builder-card pro-custom-panel">
+        <div class="custom-step-banner"><strong>1</strong><div><h3>Ajouter la photo</h3><p>Le rendu final sera seulement en lignes noires sur fond blanc.</p></div></div>
+        <div class="custom-block">
+          <label class="custom-file-drop" for="customPhotoInputPro">
+            <span>📷</span><strong>Choisir une photo</strong><small>JPG, PNG ou WEBP</small>
+          </label>
+          <input class="visually-hidden-file" type="file" id="customPhotoInputPro" accept="image/*" onchange="handleCustomPhotoUploadPro(event)">
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">2. Format de toile</label>
+          <div class="custom-option-grid">${sizeCards}</div>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">3. Qualité du tracé</label>
+          <div class="trace-slider-grid">
+            <label>Contraste <input type="range" min="20" max="90" value="${traceProOptions.photoThreshold}" oninput="updatePhotoTraceSetting('photoThreshold',this.value)"></label>
+            <label>Détail <input type="range" min="70" max="145" value="${Math.round(traceProOptions.photoDetail*100)}" oninput="updatePhotoTraceSetting('photoDetail',this.value/100)"></label>
+          </div>
+          <p class="custom-helper">Plus le contraste est haut, moins il y a de lignes. Plus le détail est haut, plus le dessin est précis.</p>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">Notes de production</label>
+          <textarea id="customPhotoNotes" placeholder="Ex: garder le visage plus clair, enlever le fond, format portrait..." oninput="customPhotoState.notes=this.value">${safeText(customPhotoState.notes||'')}</textarea>
+        </div>
+        <div class="custom-price-box"><span>Prix final</span><strong id="customPhotoPrice">$${toMoney(currentSize.price)}</strong></div>
+        <div class="custom-actions-row"><button class="btn btn-orange" onclick="addCustomPhotoToCartPro()">Ajouter au panier →</button><button class="btn btn-ghost" onclick="buyCustomPhotoNowPro()">Acheter maintenant</button></div>
+      </section>
+      <aside class="custom-preview-card custom-preview-pro">
+        <div class="custom-preview-head"><h3>Rendu tracé</h3><span id="customPhotoSizeLabel">${safeText(currentSize.label)}</span></div>
+        <div class="trace-preview-frame">
+          <canvas id="customPhotoTraceCanvas" width="700" height="900" aria-label="Aperçu du tracé"></canvas>
+          <div class="trace-empty ${customPhotoTraceData?'hidden':''}" id="customPhotoEmpty"><strong>Ajoutez une photo</strong><span>Le tracé noir et blanc s’affichera ici.</span></div>
+        </div>
+        <div class="custom-summary-box"><div><span>Produit</span><strong>Tableau photo à peinturer</strong></div><div><span>Rendu</span><strong>Tracé noir et blanc</strong></div><div><span>Prix</span><strong>$${toMoney(currentSize.price)}</strong></div></div>
+      </aside>
+    </div>`;
+  initCustomPhotoCanvas();
+  initScrollEffects();
+}
+function selectCustomPhotoSizePro(size){customPhotoState.size=size; const el=document.getElementById('customPhotoSizeLabel'); if(el)el.textContent=(customPhotoSizes[size]||customPhotoSizes.moyen).label; document.querySelectorAll('#customPhotoPageContent .custom-option-card').forEach(b=>b.classList.remove('active')); event?.currentTarget?.classList.add('active'); const p=document.getElementById('customPhotoPrice'); if(p)p.textContent='$'+toMoney(getCustomPhotoPrice());}
+function updatePhotoTraceSetting(key,val){traceProOptions[key]=Number(val); if(customPhotoSourceData) makePhotoTracePreview(customPhotoSourceData);}
+function handleCustomPhotoUploadPro(event){
+  const file=event.target.files?.[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=()=>{customPhotoSourceData=String(reader.result||''); customPhotoState.image=customPhotoSourceData; makePhotoTracePreview(customPhotoSourceData);};
+  reader.readAsDataURL(file);
+}
+function initCustomPhotoCanvas(){
+  const canvas=document.getElementById('customPhotoTraceCanvas'); if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#fffdf9'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#eadfce'; ctx.lineWidth=18; ctx.strokeRect(26,26,canvas.width-52,canvas.height-52);
+  if(customPhotoTraceData){
+    const img=new Image();
+    img.onload=()=>ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    img.src=customPhotoTraceData;
+    document.getElementById('customPhotoEmpty')?.classList.add('hidden');
+  }
+}
+function makePhotoTracePreview(dataUrl){
+  traceImageToLineArt(dataUrl,700,900,{threshold:traceProOptions.photoThreshold,detail:traceProOptions.photoDetail,transparent:false}).then(url=>{
+    customPhotoTraceData=url;
+    initCustomPhotoCanvas();
+  }).catch(()=>showToast('Impossible de lire cette image','error'));
+}
+function addCustomPhotoToCartPro(goCheckout=false){
+  if(!customPhotoTraceData)return showToast('Ajoutez une photo avant de continuer','error');
+  const sizeInfo=customPhotoSizes[customPhotoState.size]||customPhotoSizes.moyen;
+  const id=`custom-photo-${Date.now()}`;
+  cart.push({id,name:`Tableau personnalisé à peindre (${sizeInfo.label})`,price:sizeInfo.price,image:customPhotoTraceData,qty:1,type:'custom-photo',customData:{kind:'photo-canvas-trace',size:customPhotoState.size,sizeLabel:sizeInfo.label,notes:customPhotoState.notes||'',traceImage:customPhotoTraceData,sourceImage:customPhotoSourceData||customPhotoState.image||''}});
+  saveCart(); updateCartUI(); showToast('Tableau personnalisé ajouté au panier','success');
+  if(goCheckout)setTimeout(()=>goToCheckout(),200);
+}
+function buyCustomPhotoNowPro(){addCustomPhotoToCartPro(true)}
+
+function renderCustomBagPage(){
+  const c=document.getElementById('customBagPageContent'); if(!c) return;
+  c.innerHTML=`<div class="custom-hero text-center fade-up"><div class="section-tag">Produit personnalisé</div><h2 class="section-heading">Designer un <span class="accent">sac à peinturer</span></h2><p class="section-sub">Les images sont converties en tracés seulement. Le client reçoit un sac avec lignes à peindre, pas une impression couleur.</p></div>
+    <div class="custom-layout fade-up custom-layout-bag">
+      <section class="custom-builder-card pro-custom-panel">
+        <div class="custom-step-banner"><strong>1</strong><div><h3>Ajouter les images</h3><p>Chaque image devient un tracé noir et blanc.</p></div></div>
+        <div class="custom-block">
+          <label class="custom-file-drop" for="customBagInputPro"><span>👜</span><strong>Ajouter des images au sac</strong><small>Vous pouvez en ajouter plusieurs.</small></label>
+          <input class="visually-hidden-file" type="file" id="customBagInputPro" accept="image/*" multiple onchange="handleCustomBagUploadPro(event)">
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">Modifier l’image sélectionnée</label>
+          <div class="custom-controls-panel">
+            <div class="custom-control-row"><span>Image</span><strong id="bagSelectedLabel">Aucune</strong></div>
+            <div class="custom-control-row"><label>Taille</label><input id="bagSizeSlider" type="range" min="45" max="240" value="120" oninput="updateBagSelectedSizePro(this.value)" disabled></div>
+            <div class="custom-control-row"><label>Rotation</label><input id="bagRotateSlider" type="range" min="-30" max="30" value="0" oninput="updateBagSelectedRotationPro(this.value)" disabled></div>
+            <div class="custom-control-row custom-btn-row"><button class="btn btn-ghost btn-sm" onclick="removeSelectedBagItemPro()">Supprimer</button><button class="btn btn-ghost btn-sm" onclick="sendBagSelectedForward()">Mettre devant</button></div>
+          </div>
+          <p class="custom-helper">Cliquez sur une image, puis glissez-la directement sur le sac. Les poignées ne causent plus de reload.</p>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">Qualité du tracé</label>
+          <div class="trace-slider-grid"><label>Contraste <input type="range" min="20" max="90" value="${traceProOptions.bagThreshold}" oninput="updateBagTraceSetting('bagThreshold',this.value)"></label><label>Détail <input type="range" min="70" max="145" value="${Math.round(traceProOptions.bagDetail*100)}" oninput="updateBagTraceSetting('bagDetail',this.value/100)"></label></div>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">Notes de production</label>
+          <textarea id="customBagNotes" placeholder="Ex: logo au centre, deux photos plus petites en bas..." oninput="customBagState.notes=this.value">${safeText(customBagState.notes||'')}</textarea>
+        </div>
+        <div class="custom-price-box"><span>Prix final</span><strong id="customBagPrice">$${toMoney(getCustomBagPrice())}</strong></div>
+        <div class="custom-actions-row"><button class="btn btn-orange" onclick="addCustomBagToCartPro()">Ajouter au panier →</button><button class="btn btn-ghost" onclick="buyCustomBagNowPro()">Acheter maintenant</button></div>
+      </section>
+      <aside class="custom-preview-card bag-preview-card custom-preview-pro">
+        <div class="custom-preview-head"><h3>Rendu sac</h3><span>Tracé à peinturer</span></div>
+        <div class="bag-editor-shell">
+          <canvas id="bagEditorCanvas" width="720" height="900" aria-label="Éditeur de sac personnalisé"></canvas>
+        </div>
+        <div class="custom-summary-box"><div><span>Produit</span><strong>Sac personnalisé à peindre</strong></div><div><span>Images</span><strong id="bagImageCount">${customBagState.items.length}</strong></div><div><span>Prix</span><strong id="bagSummaryPrice">$${toMoney(getCustomBagPrice())}</strong></div></div>
+      </aside>
+    </div>`;
+  initBagCanvasEditor();
+  initScrollEffects();
+}
+
+function initBagCanvasEditor(){
+  const canvas=document.getElementById('bagEditorCanvas'); if(!canvas)return;
+  bagCanvasEditor.canvas=canvas; bagCanvasEditor.ctx=canvas.getContext('2d'); bagCanvasEditor.selectedId=customBagState.selectedId||customBagState.items[0]?.id||null;
+  customBagState.selectedId=bagCanvasEditor.selectedId;
+  canvas.onpointerdown=bagPointerDown;
+  canvas.onpointermove=bagPointerMove;
+  canvas.onpointerup=bagPointerUp;
+  canvas.onpointerleave=bagPointerUp;
+  drawBagEditor();
+  syncBagControls();
+}
+function getCanvasPoint(e){
+  const rect=bagCanvasEditor.canvas.getBoundingClientRect();
+  return {x:(e.clientX-rect.left)*(bagCanvasEditor.canvas.width/rect.width),y:(e.clientY-rect.top)*(bagCanvasEditor.canvas.height/rect.height)};
+}
+function drawRoundedRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+function drawBagEditor(){
+  const canvas=bagCanvasEditor.canvas,ctx=bagCanvasEditor.ctx; if(!canvas||!ctx)return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#f8f4ee';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.lineCap='round';
+  ctx.strokeStyle='#d8b38a';ctx.lineWidth=24;ctx.beginPath();ctx.arc(360,220,125,Math.PI,0);ctx.stroke();
+  ctx.strokeStyle='#efdfc9';ctx.lineWidth=14;ctx.beginPath();ctx.arc(360,220,82,Math.PI,0);ctx.stroke();
+  ctx.fillStyle='#efe3d0';ctx.strokeStyle='#d8b38a';ctx.lineWidth=6;drawRoundedRect(ctx,150,210,420,590,34);ctx.fill();ctx.stroke();
+  ctx.fillStyle='#fffdfb';ctx.strokeStyle='#e5d6c4';ctx.setLineDash([10,10]);drawRoundedRect(ctx,225,310,270,330,18);ctx.fill();ctx.stroke();ctx.setLineDash([]);
+  ctx.font='700 18px Outfit, Arial';ctx.fillStyle='#b5a997';ctx.textAlign='center';ctx.fillText('ZONE À PEINDRE',360,295);
+  for(const item of customBagState.items){
+    const img=item._img;
+    ctx.save();
+    ctx.translate(item.x,item.y);
+    ctx.rotate((Number(item.rotation)||0)*Math.PI/180);
+    if(img&&img.complete)ctx.drawImage(img,-item.w/2,-item.h/2,item.w,item.h);
+    if(item.id===customBagState.selectedId){
+      ctx.strokeStyle='#1B9AAA';ctx.lineWidth=3;ctx.setLineDash([7,5]);ctx.strokeRect(-item.w/2,-item.h/2,item.w,item.h);ctx.setLineDash([]);
+      ctx.fillStyle='#1B9AAA';ctx.beginPath();ctx.arc(item.w/2,item.h/2,8,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+function hitBagItem(pt){
+  for(let i=customBagState.items.length-1;i>=0;i--){
+    const item=customBagState.items[i];
+    const dx=pt.x-item.x,dy=pt.y-item.y;
+    if(Math.abs(dx)<=item.w/2+12 && Math.abs(dy)<=item.h/2+12)return item;
+  }
+  return null;
+}
+function bagPointerDown(e){
+  if(!bagCanvasEditor.canvas)return;
+  bagCanvasEditor.canvas.setPointerCapture?.(e.pointerId);
+  const pt=getCanvasPoint(e),item=hitBagItem(pt);
+  if(!item){customBagState.selectedId=null;syncBagControls();drawBagEditor();return}
+  customBagState.selectedId=item.id;
+  const cornerDist=Math.hypot(pt.x-(item.x+item.w/2),pt.y-(item.y+item.h/2));
+  bagCanvasEditor.resizing=cornerDist<28;
+  bagCanvasEditor.dragging=!bagCanvasEditor.resizing;
+  bagCanvasEditor.startX=pt.x;bagCanvasEditor.startY=pt.y;bagCanvasEditor.startItem={...item};
+  syncBagControls();drawBagEditor();
+}
+function bagPointerMove(e){
+  if(!bagCanvasEditor.dragging&&!bagCanvasEditor.resizing)return;
+  e.preventDefault();
+  const item=customBagState.items.find(i=>i.id===customBagState.selectedId); if(!item)return;
+  const pt=getCanvasPoint(e),dx=pt.x-bagCanvasEditor.startX,dy=pt.y-bagCanvasEditor.startY;
+  if(bagCanvasEditor.resizing){
+    const s=Math.max(50,Math.min(260,bagCanvasEditor.startItem.w+Math.max(dx,dy)));
+    item.w=s; item.h=s;
+  }else{
+    item.x=Math.max(210,Math.min(510,bagCanvasEditor.startItem.x+dx));
+    item.y=Math.max(300,Math.min(650,bagCanvasEditor.startItem.y+dy));
+  }
+  drawBagEditor();syncBagControls(false);
+}
+function bagPointerUp(){bagCanvasEditor.dragging=false;bagCanvasEditor.resizing=false}
+function syncBagControls(updateSlider=true){
+  const item=customBagState.items.find(i=>i.id===customBagState.selectedId);
+  const label=document.getElementById('bagSelectedLabel'),slider=document.getElementById('bagSizeSlider'),rot=document.getElementById('bagRotateSlider');
+  if(label)label.textContent=item?(item.name||'Image'):'Aucune';
+  if(slider){slider.disabled=!item;if(item&&updateSlider)slider.value=Math.round(item.w);}
+  if(rot){rot.disabled=!item;if(item&&updateSlider)rot.value=Math.round(item.rotation||0);}
+  const cnt=document.getElementById('bagImageCount'); if(cnt)cnt.textContent=customBagState.items.length;
+  const price='$'+toMoney(getCustomBagPrice());
+  const priceEl=document.getElementById('customBagPrice');if(priceEl)priceEl.textContent=price;
+  const sumEl=document.getElementById('bagSummaryPrice');if(sumEl)sumEl.textContent=price;
+}
+function updateBagSelectedSizePro(value){const item=customBagState.items.find(i=>i.id===customBagState.selectedId); if(!item)return; const s=Math.max(50,Math.min(260,parseInt(value)||120)); item.w=s;item.h=s;drawBagEditor();syncBagControls(false)}
+function updateBagSelectedRotationPro(value){const item=customBagState.items.find(i=>i.id===customBagState.selectedId); if(!item)return; item.rotation=parseInt(value)||0;drawBagEditor();syncBagControls(false)}
+function removeSelectedBagItemPro(){if(!customBagState.selectedId)return; customBagState.items=customBagState.items.filter(i=>i.id!==customBagState.selectedId);customBagState.selectedId=customBagState.items[0]?.id||null;drawBagEditor();syncBagControls();}
+function sendBagSelectedForward(){const idx=customBagState.items.findIndex(i=>i.id===customBagState.selectedId);if(idx<0)return;const [item]=customBagState.items.splice(idx,1);customBagState.items.push(item);drawBagEditor();}
+function updateBagTraceSetting(key,val){traceProOptions[key]=Number(val); showToast('Le nouveau réglage sera appliqué aux prochaines images','success')}
+function handleCustomBagUploadPro(event){
+  const files=Array.from(event.target.files||[]); if(!files.length)return;
+  files.forEach((file,index)=>{
+    const reader=new FileReader();
+    reader.onload=async()=>{
+      try{
+        const traced=await traceImageToLineArt(String(reader.result||''),420,420,{threshold:traceProOptions.bagThreshold,detail:traceProOptions.bagDetail,transparent:true});
+        const img=new Image();
+        img.onload=()=>{drawBagEditor();};
+        img.src=traced;
+        const item={id:`bag-${Date.now()}-${Math.floor(Math.random()*99999)}`,name:file.name,src:traced,source:String(reader.result||''),x:320+(customBagState.items.length%3)*35,y:390+(customBagState.items.length%2)*55,w:125,h:125,rotation:0,_img:img};
+        customBagState.items.push(item);customBagState.selectedId=item.id;
+        drawBagEditor();syncBagControls();
+      }catch{showToast('Impossible de convertir une image','error')}
+    };
+    reader.readAsDataURL(file);
+  });
+  event.target.value='';
+}
+function ensureBagImagesLoaded(){
+  customBagState.items.forEach(item=>{
+    if(!item._img&&item.src){const img=new Image();img.onload=drawBagEditor;img.src=item.src;item._img=img;}
+  });
+}
+function getCustomBagPrice(){const extras=Math.max(0,(customBagState.items||[]).length-1); return Number(customBagState.basePrice||34.99)+extras*Number(customBagState.extraImagePrice||6)}
+function addCustomBagToCartPro(goCheckout=false){
+  if(!customBagState.items.length)return showToast('Ajoutez au moins une image sur le sac','error');
+  ensureBagImagesLoaded();
+  drawBagEditor();
+  const preview=bagCanvasEditor.canvas?.toDataURL('image/png')||'';
+  cart.push({id:`custom-bag-${Date.now()}`,name:'Sac personnalisé à peindre',price:getCustomBagPrice(),image:preview,qty:1,type:'custom-bag',customData:{kind:'bag-trace-design',notes:customBagState.notes||'',imageCount:customBagState.items.length,preview,placements:customBagState.items.map(({id,name,src,source,x,y,w,h,rotation})=>({id,name,traceImage:src,sourceImage:source,x,y,w,h,rotation}))}});
+  saveCart();updateCartUI();showToast('Sac personnalisé ajouté au panier','success');
+  if(goCheckout)setTimeout(()=>goToCheckout(),200);
+}
+function buyCustomBagNowPro(){addCustomBagToCartPro(true)}
+
+function traceImageToLineArt(dataUrl,targetW,targetH,opts={}){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const src=document.createElement('canvas');src.width=targetW;src.height=targetH;
+      const sctx=src.getContext('2d',{willReadFrequently:true});
+      sctx.fillStyle='#fff';sctx.fillRect(0,0,targetW,targetH);
+      const scale=Math.max(targetW/img.width,targetH/img.height);
+      const w=img.width*scale,h=img.height*scale,x=(targetW-w)/2,y=(targetH-h)/2;
+      sctx.drawImage(img,x,y,w,h);
+      const data=sctx.getImageData(0,0,targetW,targetH);
+      const pix=data.data,len=targetW*targetH;
+      const gray=new Uint8ClampedArray(len);
+      for(let i=0,j=0;i<pix.length;i+=4,j++)gray[j]=(pix[i]*.299+pix[i+1]*.587+pix[i+2]*.114)|0;
+      const out=sctx.createImageData(targetW,targetH);
+      const od=out.data, threshold=Number(opts.threshold)||48, detail=Number(opts.detail)||1;
+      for(let yy=1;yy<targetH-1;yy++){
+        for(let xx=1;xx<targetW-1;xx++){
+          const idx=yy*targetW+xx;
+          const gx=-gray[idx-targetW-1]-2*gray[idx-1]-gray[idx+targetW-1]+gray[idx-targetW+1]+2*gray[idx+1]+gray[idx+targetW+1];
+          const gy=-gray[idx-targetW-1]-2*gray[idx-targetW]-gray[idx-targetW+1]+gray[idx+targetW-1]+2*gray[idx+targetW]+gray[idx+targetW+1];
+          const mag=Math.sqrt(gx*gx+gy*gy)*detail;
+          const oi=idx*4, edge=mag>threshold;
+          if(opts.transparent){
+            od[oi]=0;od[oi+1]=0;od[oi+2]=0;od[oi+3]=edge?245:0;
+          }else{
+            const v=edge?20:255;od[oi]=v;od[oi+1]=v;od[oi+2]=v;od[oi+3]=255;
+          }
+        }
+      }
+      if(!opts.transparent){
+        for(let i=0;i<targetW*4;i+=4){od[i]=255;od[i+1]=255;od[i+2]=255;od[i+3]=255}
+      }
+      const outCanvas=document.createElement('canvas');outCanvas.width=targetW;outCanvas.height=targetH;
+      const octx=outCanvas.getContext('2d');
+      if(!opts.transparent){octx.fillStyle='#fffdf9';octx.fillRect(0,0,targetW,targetH);}
+      octx.putImageData(out,0,0);
+      if(!opts.transparent){
+        octx.strokeStyle='#e8dccf';octx.lineWidth=Math.max(14,Math.round(targetW*.025));octx.strokeRect(octx.lineWidth/2,octx.lineWidth/2,targetW-octx.lineWidth,targetH-octx.lineWidth);
+      }
+      resolve(outCanvas.toDataURL('image/png'));
+    };
+    img.onerror=reject;
+    img.src=dataUrl;
+  });
+}
