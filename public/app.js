@@ -1,5 +1,6 @@
 /* Arty! — Application v3 */
 let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='';
+let catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 
 document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
@@ -14,6 +15,15 @@ document.addEventListener('DOMContentLoaded',async()=>{
 
 function authH(){return authToken?{'Authorization':'Bearer '+authToken,'Content-Type':'application/json'}:{'Content-Type':'application/json'}}
 function navigate(h){window.location.hash=h}
+function safeText(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
+function safeAttr(v){return safeText(v).replace(/'/g,'&#39;')}
+function toMoney(v){return Number(v||0).toFixed(2)}
+function normalizeKitTags(kit){
+  const raw=kit?.tags??kit?.badges??[];
+  if(Array.isArray(raw))return raw.map(t=>String(t).trim()).filter(Boolean);
+  return String(raw||'').split(',').map(t=>t.trim()).filter(Boolean);
+}
+function uniqueList(values){return [...new Set(values.map(v=>String(v).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'))}
 
 // ===== ROUTER =====
 function handleRoute(){
@@ -89,7 +99,18 @@ function renderHomeEvents(){
 // ===== NAVBAR =====
 function initNavbar(){
   window.addEventListener('scroll',()=>document.getElementById('navbar').classList.toggle('scrolled',window.scrollY>60));
-  document.addEventListener('click',e=>{if(!e.target.closest('.nav-dropdown'))document.querySelectorAll('.nav-dropdown-menu').forEach(m=>m.classList.remove('open'))});
+  document.addEventListener('click',e=>{
+    if(!e.target.closest('.nav-dropdown'))document.querySelectorAll('.nav-dropdown-menu').forEach(m=>m.classList.remove('open'));
+    const navLink=e.target.closest('.nav-links a');
+    if(navLink){
+      const parent=navLink.closest('.nav-has-submenu');
+      if(parent){parent.classList.add('submenu-closing');setTimeout(()=>parent.classList.remove('submenu-closing'),350)}
+      document.querySelectorAll('.nav-submenu').forEach(m=>m.classList.remove('open'));
+      document.activeElement?.blur?.();
+      document.getElementById('navLinks')?.classList.remove('open');
+      document.getElementById('navAuth')?.classList.remove('open');
+    }
+  });
   document.querySelectorAll('.nav-links a[data-nav]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();const s=a.dataset.nav;if(s==='home'){navigate('#/');window.scrollTo({top:0,behavior:'smooth'})}else scrollToSection(s)}));
 }
 function toggleMobile(){document.getElementById('navLinks').classList.toggle('open');document.getElementById('navAuth').classList.toggle('open')}
@@ -119,22 +140,164 @@ function initScrollEffects(){
 
 // ===== PAINTINGS PAGE =====
 function renderPaintingsPage(){
-  document.getElementById('paintingsCatGrid').innerHTML=allCategories.map(c=>`<div class="cat-card" onclick="filterByCat(${c.id})"><img src="${c.image}" alt="${c.name}" loading="lazy"><div class="cat-card-overlay"><span class="cat-card-name">${c.name}</span></div></div>`).join('');
-  const fw=document.getElementById('kitsFilter');
-  fw.innerHTML=`<button class="filter-btn active" data-filter="all">Tous</button>`+allCategories.map(c=>`<button class="filter-btn" data-filter="${c.id}">${c.name}</button>`).join('');
-  fw.querySelectorAll('.filter-btn').forEach(b=>b.addEventListener('click',()=>{fw.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentFilter=b.dataset.filter;renderKitsGrid()}));
-  const params=new URLSearchParams(window.location.hash.split('?')[1]);
-  const catParam=params.get('cat');
-  if(catParam){currentFilter=catParam;fw.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===catParam))}else{currentFilter='all'}
-  renderKitsGrid();initScrollEffects();
+  const params=new URLSearchParams((window.location.hash.split('?')[1]||''));
+  catalogFilters={category:params.get('cat')||'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+  renderCatalogFilterOptions();
+  syncCatalogInputs();
+  renderKitsGrid();
+  initScrollEffects();
 }
-function filterByCat(catId){currentFilter=String(catId);const fw=document.getElementById('kitsFilter');fw.querySelectorAll('.filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===String(catId)));renderKitsGrid();document.getElementById('kitsFilter').scrollIntoView({behavior:'smooth'})}
+
+function renderCatalogFilterOptions(){
+  const cats=document.getElementById('categoryFilterList');
+  if(cats){
+    const buttons=[`<button class="catalog-pill active" data-category="all" onclick="setCatalogFilter('category','all')">Tous <span>${allKits.length}</span></button>`]
+      .concat(allCategories.map(c=>{
+        const count=allKits.filter(k=>String(k.categoryId)===String(c.id)).length;
+        return `<button class="catalog-pill" data-category="${safeAttr(c.id)}" onclick="setCatalogFilter('category','${safeAttr(c.id)}')">${safeText(c.name)} <span>${count}</span></button>`;
+      }));
+    cats.innerHTML=buttons.join('');
+  }
+
+  const badgeWrap=document.getElementById('badgeFilterList');
+  if(badgeWrap){
+    const badges=uniqueList(allKits.flatMap(k=>normalizeKitTags(k)));
+    if(!badges.length){
+      badgeWrap.innerHTML='<p class="filter-empty-note">Ajoutez des badges dans l\'admin: enfants, couple, cadeau, mini-kit, etc.</p>';
+    }else{
+      badgeWrap.innerHTML=`<button class="catalog-chip active" data-badge="all" onclick="setCatalogFilter('badge','all')">Tous</button>`+
+        badges.map(b=>`<button class="catalog-chip" data-badge="${safeAttr(b)}" onclick="setCatalogFilter('badge','${safeAttr(b)}')">${safeText(b)}</button>`).join('');
+    }
+  }
+
+  const diffWrap=document.getElementById('difficultyFilterList');
+  if(diffWrap){
+    const diffs=uniqueList(allKits.map(k=>k.difficulty||''));
+    diffWrap.innerHTML=`<button class="catalog-chip active" data-difficulty="all" onclick="setCatalogFilter('difficulty','all')">Tous</button>`+
+      diffs.map(d=>`<button class="catalog-chip" data-difficulty="${safeAttr(d)}" onclick="setCatalogFilter('difficulty','${safeAttr(d)}')">${safeText(d)}</button>`).join('');
+  }
+}
+
+function setCatalogFilter(key,value){
+  catalogFilters[key]=value;
+  if(key==='category') currentFilter=value;
+  syncCatalogInputs();
+  renderKitsGrid();
+}
+
+function updateCatalogFromInput(key,el){
+  catalogFilters[key]=el.type==='checkbox' ? (el.checked?'in':'all') : el.value;
+  renderKitsGrid();
+}
+
+function syncCatalogInputs(){
+  const search=document.getElementById('kitSearchInput'); if(search) search.value=catalogFilters.search||'';
+  const sort=document.getElementById('kitSortSelect'); if(sort) sort.value=catalogFilters.sort||'featured';
+  const min=document.getElementById('priceMinInput'); if(min) min.value=catalogFilters.priceMin||'';
+  const max=document.getElementById('priceMaxInput'); if(max) max.value=catalogFilters.priceMax||'';
+  const stock=document.getElementById('stockOnlyInput'); if(stock) stock.checked=catalogFilters.stock==='in';
+  document.querySelectorAll('[data-category]').forEach(b=>b.classList.toggle('active',String(b.dataset.category)===String(catalogFilters.category)));
+  document.querySelectorAll('[data-badge]').forEach(b=>b.classList.toggle('active',String(b.dataset.badge)===String(catalogFilters.badge)));
+  document.querySelectorAll('[data-difficulty]').forEach(b=>b.classList.toggle('active',String(b.dataset.difficulty)===String(catalogFilters.difficulty)));
+}
+
+function resetCatalogFilters(){
+  catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+  currentFilter='all';
+  syncCatalogInputs();
+  renderKitsGrid();
+}
+
+function removeCatalogFilter(key){
+  catalogFilters[key]=key==='sort'?'featured':'all';
+  if(['search','priceMin','priceMax'].includes(key)) catalogFilters[key]='';
+  syncCatalogInputs();
+  renderKitsGrid();
+}
+
+function filterByCat(catId){
+  catalogFilters.category=String(catId);
+  currentFilter=String(catId);
+  syncCatalogInputs();
+  renderKitsGrid();
+  document.getElementById('catalogResultsTop')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function getFilteredKits(){
+  const q=(catalogFilters.search||'').toLowerCase().trim();
+  const min=catalogFilters.priceMin!==''?parseFloat(catalogFilters.priceMin):null;
+  const max=catalogFilters.priceMax!==''?parseFloat(catalogFilters.priceMax):null;
+  let kits=allKits.filter(k=>{
+    const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
+    const tags=normalizeKitTags(k);
+    const hay=[k.name,k.shortDesc,k.description,k.difficulty,cat?.name,...tags].join(' ').toLowerCase();
+    if(catalogFilters.category!=='all' && String(k.categoryId)!==String(catalogFilters.category)) return false;
+    if(catalogFilters.badge!=='all' && !tags.some(t=>t.toLowerCase()===String(catalogFilters.badge).toLowerCase())) return false;
+    if(catalogFilters.difficulty!=='all' && String(k.difficulty)!==String(catalogFilters.difficulty)) return false;
+    if(catalogFilters.stock==='in' && k.inStock===false) return false;
+    if(q && !hay.includes(q)) return false;
+    if(min!==null && Number(k.price||0)<min) return false;
+    if(max!==null && Number(k.price||0)>max) return false;
+    return true;
+  });
+  const sort=catalogFilters.sort||'featured';
+  kits.sort((a,b)=>{
+    if(sort==='price-asc') return Number(a.price||0)-Number(b.price||0);
+    if(sort==='price-desc') return Number(b.price||0)-Number(a.price||0);
+    if(sort==='name') return String(a.name||'').localeCompare(String(b.name||''),'fr');
+    if(sort==='newest') return Number(b.id||0)-Number(a.id||0);
+    return Number(!!b.featured)-Number(!!a.featured) || String(a.name||'').localeCompare(String(b.name||''),'fr');
+  });
+  return kits;
+}
+
+function renderActiveFilters(filtered){
+  const wrap=document.getElementById('activeFilters');
+  const result=document.getElementById('catalogResultText');
+  if(result) result.textContent=`${filtered.length} produit${filtered.length!==1?'s':''} trouvé${filtered.length!==1?'s':''} sur ${allKits.length}`;
+  if(!wrap) return;
+  const chips=[];
+  if(catalogFilters.category!=='all'){
+    const cat=allCategories.find(c=>String(c.id)===String(catalogFilters.category));
+    chips.push(`<button onclick="removeCatalogFilter('category')">Catégorie: ${safeText(cat?.name||catalogFilters.category)} ×</button>`);
+  }
+  if(catalogFilters.badge!=='all') chips.push(`<button onclick="removeCatalogFilter('badge')">Badge: ${safeText(catalogFilters.badge)} ×</button>`);
+  if(catalogFilters.difficulty!=='all') chips.push(`<button onclick="removeCatalogFilter('difficulty')">Niveau: ${safeText(catalogFilters.difficulty)} ×</button>`);
+  if(catalogFilters.stock==='in') chips.push(`<button onclick="removeCatalogFilter('stock')">En stock seulement ×</button>`);
+  if(catalogFilters.search) chips.push(`<button onclick="removeCatalogFilter('search')">Recherche: ${safeText(catalogFilters.search)} ×</button>`);
+  if(catalogFilters.priceMin) chips.push(`<button onclick="removeCatalogFilter('priceMin')">Min: $${safeText(catalogFilters.priceMin)} ×</button>`);
+  if(catalogFilters.priceMax) chips.push(`<button onclick="removeCatalogFilter('priceMax')">Max: $${safeText(catalogFilters.priceMax)} ×</button>`);
+  wrap.innerHTML=chips.length?chips.join(''):'<span class="active-filter-placeholder">Aucun filtre actif</span>';
+}
+
 function renderKitsGrid(){
-  const g=document.getElementById('kitsGrid');
-  const filtered=currentFilter==='all'?allKits:allKits.filter(k=>String(k.categoryId)===currentFilter);
-  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>c.id===k.categoryId);return`<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}</div><div class="kit-card-body"><div class="kit-card-category">${cat?cat.name:''}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p><div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta">${k.difficulty}</span></div></div></div>`}).join('');
-  if(!filtered.length) g.innerHTML='<div class="empty-state"><div class="empty-state-icon">🎨</div><p>Aucun kit dans cette catégorie pour le moment.</p></div>';
+  const g=document.getElementById('kitsGrid'); if(!g)return;
+  const filtered=getFilteredKits();
+  renderActiveFilters(filtered);
+  g.classList.remove('visible');
+  g.innerHTML=filtered.map(k=>{
+    const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
+    const tags=normalizeKitTags(k).slice(0,4);
+    const img=k.image||'logoarty.png';
+    const isInStock=k.inStock!==false;
+    const stockLabel=isInStock?'En stock':'Épuisé';
+    return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')">
+      <div class="kit-card-img"><img src="${safeAttr(img)}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${!isInStock?'<span class="kit-stock-badge">Épuisé</span>':''}</div>
+      <div class="kit-card-body">
+        <div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div>
+        <h3 class="kit-card-title">${safeText(k.name)}</h3>
+        <p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p>
+        <div class="kit-card-tags">${tags.map(t=>`<span>${safeText(t)}</span>`).join('')}</div>
+        <div class="kit-card-footer"><span class="kit-card-price">$${toMoney(k.price)}</span><span class="kit-card-meta">${safeText(k.difficulty||stockLabel)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+  if(!filtered.length) g.innerHTML='<div class="empty-state catalog-empty"><div class="empty-state-icon">🎨</div><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
   setTimeout(()=>g.classList.add('visible'),50);
+}
+
+function toggleCatalogFilters(){
+  document.getElementById('catalogSidebar')?.classList.toggle('open');
 }
 
 // ===== PRODUCT PAGE =====
@@ -145,7 +308,9 @@ function renderProductPage(id){
   const imgs=kit.images?.length?kit.images:[kit.image];
   const thumbs=imgs.length>1?`<div class="product-thumbs">${imgs.map((img,i)=>`<img src="${img}" class="product-thumb${i===0?' active':''}" onclick="switchImg(this,'${img}')">`).join('')}</div>`:'';
   const inc=kit.includes?.length?`<div class="product-includes"><h3>Inclus dans ce kit</h3><ul>${kit.includes.map(i=>`<li>${i}</li>`).join('')}</ul></div>`:'';
-  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${imgs[0]}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${cat?cat.name:''}</div><h1>${kit.name}</h1><div class="product-price">$${kit.price.toFixed(2)}</div><p class="product-desc">${kit.description}</p><div class="product-tags"><span class="product-tag">${kit.difficulty}</span><span class="product-tag">${kit.inStock?'En stock':'Épuisé'}</span></div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>${kit.inStock?'Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!kit.inStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button></div></div></div>`;
+  const kitTags=normalizeKitTags(kit);
+  const productInStock=kit.inStock!==false;
+  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${safeAttr(imgs[0]||'logoarty.png')}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${safeText(cat?cat.name:'')}</div><h1>${safeText(kit.name)}</h1><div class="product-price">$${toMoney(kit.price)}</div><p class="product-desc">${safeText(kit.description||'')}</p><div class="product-tags"><span class="product-tag">${safeText(kit.difficulty||'')}</span><span class="product-tag">${productInStock?'En stock':'Épuisé'}</span>${kitTags.map(t=>`<span class="product-tag">${safeText(t)}</span>`).join('')}</div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!productInStock?'disabled style="opacity:.4"':''}>${productInStock?'Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!productInStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button></div></div></div>`;
 }
 function switchImg(th,src){document.getElementById('pMainImg').src=src;document.querySelectorAll('.product-thumb').forEach(t=>t.classList.remove('active'));th.classList.add('active')}
 function chgQty(d){const i=document.getElementById('pQty');if(!i)return;i.value=Math.min(10,Math.max(1,parseInt(i.value)+d))}
@@ -372,10 +537,10 @@ async function submitContact(){const n=document.getElementById('contactName').va
 async function loadAdminData(){try{const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents()}
 function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none'}
 
-function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="aKitDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>c.id===k.categoryId);return`<tr><td><strong>${k.name}</strong></td><td>${cat?cat.name:'-'}</td><td>$${k.price.toFixed(2)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
-async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value,price:document.getElementById('aKitPrice').value,description:document.getElementById('aKitDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadKits();loadAdminData()}catch{showToast('Erreur','error')}}
-function editKit(id){const k=allKits.find(x=>x.id===id);if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name;document.getElementById('aKitPrice').value=k.price;document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitCat').value=k.categoryId;document.getElementById('aKitDiff').value=k.difficulty;document.getElementById('aKitImg').value=k.image||'';document.getElementById('kitFormTitle').textContent='Modifier le Kit';document.getElementById('cancelKit').style.display='inline-flex';window.scrollTo(0,0)}
-function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitDesc','aKitImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('kitFormTitle').textContent='Ajouter un Kit';document.getElementById('cancelKit').style.display='none'}
+function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-group"><label>Badges / tags de filtre</label><input type="text" id="aKitTags" placeholder="ex: enfants, cadeau, couple, mini-kit"><small class="admin-help">Séparez les badges par virgule. Ils deviennent automatiquement des filtres clients.</small></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> En stock</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Badges</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));const tags=normalizeKitTags(k);return`<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td>${tags.length?tags.slice(0,3).map(t=>`<span class="admin-tag-mini">${safeText(t)}</span>`).join(''):'-'}</td><td>${k.inStock!==false?'<span class="admin-status ok">En stock</span>':'<span class="admin-status out">Épuisé</span>'}</td><td>$${toMoney(k.price)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
+async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value,tags:document.getElementById('aKitTags').value.split(',').map(t=>t.trim()).filter(Boolean),inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Modifié!':'Ajouté!','success');await loadKits();loadAdminData()}catch{showToast('Erreur','error')}}
+function editKit(id){const k=allKits.find(x=>x.id===id);if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.price||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitDiff').value=k.difficulty||'Débutant';document.getElementById('aKitImg').value=k.image||'';document.getElementById('aKitTags').value=normalizeKitTags(k).join(', ');document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;document.getElementById('kitFormTitle').textContent='Modifier le Kit';document.getElementById('cancelKit').style.display='inline-flex';window.scrollTo(0,0)}
+function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitDesc','aKitShortDesc','aKitImg','aKitTags'].forEach(id=>document.getElementById(id).value='');document.getElementById('aKitStock').checked=true;document.getElementById('aKitFeatured').checked=false;document.getElementById('kitFormTitle').textContent='Ajouter un Kit';document.getElementById('cancelKit').style.display='none'}
 async function deleteKit(id){if(!confirm('Supprimer ce kit?'))return;await fetch(`/api/admin/kits/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadKits();loadAdminData()}
 
 function renderAdminCategories(){document.getElementById('adminCategoriesPanel').innerHTML=`<div class="admin-form-card"><h3 id="catFormTitle">Ajouter une Catégorie</h3><input type="hidden" id="editCatId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aCatName"></div><div class="form-group"><label>Type</label><select id="aCatParent"><option value="individual">Individuel</option><option value="group">Groupe</option><option value="none">Autre</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aCatImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveCat()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetCatForm()" style="display:none" id="cancelCat">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Catégorie</th><th>Type</th><th>Actions</th></tr></thead><tbody>${allCategories.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.parent}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editCat(${c.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteCat(${c.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}

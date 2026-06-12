@@ -203,21 +203,73 @@
 
 <!-- ===================== ALL PAINTINGS ===================== -->
 <div class="page" id="page-paintings">
-  <div style="padding-top:100px" class="section-pad">
+  <div class="catalog-page section-pad">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Notre Collection</div><h2 class="section-heading">Voir tous les <span class="accent">Produits</span></h2></div>
-      <div class="text-center fade-up" style="margin-bottom:48px"><h3 style="font-size:1.3rem;font-weight:700;margin-bottom:24px">Voir par Catégories</h3><div class="cat-grid stagger-children" id="paintingsCatGrid"></div></div>
-
-      <!-- Kids section from Excel -->
-      <div class="fade-up" style="margin-top:48px;background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);border-radius:var(--r-xl);padding:36px;text-align:center">
-        <h3 style="font-size:1.2rem;font-weight:700;color:var(--text);margin-bottom:10px">Des kits de peinture amusants pour les enfants</h3>
-        <p style="font-size:.92rem;color:var(--text-md);max-width:700px;margin:0 auto;line-height:1.7">Nos kits de peinture acrylique permettent aux enfants d'exprimer leur créativité tout en s'amusant. Chaque kit comprend le matériel nécessaire, et les instructions étape par étape pour réaliser leur peinture en toute simplicité. Recommandé pour les enfants de 6 à 12 ans.</p>
+      <div class="catalog-hero text-center fade-up">
+        <div class="section-tag">Notre Collection</div>
+        <h2 class="section-heading">Trouvez le <span class="accent">bon kit</span> rapidement</h2>
+        <p class="section-sub">Recherchez par catégorie, badge, niveau, prix ou disponibilité. Les badges sont personnalisables dans l'admin pour garder le catalogue clair même avec beaucoup de produits.</p>
       </div>
 
-      <div style="margin-top:56px" class="fade-up">
-        <h3 style="font-size:1.3rem;font-weight:700;margin-bottom:20px;text-align:center">Tous les Kits</h3>
-        <div class="kits-filter" id="kitsFilter"></div>
-        <div class="kits-grid stagger-children" id="kitsGrid"></div>
+      <div class="catalog-layout fade-up">
+        <aside class="catalog-sidebar" id="catalogSidebar">
+          <div class="catalog-sidebar-head">
+            <div><span class="section-tag mini-tag">Filtres</span><h3>Affiner les produits</h3></div>
+            <button class="catalog-close" onclick="toggleCatalogFilters()">×</button>
+          </div>
+
+          <div class="catalog-filter-group">
+            <label class="catalog-label">Recherche</label>
+            <input class="catalog-search" type="search" id="kitSearchInput" placeholder="Nom, thème, occasion..." oninput="updateCatalogFromInput('search',this)">
+          </div>
+
+          <div class="catalog-filter-group">
+            <label class="catalog-label">Catégories</label>
+            <div class="catalog-pill-list" id="categoryFilterList"></div>
+          </div>
+
+          <div class="catalog-filter-group">
+            <label class="catalog-label">Badges personnalisés</label>
+            <div class="catalog-chip-list" id="badgeFilterList"></div>
+          </div>
+
+          <div class="catalog-filter-group">
+            <label class="catalog-label">Difficulté</label>
+            <div class="catalog-chip-list" id="difficultyFilterList"></div>
+          </div>
+
+          <div class="catalog-filter-group">
+            <label class="catalog-label">Prix</label>
+            <div class="catalog-price-row">
+              <input type="number" id="priceMinInput" placeholder="Min" oninput="updateCatalogFromInput('priceMin',this)">
+              <input type="number" id="priceMaxInput" placeholder="Max" oninput="updateCatalogFromInput('priceMax',this)">
+            </div>
+          </div>
+
+          <div class="catalog-filter-group">
+            <label class="catalog-check"><input type="checkbox" id="stockOnlyInput" onchange="updateCatalogFromInput('stock',this)"> En stock seulement</label>
+          </div>
+
+          <button class="btn btn-ghost btn-sm" onclick="resetCatalogFilters()" style="width:100%;justify-content:center">Réinitialiser</button>
+        </aside>
+
+        <section class="catalog-results" id="catalogResultsTop">
+          <div class="catalog-toolbar">
+            <div><h3>Tous les kits</h3><p id="catalogResultText">0 produit trouvé</p></div>
+            <div class="catalog-toolbar-actions">
+              <button class="catalog-filter-toggle" onclick="toggleCatalogFilters()">Filtres</button>
+              <select id="kitSortSelect" onchange="updateCatalogFromInput('sort',this)">
+                <option value="featured">Populaires d'abord</option>
+                <option value="newest">Nouveautés</option>
+                <option value="price-asc">Prix: bas à élevé</option>
+                <option value="price-desc">Prix: élevé à bas</option>
+                <option value="name">Nom A-Z</option>
+              </select>
+            </div>
+          </div>
+          <div class="active-filter-row" id="activeFilters"></div>
+          <div class="kits-grid stagger-children" id="kitsGrid"></div>
+        </section>
       </div>
     </div>
   </div>
