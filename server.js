@@ -137,6 +137,25 @@ app.post('/api/bookings', (req, res) => {
 app.get('/api/bookings/mine', auth, (req, res) => { const db=readDB(); res.json(db.bookings.filter(b=>b.userId===req.session.userId).map(b=>({...b,event:db.events.find(e=>e.id===b.eventId)})).sort((a,b)=>new Date(b.bookedAt)-new Date(a.bookedAt))); });
 app.post('/api/contact', (req, res) => { const {name,email,message}=req.body; if(!name||!email||!message) return res.status(400).json({error:'Champs requis'}); console.log('Contact:',req.body); res.json({success:true,message:'Merci! Nous vous répondrons bientôt.'}); });
 
+
+function normalizeTags(raw) {
+  if (Array.isArray(raw)) return raw.map(t => String(t).trim()).filter(Boolean);
+  return String(raw || '').split(',').map(t => t.trim()).filter(Boolean);
+}
+function normalizeKitPayload(body, existing = {}) {
+  const payload = { ...body };
+  payload.price = parseFloat(body.price) || 0;
+  payload.categoryId = body.categoryId ? parseInt(body.categoryId) : (existing.categoryId || null);
+  payload.tags = normalizeTags(body.tags ?? body.badges ?? existing.tags);
+  payload.inStock = body.inStock === undefined ? (existing.inStock !== false) : (body.inStock === true || body.inStock === 'true');
+  payload.featured = body.featured === undefined ? !!existing.featured : (body.featured === true || body.featured === 'true');
+  payload.shortDesc = body.shortDesc || '';
+  payload.description = body.description || '';
+  payload.image = body.image || '';
+  payload.difficulty = body.difficulty || existing.difficulty || 'Débutant';
+  return payload;
+}
+
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length}); });
 
@@ -158,10 +177,10 @@ app.delete('/api/admin/categories/:id', adminOnly, (req, res) => { const db=read
 // Kits CRUD
 app.post('/api/admin/kits', adminOnly, (req, res) => {
   const db=readDB(); const {name,price}=req.body; if(!name||!price) return res.status(400).json({error:'Nom et prix requis'});
-  const kit = { id:db.kits.length>0?Math.max(...db.kits.map(k=>k.id))+1:1, ...req.body, price:parseFloat(price), inStock:true, featured:false };
+  const kit = { id:db.kits.length>0?Math.max(...db.kits.map(k=>k.id))+1:1, name, ...normalizeKitPayload(req.body), createdAt:new Date().toISOString() };
   db.kits.push(kit); writeDB(db); res.json({success:true,kit});
 });
-app.put('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); const i=db.kits.findIndex(k=>k.id===parseInt(req.params.id)); if(i===-1) return res.status(404).json({error:'Non trouvé'}); db.kits[i]={...db.kits[i],...req.body,id:db.kits[i].id}; writeDB(db); res.json({success:true,kit:db.kits[i]}); });
+app.put('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); const i=db.kits.findIndex(k=>k.id===parseInt(req.params.id)); if(i===-1) return res.status(404).json({error:'Non trouvé'}); db.kits[i]={...db.kits[i],...normalizeKitPayload(req.body, db.kits[i]),name:req.body.name||db.kits[i].name,id:db.kits[i].id}; writeDB(db); res.json({success:true,kit:db.kits[i]}); });
 app.delete('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); db.kits=db.kits.filter(k=>k.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
 // Events CRUD
