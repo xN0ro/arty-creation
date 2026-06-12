@@ -903,3 +903,19 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 @media(max-width:900px){.team-events-layout{align-items:flex-start;flex-direction:column}.team-events-layout .section-heading,.team-events-layout .section-sub{text-align:center}.team-events-layout .btn{width:100%;justify-content:center}.legal-grid{grid-template-columns:1fr}.legal-hero,.legal-card,.legal-mini-card{padding:24px}}
 .footer .nav-logo{width:auto!important;min-width:0!important;margin-right:0!important;display:inline-flex}
 .footer .nav-logo-text{display:inline-block!important;color:var(--white)!important}
+
+
+/* AUTH IMPROVEMENTS */
+.google-btn-wrap{margin-bottom:12px;min-height:44px}
+.google-help{font-size:.78rem;color:var(--text-light);text-align:center;margin:-8px 0 12px}
+.google-btn-disabled{opacity:.72;cursor:pointer}
+.auth-form-row{gap:12px}
+.password-field{display:flex;align-items:center;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--card);overflow:hidden;transition:var(--tr)}
+.password-field:focus-within{border-color:var(--orange);box-shadow:0 0 0 3px rgba(232,134,58,.08)}
+.password-field input{border:none!important;box-shadow:none!important;background:transparent!important;flex:1;min-width:0}
+.pw-toggle{background:var(--bg2);color:var(--text-light);font-size:.76rem;font-weight:700;padding:0 12px;height:44px;border-left:1px solid var(--border);transition:var(--tr)}
+.pw-toggle:hover{background:var(--orange-pale);color:var(--orange)}
+.password-feedback{font-size:.8rem;color:var(--text-light);background:var(--bg2);border:1px solid var(--border-light);border-radius:12px;padding:10px 12px;margin:-2px 0 12px;line-height:1.4}
+.password-feedback.ok{color:#147A44;background:#EAF8F0;border-color:#BFE9CE}
+.password-feedback.bad{color:#B42318;background:#FFF0EE;border-color:#FFD1CC}
+@media(max-width:640px){.auth-form-row{grid-template-columns:1fr!important}.pw-toggle{height:42px}}

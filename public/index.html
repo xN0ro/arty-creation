@@ -570,10 +570,23 @@
   <div class="modal">
     <button class="modal-close" onclick="closeModal('auth')">&times;</button>
     <h2 id="authModalTitle">Bienvenue</h2><p class="modal-subtitle" id="authModalSub">Connectez-vous.</p>
-    <div id="googleBtnWrap"></div><div class="divider">ou</div>
+    <div id="googleBtnWrap" class="google-btn-wrap"></div><div class="divider">ou</div>
     <div class="modal-tabs"><button class="modal-tab active" id="tabLogin" onclick="switchAuthTab('login')">Connexion</button><button class="modal-tab" id="tabRegister" onclick="switchAuthTab('register')">Inscription</button></div>
-    <div id="loginForm"><div class="form-group"><label>Courriel</label><input type="email" id="loginEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="loginPassword" placeholder="Mot de passe"></div><button class="btn btn-orange" onclick="doLogin()">Se Connecter →</button></div>
-    <div id="registerForm" style="display:none"><div class="form-group"><label>Nom</label><input type="text" id="regName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="regEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="regPassword" placeholder="6+ caractères"></div><button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button></div>
+    <div id="loginForm">
+      <div class="form-group"><label>Courriel</label><input type="email" id="loginEmail" placeholder="vous@exemple.com" autocomplete="email"></div>
+      <div class="form-group"><label>Mot de passe</label><div class="password-field"><input type="password" id="loginPassword" placeholder="Mot de passe" autocomplete="current-password"><button type="button" class="pw-toggle" onclick="togglePasswordField('loginPassword',this)">Voir</button></div></div>
+      <button class="btn btn-orange" onclick="doLogin()">Se Connecter →</button>
+    </div>
+    <div id="registerForm" style="display:none">
+      <div class="form-group"><label>Nom complet</label><input type="text" id="regName" placeholder="Votre nom" autocomplete="name"></div>
+      <div class="form-group"><label>Courriel</label><input type="email" id="regEmail" placeholder="vous@exemple.com" autocomplete="email"></div>
+      <div class="form-row auth-form-row">
+        <div class="form-group"><label>Mot de passe</label><div class="password-field"><input type="password" id="regPassword" placeholder="6+ caractères" autocomplete="new-password" oninput="updatePasswordMatchUI()"><button type="button" class="pw-toggle" onclick="togglePasswordField('regPassword',this)">Voir</button></div></div>
+        <div class="form-group"><label>Confirmer</label><div class="password-field"><input type="password" id="regPasswordConfirm" placeholder="Répéter le mot de passe" autocomplete="new-password" oninput="updatePasswordMatchUI()"><button type="button" class="pw-toggle" onclick="togglePasswordField('regPasswordConfirm',this)">Voir</button></div></div>
+      </div>
+      <div class="password-feedback" id="passwordFeedback">Utilisez au moins 6 caractères. Les deux mots de passe doivent être identiques.</div>
+      <button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button>
+    </div>
   </div>
 </div>
 <div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver une place</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="booking-summary-box" id="bookingSummaryText"></div><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div></div><div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="bookingPhone" placeholder="Optionnel"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option></select></div></div><div class="form-group"><label>Note</label><textarea id="bookingNotes" placeholder="Allergie, demande spéciale, groupe..."></textarea></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer la réservation →</button></div></div>

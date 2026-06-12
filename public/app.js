@@ -6,10 +6,10 @@ document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');googleClientId=(await r.json()).googleClientId}catch{}
+  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||''}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
   await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles()]);
-  initNavbar();updateAuthUI();updateCartUI();initGoogleSignIn();
+  initNavbar();updateAuthUI();updateCartUI();initGoogleSignIn();initAuthValidation();
   window.addEventListener('hashchange',handleRoute);handleRoute();
 });
 
@@ -685,16 +685,74 @@ async function placeOrder(){
 }
 
 // ===== AUTH =====
-function openModal(t,tab){document.getElementById(t+'Modal').classList.add('active');document.body.style.overflow='hidden';if(tab==='register')switchAuthTab('register');else if(t==='auth')switchAuthTab('login')}
+function openModal(t,tab){
+  document.getElementById(t+'Modal').classList.add('active');
+  document.body.style.overflow='hidden';
+  if(tab==='register')switchAuthTab('register');else if(t==='auth')switchAuthTab('login');
+  if(t==='auth')setTimeout(()=>initGoogleSignIn(),120);
+}
 function closeModal(t){document.getElementById(t+'Modal').classList.remove('active');document.body.style.overflow=''}
-function switchAuthTab(t){document.getElementById('tabLogin').classList.toggle('active',t==='login');document.getElementById('tabRegister').classList.toggle('active',t==='register');document.getElementById('loginForm').style.display=t==='login'?'block':'none';document.getElementById('registerForm').style.display=t==='register'?'block':'none';document.getElementById('authModalTitle').textContent=t==='login'?'Bienvenue':'Créer un Compte';document.getElementById('authModalSub').textContent=t==='login'?'Connectez-vous à votre compte.':'Inscrivez-vous gratuitement.'}
-async function doLogin(){const e=document.getElementById('loginEmail').value,p=document.getElementById('loginPassword').value;if(!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Erreur de connexion','error')}}
-async function doRegister(){const n=document.getElementById('regName').value,e=document.getElementById('regEmail').value,p=document.getElementById('regPassword').value;if(!n||!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue chez Arty!, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}}
+function switchAuthTab(t){
+  document.getElementById('tabLogin').classList.toggle('active',t==='login');
+  document.getElementById('tabRegister').classList.toggle('active',t==='register');
+  document.getElementById('loginForm').style.display=t==='login'?'block':'none';
+  document.getElementById('registerForm').style.display=t==='register'?'block':'none';
+  document.getElementById('authModalTitle').textContent=t==='login'?'Bienvenue':'Créer un compte';
+  document.getElementById('authModalSub').textContent=t==='login'?'Connectez-vous à votre compte.':'Inscription rapide et sécurisée.';
+  updatePasswordMatchUI();
+}
+async function doLogin(){
+  const e=document.getElementById('loginEmail').value.trim().toLowerCase(),p=document.getElementById('loginPassword').value;
+  if(!e||!p)return showToast('Remplissez tous les champs','error');
+  try{const r=await fetch('/api/users/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error||'Connexion impossible','error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Erreur de connexion','error')}
+}
+function initAuthValidation(){['regPassword','regPasswordConfirm'].forEach(id=>document.getElementById(id)?.addEventListener('input',updatePasswordMatchUI))}
+function togglePasswordField(id,btn){const input=document.getElementById(id);if(!input)return;const show=input.type==='password';input.type=show?'text':'password';if(btn)btn.textContent=show?'Cacher':'Voir'}
+function updatePasswordMatchUI(){
+  const p=document.getElementById('regPassword')?.value||'';
+  const c=document.getElementById('regPasswordConfirm')?.value||'';
+  const f=document.getElementById('passwordFeedback');
+  if(!f)return;
+  f.classList.remove('ok','bad');
+  if(!p&&!c){f.textContent='Utilisez au moins 6 caractères. Les deux mots de passe doivent être identiques.';return}
+  if(p.length<6){f.textContent='Le mot de passe doit contenir au moins 6 caractères.';f.classList.add('bad');return}
+  if(c&&p!==c){f.textContent='Les deux mots de passe ne sont pas identiques.';f.classList.add('bad');return}
+  if(c&&p===c){f.textContent='Parfait, les mots de passe correspondent.';f.classList.add('ok');return}
+  f.textContent='Confirmez le mot de passe pour éviter une erreur.';
+}
+async function doRegister(){
+  const n=document.getElementById('regName').value.trim(),e=document.getElementById('regEmail').value.trim().toLowerCase(),p=document.getElementById('regPassword').value,pc=document.getElementById('regPasswordConfirm').value;
+  if(!n||!e||!p||!pc)return showToast('Remplissez tous les champs','error');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))return showToast('Entrez un courriel valide','error');
+  if(p.length<6)return showToast('Mot de passe: 6 caractères minimum','error');
+  if(p!==pc){updatePasswordMatchUI();return showToast('Les mots de passe ne correspondent pas','error')}
+  try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p,confirmPassword:pc})});const d=await r.json();if(!r.ok)return showToast(d.error||'Inscription impossible','error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue chez Arty!, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}
+}
 function logout(s){fetch('/api/users/logout',{method:'POST',headers:authH()}).catch(()=>{});authToken=null;currentUser=null;localStorage.removeItem('arty_token');localStorage.removeItem('arty_user');updateAuthUI();navigate('#/');if(!s)showToast('Déconnecté','success')}
 
 // ===== GOOGLE =====
-function initGoogleSignIn(){const w=document.getElementById('googleBtnWrap');if(!googleClientId||googleClientId==='YOUR_GOOGLE_CLIENT_ID_HERE'){w.innerHTML=`<button class="google-btn" onclick="showToast('Google non configuré. Ajoutez votre Client ID dans data/db.json','error')" style="opacity:.6"><svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continuer avec Google</button>`;return}try{google.accounts.id.initialize({client_id:googleClientId,callback:handleGoogle});w.innerHTML='';google.accounts.id.renderButton(w,{theme:'outline',size:'large',width:380,text:'continue_with',shape:'pill',locale:'fr'})}catch{w.innerHTML='<button class="google-btn" style="opacity:.5">Google non disponible</button>'}}
-async function handleGoogle(r){try{const res=await fetch('/api/users/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential})});const d=await res.json();if(!res.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Échec Google','error')}}
+function googleIcon(){return `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>`}
+function initGoogleSignIn(retry=0){
+  const w=document.getElementById('googleBtnWrap');if(!w)return;
+  if(!googleClientId||googleClientId==='YOUR_GOOGLE_CLIENT_ID_HERE'){
+    w.innerHTML=`<button class="google-btn google-btn-disabled" onclick="showToast('Google non configuré. Ajoutez GOOGLE_CLIENT_ID dans Render ou googleClientId dans db.json','error')">${googleIcon()}Continuer avec Google</button><div class="google-help">Google sera actif dès que le Client ID est configuré.</div>`;
+    return;
+  }
+  if(!window.google?.accounts?.id){
+    w.innerHTML=`<button class="google-btn google-btn-disabled" disabled>${googleIcon()}Chargement de Google...</button>`;
+    if(retry<24)setTimeout(()=>initGoogleSignIn(retry+1),250);else w.innerHTML=`<button class="google-btn google-btn-disabled" onclick="showToast('Google ne s’est pas chargé. Vérifiez le domaine autorisé et le script Google.','error')">${googleIcon()}Google non disponible</button>`;
+    return;
+  }
+  try{
+    google.accounts.id.initialize({client_id:googleClientId,callback:handleGoogle,auto_select:false,cancel_on_tap_outside:true});
+    w.innerHTML='';
+    google.accounts.id.renderButton(w,{theme:'outline',size:'large',width:380,text:'continue_with',shape:'pill',locale:'fr'});
+  }catch(err){
+    console.error('Google init error',err);
+    w.innerHTML=`<button class="google-btn google-btn-disabled" onclick="showToast('Google non disponible pour ce domaine. Vérifiez Authorized JavaScript origins.','error')">${googleIcon()}Google non disponible</button>`;
+  }
+}
+async function handleGoogle(r){try{const res=await fetch('/api/users/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential})});const d=await res.json();if(!res.ok)return showToast(d.error||'Connexion Google impossible','error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Échec Google','error')}}
 
 // ===== BOOKING =====
 function openBooking(eventId){
