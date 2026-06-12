@@ -47,6 +47,8 @@ function handleRoute(){
   else if(h==='#/profile'){if(!currentUser){navigate('#/');openModal('auth');return}show('page-profile');renderProfilePage();window.scrollTo(0,0)}
   else if(h==='#/admin'){if(!currentUser||currentUser.role!=='admin'){navigate('#/');showToast('Accès admin requis','error');return}show('page-admin');document.getElementById('mainFooter').style.display='none';loadAdminData();window.scrollTo(0,0)}
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
+  else if(h==='#/custom-photo'){show('page-custom-photo');renderCustomPhotoPage();window.scrollTo(0,0)}
+  else if(h==='#/custom-bag'){show('page-custom-bag');renderCustomBagPage();window.scrollTo(0,0)}
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
   else if(h==='#/checkout'){show('page-checkout');renderCheckoutPage();window.scrollTo(0,0)}
@@ -567,7 +569,10 @@ function cleanCart(){
     price:Number(i.price)||0,
     image:i.image||'',
     qty:Math.max(1,parseInt(i.qty)||1),
-    type:i.type || (String(i.id).startsWith('bundle-')?'bundle':'kit')
+    type:i.type || (String(i.id).startsWith('bundle-')?'bundle':'kit'),
+    customData:i.customData||null,
+    discountLabel:i.discountLabel||'',
+    originalPrice:Number(i.originalPrice)||Number(i.price)||0
   })).filter(i=>i.id&&i.name&&i.qty>0);
 }
 function addToCart(kitId){
@@ -1090,3 +1095,163 @@ function renderAdminOrders(){
 }
 async function updateOrderStatus(id,status){try{const r=await fetch(`/api/admin/orders/${encodeURIComponent(id)}/status`,{method:'PUT',headers:authH(),body:JSON.stringify({status})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Statut mis à jour','success');await loadAdminData()}catch{showToast('Erreur','error')}}
 async function createRefund(orderId){const o=adminOrders.find(x=>String(x.id)===String(orderId));if(!o)return;const remaining=Math.max(0,Number(o.total||0)-Number(o.refundedTotal||0));const amount=prompt(`Montant à rembourser (max $${toMoney(remaining)})`,toMoney(remaining));if(amount===null)return;const reason=prompt('Raison du remboursement','Demande client')||'Remboursement';const restock=confirm('Remettre les produits en inventaire?');try{const r=await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}/refund`,{method:'POST',headers:authH(),body:JSON.stringify({amount,reason,restock})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Remboursement enregistré','success');await loadAdminData()}catch{showToast('Erreur','error')}}
+
+
+// ===== CUSTOM PRODUCTS =====
+let customPhotoState={image:'',size:'moyen',notes:''};
+let customBagState={items:[],selectedId:null,notes:'',basePrice:34.99,extraImagePrice:6};
+const customPhotoSizes={petit:{label:'Petit 11 x 14',price:49.99},moyen:{label:'Moyen 16 x 20',price:69.99},grand:{label:'Grand 18 x 24',price:89.99}};
+
+function renderCustomPhotoPage(){
+  const c=document.getElementById('customPhotoPageContent'); if(!c) return;
+  const sizeCards=Object.entries(customPhotoSizes).map(([key,val])=>`<button class="custom-option-card ${customPhotoState.size===key?'active':''}" onclick="selectCustomPhotoSize('${key}')"><strong>${safeText(val.label)}</strong><span>$${toMoney(val.price)}</span></button>`).join('');
+  c.innerHTML=`<div class="custom-hero text-center fade-up"><div class="section-tag">Produit personnalisé</div><h2 class="section-heading">Peinture de ta <span class="accent">propre photo</span></h2><p class="section-sub">Téléversez votre photo, choisissez le format de toile et voyez un aperçu avant d’ajouter au panier.</p></div>
+    <div class="custom-layout fade-up">
+      <section class="custom-builder-card">
+        <div class="custom-block">
+          <label class="custom-label">1. Téléverser une photo</label>
+          <input type="file" id="customPhotoInput" accept="image/*" onchange="handleCustomPhotoUpload(event)">
+          <p class="custom-helper">Formats acceptés: JPG, PNG, WEBP. Une photo claire donne le meilleur résultat.</p>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">2. Choisir le format</label>
+          <div class="custom-option-grid">${sizeCards}</div>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">3. Notes</label>
+          <textarea id="customPhotoNotes" placeholder="Ex: mettre le fond plus clair, garder le cadrage portrait..." oninput="customPhotoState.notes=this.value">${safeText(customPhotoState.notes||'')}</textarea>
+        </div>
+        <div class="custom-price-box"><span>Prix</span><strong>$${toMoney(getCustomPhotoPrice())}</strong></div>
+        <div class="custom-actions-row"><button class="btn btn-orange" onclick="addCustomPhotoToCart()">Ajouter au panier →</button><button class="btn btn-ghost" onclick="buyCustomPhotoNow()">Acheter maintenant</button></div>
+      </section>
+      <aside class="custom-preview-card">
+        <div class="custom-preview-head"><h3>Aperçu</h3><span>${safeText(customPhotoSizes[customPhotoState.size].label)}</span></div>
+        <div class="canvas-mockup ${customPhotoState.image?'has-image':''}">${customPhotoState.image?`<img src="${safeAttr(customPhotoState.image)}" alt="Aperçu">`:'<div class="canvas-placeholder"><strong>Ajoutez une photo</strong><span>Le rendu s’affichera ici.</span></div>'}</div>
+        <div class="custom-summary-box"><div><span>Produit</span><strong>Tableau personnalisé</strong></div><div><span>Format</span><strong>${safeText(customPhotoSizes[customPhotoState.size].label)}</strong></div><div><span>Prix</span><strong>$${toMoney(getCustomPhotoPrice())}</strong></div></div>
+      </aside>
+    </div>`;
+  initScrollEffects();
+}
+function selectCustomPhotoSize(size){customPhotoState.size=size;renderCustomPhotoPage()}
+function getCustomPhotoPrice(){return customPhotoSizes[customPhotoState.size]?.price||0}
+function handleCustomPhotoUpload(event){
+  const file=event.target.files?.[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=()=>{customPhotoState.image=String(reader.result||''); renderCustomPhotoPage();};
+  reader.readAsDataURL(file);
+}
+function buildCanvasPreviewSvg(photoData,sizeLabel){
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1200" viewBox="0 0 900 1200"><rect width="100%" height="100%" fill="#f8f4ee"/><rect x="120" y="80" width="660" height="930" rx="28" fill="#845a34" opacity="0.18"/><rect x="150" y="110" width="600" height="870" rx="22" fill="#ffffff" stroke="#d9c7b3" stroke-width="28"/><image href="${photoData}" x="180" y="140" width="540" height="810" preserveAspectRatio="xMidYMid slice"/><rect x="150" y="110" width="600" height="870" rx="22" fill="none" stroke="#ffffff" stroke-width="8"/><text x="450" y="1070" font-family="Outfit, Arial" font-size="42" text-anchor="middle" fill="#5C4F3D">${sizeLabel}</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+function addCustomPhotoToCart(goCheckout=false){
+  if(!customPhotoState.image) return showToast('Ajoutez une photo avant de continuer','error');
+  const sizeInfo=customPhotoSizes[customPhotoState.size];
+  const id=`custom-photo-${Date.now()}`;
+  const preview=buildCanvasPreviewSvg(customPhotoState.image,sizeInfo.label);
+  cart.push({id,name:`Tableau personnalisé (${sizeInfo.label})`,price:sizeInfo.price,image:preview,qty:1,type:'custom-photo',customData:{kind:'photo-canvas',size:customPhotoState.size,sizeLabel:sizeInfo.label,notes:customPhotoState.notes||'',sourceImage:customPhotoState.image}});
+  saveCart(); updateCartUI(); showToast('Tableau personnalisé ajouté au panier','success');
+  if(goCheckout) setTimeout(()=>goToCheckout(),200);
+}
+function buyCustomPhotoNow(){addCustomPhotoToCart(true)}
+
+function renderCustomBagPage(){
+  const c=document.getElementById('customBagPageContent'); if(!c) return;
+  const selected=getSelectedBagItem();
+  c.innerHTML=`<div class="custom-hero text-center fade-up"><div class="section-tag">Produit personnalisé</div><h2 class="section-heading">Créez votre <span class="accent">sac personnalisé</span></h2><p class="section-sub">Ajoutez vos images sur le gabarit du sac, placez-les, redimensionnez-les et voyez le prix final avant de commander.</p></div>
+    <div class="custom-layout fade-up custom-layout-bag">
+      <section class="custom-builder-card">
+        <div class="custom-block">
+          <label class="custom-label">1. Ajouter des images</label>
+          <input type="file" id="customBagInput" accept="image/*" multiple onchange="handleCustomBagUpload(event)">
+          <p class="custom-helper">Prix de base: $${toMoney(customBagState.basePrice)}. Chaque image ajoutée après la première: +$${toMoney(customBagState.extraImagePrice)}.</p>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">2. Contrôles</label>
+          <div class="custom-controls-panel">
+            <div class="custom-control-row"><span>Image sélectionnée</span><strong>${selected?safeText(selected.name||'Image'): 'Aucune'}</strong></div>
+            <div class="custom-control-row"><label>Taille</label><input type="range" min="40" max="220" value="${selected?selected.size:90}" ${selected?'':'disabled'} oninput="updateBagSelectedSize(this.value)"></div>
+            <div class="custom-control-row"><label>Déplacer</label><small>Glissez directement l’image sur le sac.</small></div>
+            <div class="custom-control-row"><button class="btn btn-ghost btn-sm" onclick="removeSelectedBagItem()" ${selected?'':'disabled'}>Supprimer l’image</button></div>
+          </div>
+        </div>
+        <div class="custom-block">
+          <label class="custom-label">3. Notes</label>
+          <textarea id="customBagNotes" placeholder="Ex: centrer le logo, ajouter les deux photos en bas..." oninput="customBagState.notes=this.value">${safeText(customBagState.notes||'')}</textarea>
+        </div>
+        <div class="custom-price-box"><span>Prix du sac</span><strong>$${toMoney(getCustomBagPrice())}</strong></div>
+        <div class="custom-actions-row"><button class="btn btn-orange" onclick="addCustomBagToCart()">Ajouter au panier →</button><button class="btn btn-ghost" onclick="buyCustomBagNow()">Acheter maintenant</button></div>
+      </section>
+      <aside class="custom-preview-card bag-preview-card">
+        <div class="custom-preview-head"><h3>Rendu du sac</h3><span>${customBagState.items.length} image${customBagState.items.length>1?'s':''}</span></div>
+        <div class="bag-stage" id="bagStage">
+          <div class="bag-handle left"></div><div class="bag-handle right"></div>
+          <div class="bag-body">
+            <div class="bag-print-area" id="bagPrintArea">${renderBagLayersHTML()}</div>
+          </div>
+        </div>
+        <div class="custom-summary-box"><div><span>Produit</span><strong>Sac personnalisé</strong></div><div><span>Images</span><strong>${customBagState.items.length}</strong></div><div><span>Prix</span><strong>$${toMoney(getCustomBagPrice())}</strong></div></div>
+      </aside>
+    </div>`;
+  initScrollEffects();
+}
+function renderBagLayersHTML(){
+  return customBagState.items.map(item=>`<div class="bag-layer ${customBagState.selectedId===item.id?'selected':''}" data-bag-id="${safeAttr(item.id)}" onmousedown="startBagDrag(event,'${safeAttr(item.id)}')" onclick="selectBagItem('${safeAttr(item.id)}')" style="left:${item.x}%;top:${item.y}%;width:${item.size}px;height:${item.size}px;"><img src="${safeAttr(item.src)}" alt="${safeAttr(item.name||'Image personnalisée')}"></div>`).join('') || '<div class="bag-placeholder"><strong>Ajoutez vos images</strong><span>Vous pourrez les déplacer et les agrandir sur le sac.</span></div>';
+}
+function getSelectedBagItem(){return customBagState.items.find(i=>i.id===customBagState.selectedId)||null}
+function getCustomBagPrice(){const extras=Math.max(0,customBagState.items.length-1); return customBagState.basePrice + extras*customBagState.extraImagePrice}
+function handleCustomBagUpload(event){
+  const files=Array.from(event.target.files||[]); if(!files.length) return;
+  files.forEach(file=>{const reader=new FileReader(); reader.onload=()=>{customBagState.items.push({id:`bag-${Date.now()}-${Math.floor(Math.random()*9999)}`,name:file.name,src:String(reader.result||''),x:30 + (customBagState.items.length*8)%28,y:20 + (customBagState.items.length*7)%40,size:90}); customBagState.selectedId=customBagState.items[customBagState.items.length-1].id; renderCustomBagPage();}; reader.readAsDataURL(file);});
+  event.target.value='';
+}
+function selectBagItem(id){customBagState.selectedId=id; renderCustomBagPage()}
+function updateBagSelectedSize(value){const item=getSelectedBagItem(); if(!item) return; item.size=Math.max(40,Math.min(220,parseInt(value)||90)); renderCustomBagPage()}
+function removeSelectedBagItem(){ if(!customBagState.selectedId) return; customBagState.items=customBagState.items.filter(i=>i.id!==customBagState.selectedId); customBagState.selectedId=customBagState.items[0]?.id||null; renderCustomBagPage(); }
+let bagDragState=null;
+function startBagDrag(event,id){
+  event.preventDefault(); event.stopPropagation();
+  const item=customBagState.items.find(i=>i.id===id); const area=document.getElementById('bagPrintArea');
+  if(!item||!area) return; customBagState.selectedId=id;
+  const rect=area.getBoundingClientRect();
+  bagDragState={id,startX:event.clientX,startY:event.clientY,originX:item.x,originY:item.y,rect};
+  document.addEventListener('mousemove',onBagDragMove); document.addEventListener('mouseup',stopBagDrag);
+}
+function onBagDragMove(event){
+  if(!bagDragState) return; const item=customBagState.items.find(i=>i.id===bagDragState.id); if(!item) return;
+  const dx=((event.clientX-bagDragState.startX)/bagDragState.rect.width)*100;
+  const dy=((event.clientY-bagDragState.startY)/bagDragState.rect.height)*100;
+  item.x=Math.max(0,Math.min(100-(item.size/bagDragState.rect.width*100), bagDragState.originX+dx));
+  item.y=Math.max(0,Math.min(100-(item.size/bagDragState.rect.height*100), bagDragState.originY+dy));
+  const el=document.querySelector(`[data-bag-id="${CSS.escape(item.id)}"]`);
+  if(el){el.style.left=item.x+'%'; el.style.top=item.y+'%';}
+}
+function stopBagDrag(){document.removeEventListener('mousemove',onBagDragMove); document.removeEventListener('mouseup',stopBagDrag); bagDragState=null; if((window.location.hash||'')==='#/custom-bag') renderCustomBagPage();}
+function buildBagPreviewSvg(){
+  const images=customBagState.items.map(item=>`<image href="${item.src}" x="${120 + item.x*4.1}" y="${260 + item.y*3.2}" width="${item.size*2.8}" height="${item.size*2.8}" preserveAspectRatio="xMidYMid meet"/>`).join('');
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1100" viewBox="0 0 900 1100"><rect width="100%" height="100%" fill="#f8f4ee"/><path d="M250 220c0-90 60-150 200-150s200 60 200 150" fill="none" stroke="#d8b38a" stroke-width="28" stroke-linecap="round"/><path d="M310 220c0-55 38-98 140-98s140 43 140 98" fill="none" stroke="#efdfc9" stroke-width="18" stroke-linecap="round"/><rect x="160" y="220" width="580" height="680" rx="44" fill="#efe3d0" stroke="#d8b38a" stroke-width="8"/><rect x="240" y="320" width="420" height="420" rx="22" fill="#fffdfb" stroke="#eadfce" stroke-dasharray="10 10"/>${images}<text x="450" y="1010" font-family="Outfit, Arial" font-size="40" text-anchor="middle" fill="#5C4F3D">Sac personnalisé Arty</text></svg>`;
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+function addCustomBagToCart(goCheckout=false){
+  if(!customBagState.items.length) return showToast('Ajoutez au moins une image sur le sac','error');
+  const id=`custom-bag-${Date.now()}`;
+  const preview=buildBagPreviewSvg();
+  cart.push({id,name:'Sac personnalisé',price:getCustomBagPrice(),image:preview,qty:1,type:'custom-bag',customData:{kind:'bag-design',notes:customBagState.notes||'',imageCount:customBagState.items.length,placements:customBagState.items.map(({name,src,x,y,size})=>({name,src,x,y,size}))}});
+  saveCart(); updateCartUI(); showToast('Sac personnalisé ajouté au panier','success');
+  if(goCheckout) setTimeout(()=>goToCheckout(),200);
+}
+function buyCustomBagNow(){addCustomBagToCart(true)}
+
+// Override admin orders to show custom summaries
+function renderAdminOrders(){
+  const panel=document.getElementById('adminOrdersPanel');if(!panel)return;
+  const rows=(adminOrders||[]).map(o=>{
+    const cust=o.customer||{};
+    const itemText=(o.items||[]).map(i=>{
+      const custom=i.customData?.kind==='photo-canvas' ? `<div class="admin-muted">Format: ${safeText(i.customData.sizeLabel||'')}</div>` : i.customData?.kind==='bag-design' ? `<div class="admin-muted">Images: ${safeText(i.customData.imageCount||0)}</div>` : '';
+      return `${safeText(i.name)} ×${i.qty}${custom}${i.discountAmount?` <span class="admin-muted">(-$${toMoney(i.discountAmount)})</span>`:''}`
+    }).join('<br>');
+    return `<tr><td><strong>${safeText(o.id)}</strong><br><span class="admin-muted">${new Date(o.createdAt).toLocaleDateString('fr-CA')}</span></td><td>${safeText(cust.name||'')}<br><span class="admin-muted">${safeText(cust.email||o.guestEmail||'')}</span></td><td>${itemText}</td><td><strong>$${toMoney(o.total)}</strong><br>${o.discountTotal?`<span class="admin-muted">Rabais: $${toMoney(o.discountTotal)}</span>`:''}${o.refundedTotal?`<span class="admin-muted">Remb.: $${toMoney(o.refundedTotal)}</span>`:''}</td><td><span class="admin-status ${o.paymentStatus==='paid'?'ok':o.paymentStatus==='cancelled'?'out':'pending'}">${safeText(o.paymentStatus||'pending')}</span></td><td><select class="admin-status-select" onchange="updateOrderStatus('${safeAttr(o.id)}',this.value)"><option value="en attente de paiement" ${o.status==='en attente de paiement'?'selected':''}>En attente paiement</option><option value="payée" ${o.status==='payée'?'selected':''}>Payée</option><option value="préparation" ${o.status==='préparation'?'selected':''}>Préparation</option><option value="expédiée" ${o.status==='expédiée'?'selected':''}>Expédiée</option><option value="annulée" ${o.status==='annulée'?'selected':''}>Annulée</option><option value="remboursée" ${o.status==='remboursée'?'selected':''}>Remboursée</option></select><div class="admin-actions" style="margin-top:8px"><button class="admin-btn admin-btn-edit" onclick="createRefund('${safeAttr(o.id)}')">Rembourser</button></div></td></tr>`
+  }).join('');
+  panel.innerHTML=`<div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Articles</th><th>Total</th><th>Paiement</th><th>Gestion</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="admin-muted">Aucune commande.</td></tr>'}</tbody></table></div>`;
+}
