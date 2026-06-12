@@ -9,8 +9,12 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// Stripe webhooks need the raw body for signature verification. Keep this BEFORE json parsing.
+app.post('/api/stripe/webhook', bodyParser.raw({ type: 'application/json', limit: '25mb' }), handleStripeWebhook);
+
+// Custom products can include preview images, so allow larger JSON payloads.
+app.use(bodyParser.json({ limit: '25mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '25mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ========== DATABASE STORAGE ==========
@@ -306,7 +310,14 @@ function verifyGoogleToken(idToken) {
 app.get('/api/config', (req, res) => {
   const db = readDB();
   const googleClientId = getConfiguredGoogleClientId(db);
-  res.json({ googleClientId, googleConfigured: Boolean(googleClientId) });
+  res.json({
+    googleClientId,
+    googleConfigured: Boolean(googleClientId),
+    paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
+    stripeMode: process.env.STRIPE_MODE || (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') ? 'live' : 'test'),
+    stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+    stripeConfigured: Boolean(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY)
+  });
 });
 app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }));
 app.get('/api/kits', (req, res) => res.json(getPublicKits(readDB())));
@@ -438,7 +449,7 @@ function buildOrderItems(db, rawItems = []) {
 }
 
 // ========== ORDERS & BOOKINGS ==========
-app.post('/api/orders', optionalAuth, (req, res) => {
+app.post('/api/orders', optionalAuth, async (req, res) => {
   const db = readDB();
   const { items: rawItems, customer = {}, address = {}, checkoutMode } = req.body;
   if (!Array.isArray(rawItems) || !rawItems.length) return res.status(400).json({ error: 'Aucun article' });
@@ -491,22 +502,71 @@ app.post('/api/orders', optionalAuth, (req, res) => {
     updatedAt: new Date().toISOString()
   };
 
+  const stripeEnabled = isStripeEnabled();
+  let payment = {
+    status: 'provider_not_connected',
+    provider: order.paymentProvider,
+    redirectUrl: '',
+    message: 'Payment provider not connected yet. Order saved as pending payment.'
+  };
+
+  if (stripeEnabled) {
+    try {
+      const pi = await createStripePaymentIntentForOrder(order);
+      order.paymentProvider = 'stripe';
+      order.paymentReference = pi.id || '';
+      order.stripe = {
+        paymentIntentId: pi.id || '',
+        status: pi.status || '',
+        clientSecretCreatedAt: new Date().toISOString()
+      };
+      payment = {
+        status: 'requires_payment',
+        provider: 'stripe',
+        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
+        clientSecret: pi.client_secret || '',
+        paymentIntentId: pi.id || '',
+        message: 'Stripe payment ready.'
+      };
+    } catch (err) {
+      console.error('Stripe PaymentIntent error:', err.message);
+      if (order.inventoryReserved && !order.inventoryRestocked) {
+        releaseInventoryForItems(db, order.items || [], order.id, 'Paiement Stripe non créé');
+        order.inventoryRestocked = true;
+      }
+      return res.status(500).json({ error: 'Paiement Stripe non disponible: ' + err.message });
+    }
+  }
+
   if (!db.orders) db.orders = [];
   db.orders.push(order);
   writeDB(db);
 
-  res.json({
-    success: true,
-    order,
-    payment: {
-      status: 'provider_not_connected',
-      provider: order.paymentProvider,
-      redirectUrl: '',
-      message: 'Payment provider not connected yet. Order saved as pending payment.'
-    }
-  });
+  res.json({ success: true, order, payment });
 });
 app.get('/api/orders/mine', auth, (req, res) => { const db=readDB(); res.json((db.orders||[]).filter(o=>o.userId===req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))); });
+
+app.post('/api/stripe/confirm-order', optionalAuth, async (req, res) => {
+  try {
+    if (!isStripeEnabled()) return res.status(400).json({ error: 'Stripe n’est pas configuré' });
+    const orderId = String(req.body.orderId || '').trim();
+    const paymentIntentId = String(req.body.paymentIntentId || '').trim();
+    if (!orderId || !paymentIntentId) return res.status(400).json({ error: 'Commande ou paiement manquant' });
+    const db = readDB();
+    const order = (db.orders || []).find(o => String(o.id) === orderId);
+    if (!order) return res.status(404).json({ error: 'Commande non trouvée' });
+    if (String(order.paymentReference || '') !== paymentIntentId) return res.status(400).json({ error: 'Paiement non associé à cette commande' });
+
+    const pi = await retrieveStripePaymentIntent(paymentIntentId);
+    syncOrderFromStripePaymentIntent(db, pi, 'client-confirm');
+    writeDB(db);
+    const updated = (db.orders || []).find(o => String(o.id) === orderId) || order;
+    res.json({ success: true, order: updated, stripeStatus: pi.status });
+  } catch (err) {
+    console.error('Stripe confirm-order error:', err);
+    res.status(500).json({ error: 'Impossible de confirmer le paiement: ' + err.message });
+  }
+});
 app.post('/api/bookings', (req, res) => {
   const db = readDB();
   const { userId, eventId, name, email, phone, guests, notes } = req.body;
@@ -1079,6 +1139,139 @@ function releaseInventoryForItems(db, items, orderId, reason = 'Retour stock') {
     if (kit) updateKitStock(kit, qty, db, orderId, reason);
   }
 }
+function isStripeEnabled() {
+  return String(process.env.PAYMENT_PROVIDER || '').toLowerCase() === 'stripe' && Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY);
+}
+function stripeAmountCents(amount) {
+  return Math.max(50, Math.round((Number(amount) || 0) * 100));
+}
+function encodeStripeForm(params) {
+  const body = new URLSearchParams();
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') body.append(key, String(value));
+  });
+  return body.toString();
+}
+function stripeRequest(method, endpoint, params = {}) {
+  return new Promise((resolve, reject) => {
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) return reject(new Error('STRIPE_SECRET_KEY manquant'));
+    const body = method === 'GET' ? '' : encodeStripeForm(params);
+    const req = https.request({
+      hostname: 'api.stripe.com',
+      path: endpoint,
+      method,
+      headers: {
+        Authorization: 'Basic ' + Buffer.from(secret + ':').toString('base64'),
+        'Stripe-Version': '2024-06-20',
+        ...(method === 'GET' ? {} : { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) })
+      }
+    }, resp => {
+      let data = '';
+      resp.on('data', chunk => data += chunk);
+      resp.on('end', () => {
+        let parsed = {};
+        try { parsed = data ? JSON.parse(data) : {}; } catch { parsed = { raw: data }; }
+        if (resp.statusCode >= 400) return reject(new Error(parsed.error?.message || `Stripe error ${resp.statusCode}`));
+        resolve(parsed);
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+async function createStripePaymentIntentForOrder(order) {
+  return stripeRequest('POST', '/v1/payment_intents', {
+    amount: stripeAmountCents(order.total),
+    currency: 'cad',
+    'automatic_payment_methods[enabled]': 'true',
+    receipt_email: order.customer?.email || order.guestEmail || '',
+    description: `Commande Arty ${order.id}`,
+    'metadata[orderId]': order.id,
+    'metadata[customerEmail]': order.customer?.email || order.guestEmail || '',
+    'metadata[source]': 'arty-creation'
+  });
+}
+async function retrieveStripePaymentIntent(paymentIntentId) {
+  return stripeRequest('GET', `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`);
+}
+function markOrderPaid(order, pi, source) {
+  order.status = 'payée';
+  order.paymentStatus = 'paid';
+  order.paymentProvider = 'stripe';
+  order.paymentReference = pi.id || order.paymentReference || '';
+  order.stripe = { ...(order.stripe || {}), paymentIntentId: pi.id || '', status: pi.status || '', amountReceived: (Number(pi.amount_received) || 0) / 100, confirmedAt: new Date().toISOString(), source };
+  order.paidAt = order.paidAt || new Date().toISOString();
+  order.updatedAt = new Date().toISOString();
+  order.statusHistory = order.statusHistory || [];
+  order.statusHistory.push({ from: order.status || '', to: 'payée', at: new Date().toISOString(), by: `stripe:${source}` });
+}
+function syncOrderFromStripePaymentIntent(db, pi, source = 'stripe') {
+  const orderId = pi.metadata?.orderId || '';
+  const order = (db.orders || []).find(o => String(o.id) === String(orderId) || String(o.paymentReference || '') === String(pi.id));
+  if (!order) return null;
+  order.paymentProvider = 'stripe';
+  order.paymentReference = pi.id || order.paymentReference || '';
+  order.stripe = { ...(order.stripe || {}), paymentIntentId: pi.id || '', status: pi.status || '', lastSyncedAt: new Date().toISOString() };
+  if (pi.status === 'succeeded') {
+    markOrderPaid(order, pi, source);
+  } else if (pi.status === 'processing') {
+    order.paymentStatus = 'processing';
+    order.updatedAt = new Date().toISOString();
+  } else if (['requires_payment_method', 'requires_action', 'requires_confirmation'].includes(pi.status)) {
+    order.paymentStatus = 'pending';
+    order.updatedAt = new Date().toISOString();
+  } else if (['canceled'].includes(pi.status)) {
+    order.paymentStatus = 'cancelled';
+    order.status = 'annulée';
+    if (order.inventoryReserved && !order.inventoryRestocked) {
+      releaseInventoryForItems(db, order.items || [], order.id, 'Paiement Stripe annulé');
+      order.inventoryRestocked = true;
+    }
+    order.updatedAt = new Date().toISOString();
+  } else if (pi.last_payment_error) {
+    order.paymentStatus = 'failed';
+    order.stripe.lastPaymentError = pi.last_payment_error.message || '';
+    order.updatedAt = new Date().toISOString();
+  }
+  return order;
+}
+function verifyStripeSignature(rawBody, signatureHeader, secret) {
+  if (!secret) return true;
+  if (!signatureHeader) return false;
+  const parts = Object.fromEntries(signatureHeader.split(',').map(p => p.split('=').map(x => x.trim())).filter(p => p.length === 2));
+  const timestamp = parts.t;
+  const signature = parts.v1;
+  if (!timestamp || !signature) return false;
+  const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
+  const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'));
+  } catch {
+    return false;
+  }
+}
+function handleStripeWebhook(req, res) {
+  try {
+    const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    if (secret && !verifyStripeSignature(req.body, req.headers['stripe-signature'], secret)) {
+      return res.status(400).send('Webhook signature verification failed');
+    }
+    const event = JSON.parse(req.body.toString('utf8'));
+    const db = readDB();
+    const obj = event.data?.object || {};
+    if (event.type && event.type.startsWith('payment_intent.')) {
+      syncOrderFromStripePaymentIntent(db, obj, 'webhook:' + event.type);
+      writeDB(db);
+    }
+    res.json({ received: true });
+  } catch (err) {
+    console.error('Stripe webhook error:', err);
+    res.status(400).send('Webhook error: ' + err.message);
+  }
+}
+
 function computeAdminAnalytics(db) {
   const orders = db.orders || [];
   const refunds = db.refunds || [];
