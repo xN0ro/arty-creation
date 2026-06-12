@@ -277,18 +277,37 @@ function optionalAuth(req, res, next) {
   if (s) req.session = s;
   next();
 }
+function getConfiguredGoogleClientId(db) {
+  return String(process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENTID || db?.googleClientId || '').trim();
+}
 function verifyGoogleToken(idToken) {
   return new Promise((resolve, reject) => {
-    https.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`, resp => {
+    const expectedClientId = getConfiguredGoogleClientId(readDB());
+    if (!expectedClientId) return reject(new Error('Google Client ID non configuré'));
+    https.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`, resp => {
       let data = '';
       resp.on('data', c => data += c);
-      resp.on('end', () => { try { const i = JSON.parse(data); if (i.error) reject(new Error(i.error_description)); else resolve({ email:i.email, name:i.name||i.email.split('@')[0], picture:i.picture }); } catch(e){ reject(e); } });
+      resp.on('end', () => {
+        try {
+          const i = JSON.parse(data);
+          if (i.error) return reject(new Error(i.error_description || i.error));
+          if (i.aud !== expectedClientId) return reject(new Error('Client ID Google invalide pour ce site'));
+          if (String(i.email_verified) !== 'true') return reject(new Error('Courriel Google non vérifié'));
+          const email = String(i.email || '').trim().toLowerCase();
+          if (!email) return reject(new Error('Courriel Google manquant'));
+          resolve({ email, name:i.name||email.split('@')[0], picture:i.picture||'' });
+        } catch(e){ reject(e); }
+      });
     }).on('error', reject);
   });
 }
 
 // ========== PUBLIC ==========
-app.get('/api/config', (req, res) => res.json({ googleClientId: readDB().googleClientId || '' }));
+app.get('/api/config', (req, res) => {
+  const db = readDB();
+  const googleClientId = getConfiguredGoogleClientId(db);
+  res.json({ googleClientId, googleConfigured: Boolean(googleClientId) });
+});
 app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }));
 app.get('/api/kits', (req, res) => res.json(getPublicKits(readDB())));
 app.get('/api/kits/:id', (req, res) => { const db = readDB(); const k = getPublicKits(db).find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
@@ -308,13 +327,20 @@ app.get('/api/bundles/:id', (req, res) => { const b = (readDB().bundles||[]).fin
 // ========== AUTH ==========
 app.post('/api/users/register', async (req, res) => {
   try {
-    const db = readDB(); const { name, email, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ error: 'Tous les champs sont requis' });
+    const db = readDB();
+    const name = String(req.body.name || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
+    const confirmPassword = req.body.confirmPassword === undefined ? password : String(req.body.confirmPassword || '');
+    if (!name || !email || !password || !confirmPassword) return res.status(400).json({ error: 'Tous les champs sont requis' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Courriel invalide' });
     if (password.length < 6) return res.status(400).json({ error: 'Mot de passe: 6+ caractères' });
-    if (db.users.find(u => u.email === email)) return res.status(400).json({ error: 'Courriel déjà utilisé' });
+    if (password !== confirmPassword) return res.status(400).json({ error: 'Les mots de passe ne correspondent pas' });
+    db.users = db.users || [];
+    if (db.users.find(u => String(u.email || '').toLowerCase() === email)) return res.status(400).json({ error: 'Courriel déjà utilisé' });
     const hashed = await bcrypt.hash(password, 10);
-    const isAdmin = (db.adminEmails||[]).includes(email);
-    const user = { id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', picture: '', createdAt: new Date().toISOString() };
+    const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(email);
+    const user = { id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', linkedProviders:['local'], picture: '', createdAt: new Date().toISOString() };
     db.users.push(user); writeDB(db);
     const token = createToken(user);
     res.json({ success: true, token, user: { id:user.id, name:user.name, email:user.email, role:user.role, picture:user.picture, provider:user.provider } });
@@ -323,8 +349,10 @@ app.post('/api/users/register', async (req, res) => {
 
 app.post('/api/users/login', async (req, res) => {
   try {
-    const db = readDB(); const { email, password } = req.body;
-    const user = db.users.find(u => u.email === email && u.provider === 'local');
+    const db = readDB();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
+    const user = (db.users || []).find(u => String(u.email || '').toLowerCase() === email && u.provider === 'local');
     if (!user) return res.status(401).json({ error: 'Courriel ou mot de passe invalide' });
     if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: 'Courriel ou mot de passe invalide' });
     const token = createToken(user);
@@ -336,11 +364,20 @@ app.post('/api/users/google', async (req, res) => {
   try {
     const { credential } = req.body; if (!credential) return res.status(400).json({ error: 'Pas de credential' });
     const g = await verifyGoogleToken(credential); const db = readDB();
-    let user = db.users.find(u => u.email === g.email);
+    db.users = db.users || [];
+    let user = db.users.find(u => String(u.email || '').toLowerCase() === g.email);
+    const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(g.email);
     if (!user) {
-      user = { id: Date.now(), name:g.name, email:g.email, password:'', role:(db.adminEmails||[]).includes(g.email)?'admin':'user', provider:'google', picture:g.picture||'', createdAt:new Date().toISOString() };
-      db.users.push(user); writeDB(db);
+      user = { id: Date.now(), name:g.name, email:g.email, password:'', role:isAdmin?'admin':'user', provider:'google', linkedProviders:['google'], picture:g.picture||'', createdAt:new Date().toISOString(), googleLinkedAt:new Date().toISOString() };
+      db.users.push(user);
+    } else {
+      user.role = isAdmin ? 'admin' : (user.role || 'user');
+      user.name = user.name || g.name;
+      user.picture = user.picture || g.picture || '';
+      user.linkedProviders = Array.from(new Set([...(user.linkedProviders || [user.provider || 'local']), 'google']));
+      user.googleLinkedAt = user.googleLinkedAt || new Date().toISOString();
     }
+    writeDB(db);
     const token = createToken(user);
     res.json({ success: true, token, user: { id:user.id, name:user.name, email:user.email, role:user.role, picture:user.picture, provider:user.provider } });
   } catch (err) { res.status(401).json({ error: 'Échec Google: ' + err.message }); }
