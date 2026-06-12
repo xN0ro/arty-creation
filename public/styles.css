@@ -871,3 +871,35 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
 #adminDiscountsPanel .admin-form-card,#adminKitsPanel .admin-form-card,#adminInventoryPanel .admin-form-card,#adminOrdersPanel .admin-form-card{margin-bottom:20px}
 @media(max-width:980px){.admin-pro-stats,.admin-dashboard-grid{grid-template-columns:1fr 1fr}.admin-pro-tabs{border-radius:var(--r-lg);top:70px}.admin-pro-tabs .admin-tab{flex:1 1 auto}.admin-pro-header .container{align-items:flex-start;flex-direction:column}.admin-sales-chart{overflow-x:auto}.admin-sales-bar{min-width:28px}}
 @media(max-width:640px){.admin-pro-stats,.admin-dashboard-grid,.admin-kpi-list{grid-template-columns:1fr}.admin-pro-tabs{position:static}.admin-pro-header h2{font-size:1.55rem}.admin-card-head{align-items:flex-start;flex-direction:column}}
+
+/* === MENU / EVENT PAGE STRUCTURE UPDATE === */
+.team-events-section{background:linear-gradient(180deg,var(--bg),var(--teal-pale));position:relative;overflow:hidden}
+.team-events-layout{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;margin-bottom:28px;background:rgba(255,255,255,.72);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:34px;box-shadow:var(--shadow-sm);backdrop-filter:blur(18px)}
+.team-events-layout .section-heading{text-align:left;margin-bottom:12px}
+.team-events-layout .section-sub{margin:0;max-width:780px;text-align:left}
+.team-events-layout .btn{flex:0 0 auto;white-space:nowrap}
+.team-activities-grid{margin-top:24px}
+.team-activity-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:28px;box-shadow:var(--shadow-sm);transition:var(--tr)}
+.team-activity-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-md);border-color:var(--teal)}
+.team-activity-icon{font-size:2.3rem;margin-bottom:12px}
+.team-card-sub{font-family:var(--font-d);font-size:1.15rem;color:var(--teal);font-weight:700;margin-bottom:4px}
+.team-activity-card h3{font-size:1.15rem;font-weight:800;color:var(--text);margin-bottom:8px}
+.team-activity-card p{font-size:.9rem;color:var(--text-light);line-height:1.7}
+
+.legal-page{padding-top:120px;min-height:80vh;background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%)}
+.legal-container{max-width:980px}
+.legal-hero{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:38px;box-shadow:var(--shadow-sm);margin-bottom:24px}
+.legal-hero p{color:var(--text-light);line-height:1.8;max-width:760px}
+.legal-card,.legal-mini-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:30px;box-shadow:var(--shadow-sm)}
+.legal-card h3,.legal-mini-card h3{font-size:1.08rem;font-weight:800;color:var(--text);margin:20px 0 8px}
+.legal-card h3:first-child{margin-top:0}
+.legal-card p,.legal-mini-card p{font-size:.94rem;color:var(--text-md);line-height:1.8}
+.legal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.checkout-policy-check{display:flex;align-items:flex-start;gap:10px;background:var(--bg2);border:1px solid var(--border-light);border-radius:var(--r-md);padding:14px 16px;margin:0 0 18px;font-size:.88rem;color:var(--text-md);line-height:1.55}
+.checkout-policy-check input{margin-top:4px;accent-color:var(--orange)}
+.checkout-policy-check a{color:var(--teal);font-weight:800;text-decoration:underline;text-underline-offset:3px}
+.footer-bottom a{color:inherit;transition:var(--tr)}
+.footer-bottom a:hover{color:var(--orange)}
+@media(max-width:900px){.team-events-layout{align-items:flex-start;flex-direction:column}.team-events-layout .section-heading,.team-events-layout .section-sub{text-align:center}.team-events-layout .btn{width:100%;justify-content:center}.legal-grid{grid-template-columns:1fr}.legal-hero,.legal-card,.legal-mini-card{padding:24px}}
+.footer .nav-logo{width:auto!important;min-width:0!important;margin-right:0!important;display:inline-flex}
+.footer .nav-logo-text{display:inline-block!important;color:var(--white)!important}

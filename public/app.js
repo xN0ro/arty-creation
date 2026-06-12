@@ -41,8 +41,10 @@ function handleRoute(){
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
   else if(h==='#/checkout'){show('page-checkout');renderCheckoutPage();window.scrollTo(0,0)}
-  else if(h==='#/party'){show('page-party');renderPartyPage();window.scrollTo(0,0)}
-  else if(h==='#/team'){show('page-team');renderTeamPage();window.scrollTo(0,0)}
+  else if(h==='#/privacy'){show('page-privacy');initScrollEffects();window.scrollTo(0,0)}
+  else if(h==='#/policies'){show('page-policies');initScrollEffects();window.scrollTo(0,0)}
+  else if(h.startsWith('#/party')){show('page-party');renderPartyPage();handlePartySection(h);window.scrollTo(0,0)}
+  else if(h==='#/team'){show('page-party');renderPartyPage();setTimeout(scrollToTeamEvents,220)}
   else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
 }
 function show(id){document.getElementById(id).classList.add('active')}
@@ -147,7 +149,23 @@ function eventIncludes(ev){
   if(Array.isArray(raw))return raw.map(x=>String(x).trim()).filter(Boolean);
   return String(raw||'').split(',').map(x=>x.trim()).filter(Boolean);
 }
+function scrollToPartyEvents(){document.getElementById('partyEvents')?.scrollIntoView({behavior:'smooth',block:'start'})}
 function scrollToEventRequest(){document.getElementById('privateEventRequest')?.scrollIntoView({behavior:'smooth',block:'start'})}
+function scrollToTeamEvents(){document.getElementById('teamEvents')?.scrollIntoView({behavior:'smooth',block:'start'})}
+function handlePartySection(hash){
+  const q=hash.split('?')[1]||'';
+  const section=new URLSearchParams(q).get('section');
+  if(!section)return;
+  setTimeout(()=>{
+    if(section==='calendar')scrollToPartyEvents();
+    if(section==='private')scrollToEventRequest();
+    if(section==='team')scrollToTeamEvents();
+  },240);
+}
+function prefillPrivateEventType(type){
+  scrollToEventRequest();
+  setTimeout(()=>{const el=document.getElementById('reqType');if(el)el.value=type;},260);
+}
 
 // ===== SCROLL =====
 function initScrollEffects(){
@@ -380,6 +398,7 @@ function renderEventPage(id){
 // ===== PARTY PAGE EVENTS =====
 function renderPartyPage(){
   renderPartyEvents();
+  renderTeamPage();
   initScrollEffects();
 }
 function renderPartyEvents(){
@@ -623,6 +642,7 @@ function renderCheckoutPage(){
         <div class="form-group"><label>Note de livraison</label><textarea id="coNotes" placeholder="Instructions spéciales, date souhaitée, etc."></textarea></div>
         <div class="checkout-step-title"><span>3</span><div><h3>Paiement sécurisé</h3><p>Aucune carte n'est entrée dans Arty pour le moment.</p></div></div>
         <div class="payment-provider-box"><strong>Fournisseur de paiement à connecter</strong><p>La commande sera enregistrée en statut “en attente de paiement”. Quand Stripe/Square/Moneris sera branché, ce bouton redirigera vers leur page sécurisée.</p></div>
+        <label class="checkout-policy-check"><input type="checkbox" id="coPolicyAccept"> J'accepte les <a href="#/policies">politiques d'achat</a> et la <a href="#/privacy">politique de confidentialité</a>.</label>
         <button class="btn btn-orange checkout-submit" onclick="placeOrder()">Créer la commande →</button>
       </section>
       <aside class="checkout-summary-card">
@@ -646,6 +666,7 @@ async function placeOrder(){
   if(!name)return showToast('Entrez votre nom','error');
   if(!email||!validateEmail(email))return showToast('Entrez un courriel valide','error');
   if(!address)return showToast('Entrez l’adresse de livraison','error');
+  if(!document.getElementById('coPolicyAccept')?.checked)return showToast('Veuillez accepter les politiques avant de continuer','error');
   const payload={items:cart,total:getTotal(),customer:{name,email,phone},address:{line1:address,city,province,postal,country,notes},checkoutMode:currentUser?'account':'guest'};
   try{
     const r=await fetch('/api/orders',{method:'POST',headers:authH(),body:JSON.stringify(payload)});

@@ -22,8 +22,16 @@
           <a href="#/bundles">Ensembles de kits</a>
         </div>
       </div>
-      <a href="#/party">ÉVÉNEMENT PEINTURE</a>
-      <a href="#/team">ÉVÉNEMENT D'ÉQUIPE</a>
+      <div class="nav-item nav-has-submenu">
+        <a href="#/party" class="nav-main-link">ÉVÉNEMENTS</a>
+        <div class="nav-submenu" aria-label="Sous-menu Événements">
+          <a href="#/party">Tous les événements</a>
+          <a href="#/party?section=calendar">Calendrier public</a>
+          <a href="#/party?section=private">Événement privé</a>
+          <a href="#/party?section=team">Entreprise / équipe</a>
+        </div>
+      </div>
+      <a href="#/tutorials">TUTORIELS</a>
       <a href="#/" data-nav="contact">CONTACT</a>
     </div>
     <div class="nav-auth" id="navAuth"></div>
@@ -282,12 +290,13 @@
       <div class="container">
         <div class="event-hero-grid fade-up">
           <div class="event-hero-copy">
-            <div class="section-tag">Événement peinture</div>
-            <h2 class="section-heading">Réservez une place ou créez un <span class="accent">événement privé</span></h2>
-            <p class="event-intro-highlight">Il y a toujours une bonne raison de peindre ensemble. Arty peut accueillir des ateliers publiés, des fêtes d’anniversaire, mariages, soirées entre amis, familles et activités sur mesure.</p>
+            <div class="section-tag">Événements Arty</div>
+            <h2 class="section-heading">Ateliers peinture, fêtes privées et <span class="accent">activités d'équipe</span></h2>
+            <p class="event-intro-highlight">Une seule page claire pour tous les événements Arty : réserver une place à un atelier publié, demander une fête privée ou organiser une activité créative pour une entreprise.</p>
             <div class="event-hero-actions">
-              <a href="#partyEvents" class="btn btn-orange">Voir les événements</a>
+              <button class="btn btn-orange" onclick="scrollToPartyEvents()">Voir le calendrier</button>
               <button class="btn btn-teal" onclick="scrollToEventRequest()">Demander un événement</button>
+              <button class="btn btn-ghost" onclick="scrollToTeamEvents()">Activités d'équipe</button>
             </div>
           </div>
           <div class="event-hero-panel">
@@ -304,8 +313,8 @@
       <div class="container">
         <div class="event-options-grid fade-up">
           <div class="event-option-card"><span>🎟️</span><h3>Réserver une place</h3><p>Les clients peuvent choisir un événement publié, voir les places disponibles et réserver directement.</p></div>
-          <div class="event-option-card"><span>🎂</span><h3>Événement privé</h3><p>Anniversaire, mariage, fête, famille ou soirée entre amis — envoyez une demande personnalisée.</p></div>
-          <div class="event-option-card"><span>🎨</span><h3>Expérience Arty</h3><p>Matériel, thème, tutoriel et ambiance créative gardent le même style chaleureux de la marque.</p></div>
+          <div class="event-option-card"><span>🎂</span><h3>Événement privé</h3><p>Anniversaire, mariage, fête familiale ou soirée entre amis — envoyez une demande personnalisée.</p></div>
+          <div class="event-option-card"><span>🤝</span><h3>Entreprise / équipe</h3><p>Team building, réunion créative ou journée de reconnaissance avec kits livrés et animation possible.</p></div>
         </div>
       </div>
     </section>
@@ -315,7 +324,7 @@
         <div class="text-center fade-up">
           <div class="section-tag">Calendrier</div>
           <h2 class="section-heading">Événements <span class="accent">à venir</span></h2>
-          <p class="section-sub">Publiez les ateliers depuis l’admin. Les clients voient seulement les événements publiés et peuvent réserver leurs places.</p>
+          <p class="section-sub">Les clients voient seulement les événements publiés depuis l’admin. Ils peuvent réserver leurs places directement.</p>
         </div>
         <div class="events-grid stagger-children" id="partyEventsGrid"></div>
       </div>
@@ -325,8 +334,8 @@
       <div class="container">
         <div class="text-center fade-up">
           <div class="section-tag">Occasions</div>
-          <h2 class="section-heading">Quand commander les <span class="accent">kits Arty</span> ?</h2>
-          <p class="section-sub">On garde les informations actuelles, mais elles deviennent maintenant une vraie partie utile de la page pour guider les clients.</p>
+          <h2 class="section-heading">Pour quelles <span class="accent">occasions</span> ?</h2>
+          <p class="section-sub">Cette section guide les clients vers le bon format : atelier public, fête privée, activité familiale ou événement spécial.</p>
         </div>
         <div class="occasions-grid stagger-children" id="occasionsGrid">
           <div class="occasion-card"><h3>🎂 Fête d'Anniversaire Enfants</h3><p>Chaque enfant peint son propre kit et repart avec une belle œuvre réalisée par lui-même. Grâce aux vidéos préenregistrées Arty, la fête s’anime facilement, sans animateur sur place.</p><p><strong>Parfait pour 4 à 15 enfants, de 6 à 12 ans.</strong></p></div>
@@ -339,13 +348,27 @@
       </div>
     </section>
 
+    <section class="section-pad team-events-section" id="teamEvents">
+      <div class="container">
+        <div class="team-events-layout fade-up">
+          <div>
+            <div class="section-tag">Entreprise & équipe</div>
+            <h2 class="section-heading">Activités créatives <span class="accent">pour entreprises</span></h2>
+            <p class="section-sub team-intro-main">Arty transforme vos team buildings, réunions et journées de reconnaissance en expériences créatives, uniques et mémorables. Les kits peuvent être livrés au bureau et l’animation peut se faire en présentiel ou avec vidéos préenregistrées.</p>
+          </div>
+          <button class="btn btn-orange" onclick="prefillPrivateEventType('Entreprise / équipe')">Demander pour mon équipe →</button>
+        </div>
+        <div class="team-grid team-activities-grid stagger-children" id="teamGrid"></div>
+      </div>
+    </section>
+
     <section class="section-pad private-event-section" id="privateEventRequest">
       <div class="container">
         <div class="private-event-layout fade-up">
           <div class="private-event-copy">
             <div class="section-tag">Sur mesure</div>
             <h2 class="section-heading">Demander un <span class="accent">événement privé</span></h2>
-            <p>Pour un mariage, anniversaire, fête familiale, activité d’école ou groupe privé, le client peut envoyer les détails. La demande apparaîtra dans l’admin pour suivi.</p>
+            <p>Pour un mariage, anniversaire, fête familiale, activité d’école, équipe de travail ou groupe privé, le client peut envoyer les détails. La demande apparaîtra dans l’admin pour suivi.</p>
             <ul class="private-event-list">
               <li>Choix de la date et du type d’événement</li>
               <li>Nombre approximatif de participants</li>
@@ -355,7 +378,7 @@
           <div class="private-event-form">
             <h3>Créer une demande</h3>
             <div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="reqName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="reqEmail" placeholder="nom@exemple.com"></div></div>
-            <div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="reqPhone" placeholder="(514) 000-0000"></div><div class="form-group"><label>Type</label><select id="reqType"><option>Anniversaire</option><option>Mariage</option><option>Soirée entre amis</option><option>Famille</option><option>École / enfants</option><option>Autre</option></select></div></div>
+            <div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="reqPhone" placeholder="(514) 000-0000"></div><div class="form-group"><label>Type</label><select id="reqType"><option>Anniversaire</option><option>Mariage</option><option>Soirée entre amis</option><option>Famille</option><option>Entreprise / équipe</option><option>École / enfants</option><option>Autre</option></select></div></div>
             <div class="form-row"><div class="form-group"><label>Date souhaitée</label><input type="date" id="reqDate"></div><div class="form-group"><label>Participants</label><input type="number" id="reqGuests" min="1" placeholder="Ex: 12"></div></div>
             <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="reqLocation" placeholder="À la maison, salle, studio..."></div><div class="form-group"><label>Budget</label><input type="text" id="reqBudget" placeholder="Optionnel"></div></div>
             <div class="form-group"><label>Message</label><textarea id="reqMessage" placeholder="Expliquez le style d’événement souhaité."></textarea></div>
@@ -364,27 +387,6 @@
         </div>
       </div>
     </section>
-  </div>
-</div>
-
-<!-- ===================== TEAM ===================== -->
-<div class="page" id="page-team">
-  <div class="team-section section-pad" style="padding-top:120px">
-    <div class="container">
-      <div class="text-center fade-up">
-        <div class="section-tag">Événement d'équipe</div>
-        <h2 class="section-heading">Activités créatives <span class="accent">pour entreprises</span></h2>
-        <p class="section-sub team-intro-main">Arty transforme vos événements d’entreprise en expériences créatives, uniques et mémorables. Pour vos team buildings, réunions ou journées de reconnaissance, nous offrons des activités artistiques sur mesure, avec kits livrés à votre bureau.</p>
-        <p class="team-animation-note">Animation disponible en présentiel ou avec vidéos préenregistrées.</p>
-      </div>
-
-      <div class="team-grid team-activities-grid stagger-children" id="teamGrid"></div>
-
-      <div class="team-bottom-cta fade-up">
-        <p>Planifiez une activité artistique sur mesure pour votre équipe et transformez votre événement d’entreprise en moment créatif, rassembleur et mémorable.</p>
-        <a href="#/" onclick="scrollToSection('contact')" class="btn btn-orange">Nous contacter →</a>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -459,6 +461,52 @@
   </div>
 </div>
 
+<!-- ===================== PRIVACY ===================== -->
+<div class="page" id="page-privacy">
+  <div class="legal-page section-pad">
+    <div class="container legal-container">
+      <div class="legal-hero fade-up">
+        <div class="section-tag">Confidentialité</div>
+        <h2 class="section-heading">Politique de <span class="accent">confidentialité</span></h2>
+        <p>Cette page explique clairement quelles informations Arty recueille et comment elles sont utilisées pour les commandes, réservations et demandes d’événements.</p>
+      </div>
+      <div class="legal-card fade-up">
+        <h3>Informations recueillies</h3>
+        <p>Arty peut recueillir le nom, le courriel, le téléphone, l’adresse de livraison, les détails de commande, les réservations d’événements et les messages envoyés par les formulaires.</p>
+        <h3>Utilisation</h3>
+        <p>Ces informations servent à gérer les commandes, confirmer les réservations, répondre aux demandes, préparer les événements et communiquer avec les clients.</p>
+        <h3>Paiement</h3>
+        <p>Arty ne doit pas stocker les numéros de carte bancaire. Les paiements doivent être traités par un fournisseur sécurisé externe comme Stripe, Square ou Moneris.</p>
+        <h3>Conservation</h3>
+        <p>Les données sont conservées dans la base de données du site pour assurer le suivi des commandes, réservations, demandes et communications clients.</p>
+        <h3>Contact</h3>
+        <p>Pour demander une correction ou suppression d’information, contactez Arty via le formulaire de contact du site.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== POLICIES ===================== -->
+<div class="page" id="page-policies">
+  <div class="legal-page section-pad">
+    <div class="container legal-container">
+      <div class="legal-hero fade-up">
+        <div class="section-tag">Politiques</div>
+        <h2 class="section-heading">Politiques <span class="accent">d'achat</span></h2>
+        <p>Une page simple pour les clients avant d’acheter, réserver ou demander un événement Arty.</p>
+      </div>
+      <div class="legal-grid fade-up">
+        <div class="legal-mini-card"><h3>Commandes</h3><p>Les commandes sont confirmées par courriel. Les prix, rabais et disponibilités peuvent être ajustés depuis l’admin.</p></div>
+        <div class="legal-mini-card"><h3>Livraison</h3><p>Les informations de livraison sont nécessaires pour préparer et expédier les kits. Les frais et délais peuvent être confirmés avant paiement final.</p></div>
+        <div class="legal-mini-card"><h3>Annulations</h3><p>Les demandes d’annulation doivent être envoyées le plus rapidement possible. Une commande déjà préparée ou expédiée peut être plus difficile à annuler.</p></div>
+        <div class="legal-mini-card"><h3>Remboursements</h3><p>Les remboursements doivent être gérés selon le statut de la commande et le fournisseur de paiement connecté au site.</p></div>
+        <div class="legal-mini-card"><h3>Événements</h3><p>Les places réservées dépendent de la capacité disponible. Les événements privés sont confirmés après validation de la date, du lieu, du nombre de personnes et du prix.</p></div>
+        <div class="legal-mini-card"><h3>Produits</h3><p>Les images servent de référence. Les kits peuvent varier légèrement selon les disponibilités de matériel et les choix artistiques.</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== PROFILE ===================== -->
 <div class="page" id="page-profile"><div class="profile-page"><div class="container" id="profilePageContent"></div></div></div>
 
@@ -508,12 +556,12 @@
 <footer class="footer" id="mainFooter">
   <div class="container">
     <div class="footer-grid">
-      <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"></a><p>Kits de peinture créatifs et événements qui libèrent votre artiste intérieur.</p></div>
-      <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les Kits</a></li><li><a href="#/paintings">Enfants</a></li><li><a href="#/paintings">Duo</a></li></ul></div>
-      <div><h4>Événements</h4><ul><li><a href="#/party">Occasions</a></li><li><a href="#/team">Entreprises</a></li></ul></div>
-      <div><h4>Compagnie</h4><ul><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li><li><a href="#">FAQ</a></li></ul></div>
+      <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Création</span></a><p>Kits de peinture créatifs, tutoriels et événements qui libèrent votre artiste intérieur.</p></div>
+      <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les kits</a></li><li><a href="#/bundles">Ensembles de kits</a></li><li><a href="#/checkout">Panier / commande</a></li></ul></div>
+      <div><h4>Événements</h4><ul><li><a href="#/party">Tous les événements</a></li><li><a href="#/party?section=calendar">Calendrier public</a></li><li><a href="#/party?section=private">Demande privée</a></li><li><a href="#/party?section=team">Entreprise / équipe</a></li></ul></div>
+      <div><h4>Informations</h4><ul><li><a href="#/tutorials">Tutoriels</a></li><li><a href="#/privacy">Confidentialité</a></li><li><a href="#/policies">Politiques d'achat</a></li><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li></ul></div>
     </div>
-    <div class="footer-bottom"><span>&copy; 2026 Arty!</span><span>Fait avec 🧡</span></div>
+    <div class="footer-bottom"><span>&copy; 2026 Arty!</span><span><a href="#/privacy">Confidentialité</a> · <a href="#/policies">Politiques</a></span></div>
   </div>
 </footer>
 
