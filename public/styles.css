@@ -812,3 +812,62 @@ button{cursor:pointer;font-family:var(--font-b);border:none} input,textarea,sele
   .nav-logo-img{height:48px}
   .nav-logo-text{font-size:1.22rem!important}
 }
+
+/* === ADMIN PRO MANAGEMENT UPGRADE === */
+.admin-pro-page{background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%)}
+.admin-pro-header{background:linear-gradient(135deg,var(--card),var(--teal-pale));border-bottom:1px solid var(--border-light);box-shadow:var(--shadow-sm);padding:28px 0;margin-bottom:24px}
+.admin-pro-header .container{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.admin-eyebrow{font-size:.74rem;font-weight:800;letter-spacing:1.8px;text-transform:uppercase;color:var(--orange);margin-bottom:4px}
+.admin-pro-header h2{font-size:2rem;line-height:1.05;color:var(--black);font-weight:900;letter-spacing:-.8px}
+.admin-header-sub{display:block;color:var(--text-light);font-size:.9rem;margin-top:6px}
+.admin-pro-container{padding-bottom:80px}
+.admin-pro-stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin-bottom:22px}
+.admin-pro-stats .admin-stat-card{text-align:left;border-radius:var(--r-lg);padding:24px;position:relative;overflow:hidden}
+.admin-pro-stats .admin-stat-card::after{content:'';position:absolute;right:-24px;bottom:-24px;width:96px;height:96px;border-radius:50%;background:var(--teal-pale)}
+.admin-pro-stats .admin-stat-card.alert-card::after{background:var(--orange-pale)}
+.admin-pro-stats .admin-stat-card .num{font-family:var(--font-b);font-size:1.8rem;font-weight:900;letter-spacing:-.8px;position:relative;z-index:1}
+.admin-pro-tabs{background:rgba(255,255,255,.72);border:1px solid var(--border-light);border-radius:999px;padding:8px;box-shadow:var(--shadow-sm);position:sticky;top:78px;z-index:20;backdrop-filter:blur(18px)}
+.admin-pro-tabs .admin-tab{font-weight:800;border-color:transparent;background:transparent}
+.admin-pro-tabs .admin-tab.active{background:var(--teal);box-shadow:0 8px 22px rgba(27,154,170,.16)}
+.admin-dashboard-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:20px;align-items:start}
+.admin-pro-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:24px;box-shadow:var(--shadow-sm)}
+.admin-pro-card.big{grid-column:auto}
+.admin-pro-card h3,.admin-card-head h3{font-size:1.08rem;font-weight:900;color:var(--text);margin-bottom:14px}
+.admin-card-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.admin-card-head span{font-family:var(--font-d);font-size:1.6rem;font-weight:800;color:var(--orange)}
+.admin-sales-chart{height:220px;display:flex;gap:9px;align-items:end;padding:18px 6px 0;border-radius:var(--r-lg);background:linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%);border:1px solid var(--border-light)}
+.admin-sales-bar{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+.admin-sales-bar span{width:100%;min-height:5px;border-radius:12px 12px 4px 4px;background:linear-gradient(180deg,var(--teal),var(--orange));box-shadow:0 6px 12px rgba(27,154,170,.12)}
+.admin-sales-bar small{font-size:.65rem;color:var(--text-faint);white-space:nowrap;transform:rotate(-35deg);height:18px}
+.admin-kpi-list{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.admin-kpi-list div{background:var(--bg);border:1px solid var(--border-light);border-radius:14px;padding:14px}
+.admin-kpi-list span{display:block;font-size:.72rem;color:var(--text-faint);font-weight:800;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+.admin-kpi-list strong{font-size:1.1rem;color:var(--text);font-weight:900}
+.admin-alert-line,.admin-order-mini{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border-light)}
+.admin-alert-line:last-child,.admin-order-mini:last-child{border-bottom:0}
+.admin-alert-line strong,.admin-order-mini strong{font-size:.88rem;color:var(--text)}
+.admin-alert-line span,.admin-order-mini span{font-size:.78rem;color:var(--orange);font-weight:800;text-align:right}
+.admin-table-wrap.compact{box-shadow:none;border-radius:var(--r-md)}
+.price-sale{display:inline-flex!important;align-items:baseline;gap:7px;flex-wrap:wrap}
+.price-sale>span{font-family:var(--font-d);font-size:1.55rem;font-weight:800;color:var(--orange)}
+.price-sale small{font-family:var(--font-b);font-size:.8rem;color:var(--text-faint);text-decoration:line-through;font-weight:700}
+.product-price.price-sale>span{font-size:2.5rem}
+.discount-pill{display:inline-flex;margin-top:5px;padding:4px 9px;border-radius:999px;background:var(--orange-pale);color:var(--orange);border:1px solid rgba(232,134,58,.14);font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+.kit-stock-badge.low{background:var(--teal);color:var(--white)}
+.low-stock-tag{background:var(--orange-pale)!important;color:var(--orange)!important;border-color:rgba(232,134,58,.18)!important;font-weight:800}
+.inventory-num{display:inline-flex;align-items:center;justify-content:center;min-width:46px;height:34px;border-radius:999px;background:var(--teal-pale);color:var(--teal);font-weight:900}
+.inventory-num.low{background:var(--orange-pale);color:var(--orange)}
+.inventory-num.out{background:#FFF0EE;color:#D44}
+.inventory-adjust{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.inventory-adjust input{width:72px;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--card)}
+.inventory-adjust button,.admin-btn{padding:8px 11px;border-radius:10px;border:1px solid var(--border-light);background:var(--bg);font-size:.76rem;font-weight:800;color:var(--text-md);transition:var(--tr)}
+.inventory-adjust button:hover,.admin-btn-edit:hover{background:var(--teal);color:var(--white);border-color:var(--teal)}
+.admin-btn-delete:hover{background:#D44;color:white;border-color:#D44}
+.admin-status.pending{background:var(--orange-pale);color:var(--orange)}
+.admin-form-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}
+.admin-form-head h3{font-size:1.18rem;font-weight:900;color:var(--text);margin-bottom:4px}
+.admin-form-head p{font-size:.86rem;color:var(--text-light);line-height:1.5}
+.admin-form-card select[multiple]{min-height:114px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--card);color:var(--text-md)}
+#adminDiscountsPanel .admin-form-card,#adminKitsPanel .admin-form-card,#adminInventoryPanel .admin-form-card,#adminOrdersPanel .admin-form-card{margin-bottom:20px}
+@media(max-width:980px){.admin-pro-stats,.admin-dashboard-grid{grid-template-columns:1fr 1fr}.admin-pro-tabs{border-radius:var(--r-lg);top:70px}.admin-pro-tabs .admin-tab{flex:1 1 auto}.admin-pro-header .container{align-items:flex-start;flex-direction:column}.admin-sales-chart{overflow-x:auto}.admin-sales-bar{min-width:28px}}
+@media(max-width:640px){.admin-pro-stats,.admin-dashboard-grid,.admin-kpi-list{grid-template-columns:1fr}.admin-pro-tabs{position:static}.admin-pro-header h2{font-size:1.55rem}.admin-card-head{align-items:flex-start;flex-direction:column}}

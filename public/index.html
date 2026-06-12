@@ -464,16 +464,42 @@
 
 <!-- ===================== ADMIN ===================== -->
 <div class="page" id="page-admin">
-  <div class="admin-page">
-    <div class="admin-header-bar"><div class="container"><h2>🎨 Arty! Admin</h2><button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour</button></div></div>
-    <div class="container" style="padding-bottom:60px">
-      <div class="admin-stats"><div class="admin-stat-card"><div class="num" id="statKits">0</div><div class="label">Kits</div></div><div class="admin-stat-card"><div class="num" id="statCats">0</div><div class="label">Catégories</div></div><div class="admin-stat-card"><div class="num" id="statUsers">0</div><div class="label">Utilisateurs</div></div><div class="admin-stat-card"><div class="num" id="statOrders">0</div><div class="label">Commandes</div></div></div>
-      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits',this)">Kits</button><button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button><button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button><button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button><button class="admin-tab" onclick="switchAdminTab('orders',this)">Commandes</button></div>
-      <div id="adminKitsPanel"></div>
+  <div class="admin-page admin-pro-page">
+    <div class="admin-header-bar admin-pro-header">
+      <div class="container">
+        <div>
+          <p class="admin-eyebrow">Centre de gestion Arty</p>
+          <h2>Admin Dashboard</h2>
+          <span class="admin-header-sub">Ventes, inventaire, rabais, commandes, remboursements et événements.</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour au site</button>
+      </div>
+    </div>
+    <div class="container admin-pro-container">
+      <div class="admin-stats admin-pro-stats">
+        <div class="admin-stat-card"><div class="num" id="statRevenue">$0.00</div><div class="label">Ventes totales</div></div>
+        <div class="admin-stat-card"><div class="num" id="statOrders">0</div><div class="label">Commandes</div></div>
+        <div class="admin-stat-card"><div class="num" id="statKits">0</div><div class="label">Produits</div></div>
+        <div class="admin-stat-card alert-card"><div class="num" id="statLowInventory">0</div><div class="label">Alertes stock</div></div>
+      </div>
+      <div class="admin-tabs admin-pro-tabs">
+        <button class="admin-tab active" onclick="switchAdminTab('dashboard',this)">Tableau de bord</button>
+        <button class="admin-tab" onclick="switchAdminTab('kits',this)">Produits</button>
+        <button class="admin-tab" onclick="switchAdminTab('inventory',this)">Inventaire</button>
+        <button class="admin-tab" onclick="switchAdminTab('discounts',this)">Rabais</button>
+        <button class="admin-tab" onclick="switchAdminTab('orders',this)">Commandes & remboursements</button>
+        <button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button>
+        <button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button>
+        <button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button>
+      </div>
+      <div id="adminDashboardPanel"></div>
+      <div id="adminKitsPanel" style="display:none"></div>
+      <div id="adminInventoryPanel" style="display:none"></div>
+      <div id="adminDiscountsPanel" style="display:none"></div>
+      <div id="adminOrdersPanel" style="display:none"></div>
+      <div id="adminEventsPanel" style="display:none"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
       <div id="adminBundlesPanel" style="display:none"></div>
-      <div id="adminEventsPanel" style="display:none"></div>
-      <div id="adminOrdersPanel" style="display:none"></div>
     </div>
   </div>
 </div>
