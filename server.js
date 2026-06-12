@@ -263,6 +263,11 @@ function adminOnly(req, res, next) {
   req.session = s;
   next();
 }
+function optionalAuth(req, res, next) {
+  const s = getSession(req);
+  if (s) req.session = s;
+  next();
+}
 function verifyGoogleToken(idToken) {
   return new Promise((resolve, reject) => {
     https.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`, resp => {
@@ -356,13 +361,93 @@ app.put('/api/users/me', auth, async (req, res) => {
   res.json({success:true,user:{id:u.id,name:u.name,email:u.email,role:u.role,picture:u.picture,provider:u.provider}});
 });
 
+
+function validEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+function buildOrderItems(db, rawItems = []) {
+  const items = [];
+  for (const raw of rawItems) {
+    const rawId = String(raw.id || '').trim();
+    const qty = Math.max(1, parseInt(raw.qty) || 1);
+    if (!rawId) return { error: 'Article invalide' };
+
+    if (rawId.startsWith('bundle-')) {
+      const bundleId = parseInt(rawId.replace('bundle-', ''));
+      const bundle = (db.bundles || []).find(b => b.id === bundleId);
+      if (!bundle) return { error: `Ensemble non trouvé: ${rawId}` };
+      items.push({ id: rawId, type: 'bundle', name: bundle.name, price: parseFloat(bundle.price) || 0, image: bundle.image || '', qty });
+      continue;
+    }
+
+    const kitId = parseInt(rawId);
+    const kit = (db.kits || []).find(k => k.id === kitId);
+    if (!kit) return { error: `Kit non trouvé: ${rawId}` };
+    if (kit.inStock === false) return { error: `${kit.name} est épuisé` };
+    items.push({ id: String(kit.id), type: 'kit', name: kit.name, price: parseFloat(kit.price) || 0, image: kit.image || '', qty });
+  }
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+  return { items, subtotal };
+}
+
 // ========== ORDERS & BOOKINGS ==========
-app.post('/api/orders', auth, (req, res) => {
-  const db = readDB(); const {items,address,total} = req.body;
-  if(!items||!items.length) return res.status(400).json({error:'Aucun article'});
-  const order = { id:'ARTY-'+Date.now().toString(36).toUpperCase(), userId:req.session.userId, items, address:address||'', total:parseFloat(total)||0, status:'confirmée', createdAt:new Date().toISOString() };
-  if(!db.orders) db.orders=[]; db.orders.push(order); writeDB(db);
-  res.json({success:true,order});
+app.post('/api/orders', optionalAuth, (req, res) => {
+  const db = readDB();
+  const { items: rawItems, customer = {}, address = {}, checkoutMode } = req.body;
+  if (!Array.isArray(rawItems) || !rawItems.length) return res.status(400).json({ error: 'Aucun article' });
+
+  const built = buildOrderItems(db, rawItems);
+  if (built.error) return res.status(400).json({ error: built.error });
+
+  const user = req.session?.userId ? (db.users || []).find(u => u.id === req.session.userId) : null;
+  const customerName = String(customer.name || user?.name || '').trim();
+  const customerEmail = String(customer.email || user?.email || '').trim().toLowerCase();
+  const customerPhone = String(customer.phone || '').trim();
+
+  if (!customerName) return res.status(400).json({ error: 'Nom requis' });
+  if (!validEmail(customerEmail)) return res.status(400).json({ error: 'Courriel valide requis' });
+  if (!address || !String(address.line1 || '').trim()) return res.status(400).json({ error: 'Adresse de livraison requise' });
+
+  const order = {
+    id: 'ARTY-' + Date.now().toString(36).toUpperCase(),
+    userId: user?.id || null,
+    checkoutMode: user ? 'account' : (checkoutMode === 'guest' ? 'guest' : 'guest'),
+    customer: { name: customerName, email: customerEmail, phone: customerPhone },
+    guestEmail: user ? '' : customerEmail,
+    items: built.items,
+    address: {
+      line1: String(address.line1 || '').trim(),
+      city: String(address.city || '').trim(),
+      province: String(address.province || '').trim(),
+      postal: String(address.postal || '').trim(),
+      country: String(address.country || 'Canada').trim(),
+      notes: String(address.notes || '').trim()
+    },
+    subtotal: Number(built.subtotal.toFixed(2)),
+    total: Number(built.subtotal.toFixed(2)),
+    status: 'en attente de paiement',
+    paymentStatus: 'pending',
+    paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
+    paymentReference: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (!db.orders) db.orders = [];
+  db.orders.push(order);
+  writeDB(db);
+
+  res.json({
+    success: true,
+    order,
+    payment: {
+      status: 'provider_not_connected',
+      provider: order.paymentProvider,
+      redirectUrl: '',
+      message: 'Payment provider not connected yet. Order saved as pending payment.'
+    }
+  });
 });
 app.get('/api/orders/mine', auth, (req, res) => { const db=readDB(); res.json((db.orders||[]).filter(o=>o.userId===req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))); });
 app.post('/api/bookings', (req, res) => {
@@ -467,6 +552,27 @@ function normalizeEventPayload(body, existing = {}) {
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
+
+app.get('/api/admin/orders', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+});
+app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
+  const db = readDB();
+  const id = String(req.params.id || '');
+  const i = (db.orders || []).findIndex(o => String(o.id) === id);
+  if (i === -1) return res.status(404).json({ error: 'Commande non trouvée' });
+  const allowed = ['en attente de paiement', 'payée', 'préparation', 'expédiée', 'annulée'];
+  const status = String(req.body.status || '').trim();
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'Statut invalide' });
+  db.orders[i].status = status;
+  if (status === 'payée') db.orders[i].paymentStatus = 'paid';
+  if (status === 'annulée' && db.orders[i].paymentStatus !== 'paid') db.orders[i].paymentStatus = 'cancelled';
+  db.orders[i].updatedAt = new Date().toISOString();
+  writeDB(db);
+  res.json({ success: true, order: db.orders[i] });
+});
+
 
 // Categories CRUD
 app.post('/api/admin/categories', adminOnly, (req, res) => {
