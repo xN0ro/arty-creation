@@ -32,18 +32,64 @@ const DEFAULT_DB = {
 };
 
 const APP_DATA_DIR = path.join(__dirname, 'data');
-const DATA_DIR = path.resolve(
-  process.env.ARTY_DATA_DIR ||
-  process.env.DATA_DIR ||
-  process.env.RENDER_DISK_PATH ||
-  APP_DATA_DIR
-);
+const RENDER_RECOMMENDED_DATA_DIR = '/var/data';
+
+function canUseExistingDir(dirPath) {
+  try {
+    if (!fs.existsSync(dirPath)) return false;
+    const stat = fs.statSync(dirPath);
+    if (!stat.isDirectory()) return false;
+    const testFile = path.join(dirPath, `.arty-write-test-${process.pid}-${Date.now()}`);
+    fs.writeFileSync(testFile, 'ok');
+    fs.unlinkSync(testFile);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveDataDir() {
+  if (process.env.ARTY_DB_PATH) return path.dirname(path.resolve(process.env.ARTY_DB_PATH));
+  if (process.env.ARTY_DATA_DIR) return process.env.ARTY_DATA_DIR;
+  if (process.env.DATA_DIR) return process.env.DATA_DIR;
+  if (process.env.RENDER_DISK_PATH) return process.env.RENDER_DISK_PATH;
+
+  // Extra safety: if the Render disk was mounted at /var/data but the env var was forgotten, use it automatically.
+  if (process.env.RENDER && canUseExistingDir(RENDER_RECOMMENDED_DATA_DIR)) return RENDER_RECOMMENDED_DATA_DIR;
+
+  return APP_DATA_DIR;
+}
+
+const DATA_DIR = path.resolve(resolveDataDir());
 const DB_PATH = path.resolve(process.env.ARTY_DB_PATH || path.join(DATA_DIR, 'db.json'));
 const DB_DIR = path.dirname(DB_PATH);
 const DB_BACKUP_PATH = `${DB_PATH}.bak`;
 
+function isLikelyPersistentPath() {
+  return DB_DIR === RENDER_RECOMMENDED_DATA_DIR || DB_DIR.startsWith(`${RENDER_RECOMMENDED_DATA_DIR}/`);
+}
+
 function ensureDBDir() {
   if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+function getStorageHealth() {
+  const usingConfiguredPath = Boolean(process.env.ARTY_DB_PATH || process.env.ARTY_DATA_DIR || process.env.DATA_DIR || process.env.RENDER_DISK_PATH);
+  const usingRender = Boolean(process.env.RENDER);
+  const persistentPath = isLikelyPersistentPath();
+  const safeOnRender = !usingRender || persistentPath;
+  return {
+    ok: safeOnRender,
+    environment: usingRender ? 'render' : 'local',
+    dbPath: DB_PATH,
+    dataDir: DATA_DIR,
+    backupPath: DB_BACKUP_PATH,
+    dbExists: fs.existsSync(DB_PATH),
+    backupExists: fs.existsSync(DB_BACKUP_PATH),
+    usingConfiguredPath,
+    usingRenderRecommendedDiskPath: persistentPath,
+    warning: safeOnRender ? '' : 'Render is using an ephemeral app folder. Accounts will disappear after redeploy unless you attach a Persistent Disk at /var/data or set ARTY_DATA_DIR to the disk mount path.'
+  };
 }
 
 function normalizeDB(db = {}) {
@@ -134,7 +180,10 @@ function readDB() {
 }
 
 initializeDB();
+const storageHealth = getStorageHealth();
 console.log(`Arty DB path: ${DB_PATH}`);
+console.log(`Arty storage status: ${storageHealth.ok ? 'persistent/safe' : 'ephemeral/not safe'}`);
+if (storageHealth.warning) console.error(storageHealth.warning);
 
 const SESSION_TTL_DAYS = parseInt(process.env.ARTY_SESSION_TTL_DAYS || '30', 10);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -206,6 +255,7 @@ function verifyGoogleToken(idToken) {
 
 // ========== PUBLIC ==========
 app.get('/api/config', (req, res) => res.json({ googleClientId: readDB().googleClientId || '' }));
+app.get('/api/storage-health', (req, res) => res.json(getStorageHealth()));
 app.get('/api/kits', (req, res) => res.json(readDB().kits));
 app.get('/api/kits/:id', (req, res) => { const k = readDB().kits.find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
@@ -396,7 +446,7 @@ function normalizeEventPayload(body, existing = {}) {
 
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length}); });
-app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ dbPath: DB_PATH, dataDir: DATA_DIR, backupPath: DB_BACKUP_PATH, usingPersistentPath: DB_DIR !== APP_DATA_DIR, dbExists: fs.existsSync(DB_PATH), backupExists: fs.existsSync(DB_BACKUP_PATH) }); });
+app.get('/api/admin/storage', adminOnly, (req, res) => { res.json(getStorageHealth()); });
 
 // Categories CRUD
 app.post('/api/admin/categories', adminOnly, (req, res) => {
