@@ -277,56 +277,93 @@
 
 <!-- ===================== PAINTING PARTY ===================== -->
 <div class="page" id="page-party">
-  <div class="section-pad event-party-page" style="padding-top:120px;background:var(--bg2)">
-    <div class="container">
-      <div class="text-center fade-up">
-        <div class="section-tag">Événement peinture</div>
-        <h2 class="section-heading">Quand commander les <span class="accent">kits Arty</span> ?</h2>
-        <p class="event-intro-highlight">Il y a toujours une bonne raison de peindre ensemble ! Voici toutes les occasions où les kits Arty font toute la différence.</p>
-      </div>
-
-      <div class="occasions-grid stagger-children" id="occasionsGrid">
-        <div class="occasion-card">
-          <h3>🎂 Fête d'Anniversaire Enfants</h3>
-          <p>Chaque enfant peint son propre kit et repart avec une belle œuvre réalisée par lui-même. Grâce aux vidéos préenregistrées Arty, la fête s’anime facilement, sans animateur sur place.</p>
-          <p><strong>Parfait pour 4 à 15 enfants, de 6 à 12 ans.</strong></p>
-        </div>
-
-        <div class="occasion-card">
-          <h3>🥂 Fête d'Anniversaire Adultes</h3>
-          <p>Un anniversaire adulte avec une touche artistique : chic, amusant et original. Choisissez votre thème dans notre catalogue et recevez tout le nécessaire directement chez vous. Ajoutez vin, musique et pinceaux pour une ambiance parfaite.</p>
-        </div>
-
-        <div class="occasion-card">
-          <h3>👩‍👩‍👧 Soirée Entre Amies et Familles</h3>
-          <p>Rassemblez famille et amis autour d’une activité créative et chaleureuse. Chacun peint à son rythme et profite d’un beau moment artistique à partager.</p>
-        </div>
-
-        <div class="occasion-card">
-          <h3>🧒 Occuper les Enfants</h3>
-          <p>Vous recevez des amis ou de la famille et vous avez besoin d'occuper les enfants ? Les kits Arty sont parfaits ! Les enfants sont absorbés par leur peinture pendant des heures — et vous profitez de votre soirée.</p>
-        </div>
-
-        <div class="occasion-card">
-          <h3>🧘 Art-Thérapie & Solo</h3>
-          <p>Parfois, il suffit de s’asseoir, de prendre un pinceau et de laisser les couleurs parler. Sans pression, sans performance, seulement un moment pour soi.</p>
-          <p>Peindre devient alors une pause douce, créative et relaxante, presque comme une petite thérapie par la couleur.</p>
-        </div>
-
-        <div class="occasion-card">
-          <h3>💑 Soirée peinture en couple</h3>
-          <p>Partagez un moment créatif à deux, dans une ambiance douce et romantique. Choisissez votre thème, préparez vos pinceaux, et créez ensemble une œuvre qui deviendra un beau souvenir de votre soirée.</p>
+  <div class="event-party-page" style="padding-top:110px;background:var(--bg2)">
+    <section class="event-hero-modern section-pad">
+      <div class="container">
+        <div class="event-hero-grid fade-up">
+          <div class="event-hero-copy">
+            <div class="section-tag">Événement peinture</div>
+            <h2 class="section-heading">Réservez une place ou créez un <span class="accent">événement privé</span></h2>
+            <p class="event-intro-highlight">Il y a toujours une bonne raison de peindre ensemble. Arty peut accueillir des ateliers publiés, des fêtes d’anniversaire, mariages, soirées entre amis, familles et activités sur mesure.</p>
+            <div class="event-hero-actions">
+              <button class="btn btn-orange" onclick="document.getElementById('partyEvents')?.scrollIntoView({behavior:'smooth'})">Voir les événements</button>
+              <button class="btn btn-teal" onclick="scrollToEventRequest()">Demander un événement</button>
+            </div>
+          </div>
+          <div class="event-hero-panel">
+            <div class="event-hero-stat"><span id="eventPublishedCount">0</span><small>événement(s) publié(s)</small></div>
+            <div class="event-hero-step"><strong>1</strong><p>Choisissez une date publiée ou demandez une date privée.</p></div>
+            <div class="event-hero-step"><strong>2</strong><p>Réservez vos places et laissez vos informations.</p></div>
+            <div class="event-hero-step"><strong>3</strong><p>Arty prépare l’activité, les kits et l’expérience créative.</p></div>
+          </div>
         </div>
       </div>
+    </section>
 
-      <div class="event-bottom-cta fade-up">
-        <p>Planifiez votre prochaine soirée ou événement en choisissant parmi nos kits de peinture créatifs. Transformez un simple moment en une expérience artistique amusante, originale et mémorable.</p>
-        <div class="event-cta-actions">
-          <a href="#/paintings" class="btn btn-teal">Voir nos peintures</a>
-          <a href="#/bundles" class="btn btn-teal">Voir nos ensembles</a>
+    <section class="section-pad event-options-section">
+      <div class="container">
+        <div class="event-options-grid fade-up">
+          <div class="event-option-card"><span>🎟️</span><h3>Réserver une place</h3><p>Les clients peuvent choisir un événement publié, voir les places disponibles et réserver directement.</p></div>
+          <div class="event-option-card"><span>🎂</span><h3>Événement privé</h3><p>Anniversaire, mariage, fête, famille ou soirée entre amis — envoyez une demande personnalisée.</p></div>
+          <div class="event-option-card"><span>🎨</span><h3>Expérience Arty</h3><p>Matériel, thème, tutoriel et ambiance créative gardent le même style chaleureux de la marque.</p></div>
         </div>
       </div>
-    </div>
+    </section>
+
+    <section class="section-pad" id="partyEvents">
+      <div class="container">
+        <div class="text-center fade-up">
+          <div class="section-tag">Calendrier</div>
+          <h2 class="section-heading">Événements <span class="accent">à venir</span></h2>
+          <p class="section-sub">Publiez les ateliers depuis l’admin. Les clients voient seulement les événements publiés et peuvent réserver leurs places.</p>
+        </div>
+        <div class="events-grid stagger-children" id="partyEventsGrid"></div>
+      </div>
+    </section>
+
+    <section class="section-pad event-occasions-section">
+      <div class="container">
+        <div class="text-center fade-up">
+          <div class="section-tag">Occasions</div>
+          <h2 class="section-heading">Quand commander les <span class="accent">kits Arty</span> ?</h2>
+          <p class="section-sub">On garde les informations actuelles, mais elles deviennent maintenant une vraie partie utile de la page pour guider les clients.</p>
+        </div>
+        <div class="occasions-grid stagger-children" id="occasionsGrid">
+          <div class="occasion-card"><h3>🎂 Fête d'Anniversaire Enfants</h3><p>Chaque enfant peint son propre kit et repart avec une belle œuvre réalisée par lui-même. Grâce aux vidéos préenregistrées Arty, la fête s’anime facilement, sans animateur sur place.</p><p><strong>Parfait pour 4 à 15 enfants, de 6 à 12 ans.</strong></p></div>
+          <div class="occasion-card"><h3>🥂 Fête d'Anniversaire Adultes</h3><p>Un anniversaire adulte avec une touche artistique : chic, amusant et original. Choisissez votre thème dans notre catalogue et recevez tout le nécessaire directement chez vous.</p></div>
+          <div class="occasion-card"><h3>👩‍👩‍👧 Soirée Entre Amies et Familles</h3><p>Rassemblez famille et amis autour d’une activité créative et chaleureuse. Chacun peint à son rythme et profite d’un beau moment artistique à partager.</p></div>
+          <div class="occasion-card"><h3>🧒 Occuper les Enfants</h3><p>Vous recevez des amis ou de la famille et vous avez besoin d'occuper les enfants ? Les kits Arty sont parfaits pour garder les enfants concentrés et créatifs.</p></div>
+          <div class="occasion-card"><h3>🧘 Art-Thérapie & Solo</h3><p>Peindre devient une pause douce, créative et relaxante, presque comme une petite thérapie par la couleur.</p></div>
+          <div class="occasion-card"><h3>💑 Soirée peinture en couple</h3><p>Partagez un moment créatif à deux et créez ensemble une œuvre qui deviendra un beau souvenir de votre soirée.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-pad private-event-section" id="privateEventRequest">
+      <div class="container">
+        <div class="private-event-layout fade-up">
+          <div class="private-event-copy">
+            <div class="section-tag">Sur mesure</div>
+            <h2 class="section-heading">Demander un <span class="accent">événement privé</span></h2>
+            <p>Pour un mariage, anniversaire, fête familiale, activité d’école ou groupe privé, le client peut envoyer les détails. La demande apparaîtra dans l’admin pour suivi.</p>
+            <ul class="private-event-list">
+              <li>Choix de la date et du type d’événement</li>
+              <li>Nombre approximatif de participants</li>
+              <li>Lieu, budget et message personnalisé</li>
+            </ul>
+          </div>
+          <div class="private-event-form">
+            <h3>Créer une demande</h3>
+            <div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="reqName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="reqEmail" placeholder="nom@exemple.com"></div></div>
+            <div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="reqPhone" placeholder="(514) 000-0000"></div><div class="form-group"><label>Type</label><select id="reqType"><option>Anniversaire</option><option>Mariage</option><option>Soirée entre amis</option><option>Famille</option><option>École / enfants</option><option>Autre</option></select></div></div>
+            <div class="form-row"><div class="form-group"><label>Date souhaitée</label><input type="date" id="reqDate"></div><div class="form-group"><label>Participants</label><input type="number" id="reqGuests" min="1" placeholder="Ex: 12"></div></div>
+            <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="reqLocation" placeholder="À la maison, salle, studio..."></div><div class="form-group"><label>Budget</label><input type="text" id="reqBudget" placeholder="Optionnel"></div></div>
+            <div class="form-group"><label>Message</label><textarea id="reqMessage" placeholder="Expliquez le style d’événement souhaité."></textarea></div>
+            <button class="btn btn-orange" onclick="submitPrivateEventRequest()">Envoyer la demande →</button>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -457,7 +494,7 @@
     <div id="registerForm" style="display:none"><div class="form-group"><label>Nom</label><input type="text" id="regName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="regEmail" placeholder="vous@exemple.com"></div><div class="form-group"><label>Mot de passe</label><input type="password" id="regPassword" placeholder="6+ caractères"></div><button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button></div>
   </div>
 </div>
-<div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer la Réservation →</button></div></div>
+<div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver une place</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="booking-summary-box" id="bookingSummaryText"></div><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div></div><div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="bookingPhone" placeholder="Optionnel"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option></select></div></div><div class="form-group"><label>Note</label><textarea id="bookingNotes" placeholder="Allergie, demande spéciale, groupe..."></textarea></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer la réservation →</button></div></div>
 <div class="modal-overlay" id="checkoutModal"><div class="modal"><button class="modal-close" onclick="closeModal('checkout')">&times;</button><h2>Paiement</h2><p class="modal-subtitle">Livraison en 1 à quelques jours.</p><div id="checkoutSummary"></div><div class="form-group"><label>Nom</label><input type="text" id="checkoutName"></div><div class="form-group"><label>Courriel</label><input type="email" id="checkoutEmail"></div><div class="form-group"><label>Adresse de livraison</label><input type="text" id="checkoutAddress" placeholder="Adresse complète"></div><div class="form-row"><div class="form-group"><label>Carte</label><input type="text" id="checkoutCard" placeholder="4242 4242 4242 4242" maxlength="19"></div><div class="form-group"><label>Expiration</label><input type="text" id="checkoutExpiry" placeholder="MM/AA" maxlength="5"></div></div><div class="form-row"><div class="form-group"><label>CVC</label><input type="text" id="checkoutCVC" placeholder="123" maxlength="4"></div><div class="form-group"><label>Total</label><div class="checkout-total" id="checkoutTotal">$0</div></div></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="placeOrder()">Passer la Commande →</button></div></div>
 <div class="modal-overlay" id="successModal"><div class="modal" style="text-align:center"><div style="font-size:4rem;margin-bottom:14px">🎉</div><h2>Commande Confirmée!</h2><p class="modal-subtitle">Vos kits sont en route!</p><p style="font-size:.88rem;color:var(--teal);margin-bottom:20px" id="successOrderId"></p><button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continuer →</button></div></div>
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>

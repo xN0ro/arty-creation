@@ -1,5 +1,5 @@
 /* Arty! — Application v3 */
-let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='';
+let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[];
 let catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 
 document.addEventListener('DOMContentLoaded',async()=>{
@@ -40,7 +40,7 @@ function handleRoute(){
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
-  else if(h==='#/party'){show('page-party');initScrollEffects();window.scrollTo(0,0)}
+  else if(h==='#/party'){show('page-party');renderPartyPage();window.scrollTo(0,0)}
   else if(h==='#/team'){show('page-team');renderTeamPage();window.scrollTo(0,0)}
   else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
 }
@@ -131,6 +131,21 @@ async function loadCategories(){try{allCategories=await(await fetch('/api/catego
 async function loadEvents(){try{allEvents=await(await fetch('/api/events')).json()}catch{allEvents=[]}}
 async function loadTeam(){try{teamActivities=await(await fetch('/api/team-activities')).json()}catch{teamActivities=[]}}
 async function loadBundles(){try{allBundles=await(await fetch('/api/bundles')).json()}catch{allBundles=[]}}
+async function loadAdminEvents(){try{adminEvents=await(await fetch('/api/admin/events',{headers:authH()})).json()}catch{adminEvents=[]}}
+async function loadAdminBookings(){try{adminBookings=await(await fetch('/api/admin/bookings',{headers:authH()})).json()}catch{adminBookings=[]}}
+async function loadEventRequests(){try{eventRequests=await(await fetch('/api/admin/event-requests',{headers:authH()})).json()}catch{eventRequests=[]}}
+function formatEventDate(ev,withYear=false){
+  if(!ev?.date)return 'Date à confirmer';
+  const d=new Date(ev.date+'T00:00:00');
+  return d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:withYear?'numeric':undefined});
+}
+function spotsLeft(ev){return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
+function eventIncludes(ev){
+  const raw=ev?.includes||[];
+  if(Array.isArray(raw))return raw.map(x=>String(x).trim()).filter(Boolean);
+  return String(raw||'').split(',').map(x=>x.trim()).filter(Boolean);
+}
+function scrollToEventRequest(){document.getElementById('privateEventRequest')?.scrollIntoView({behavior:'smooth',block:'start'})}
 
 // ===== SCROLL =====
 function initScrollEffects(){
@@ -317,64 +332,83 @@ function chgQty(d){const i=document.getElementById('pQty');if(!i)return;i.value=
 
 // ===== EVENT DETAIL PAGE =====
 function renderEventPage(id){
-  const ev = allEvents.find(e=>e.id===id);
-  const c = document.getElementById('eventPageContent');
+  const ev=allEvents.find(k=>k.id===id);
+  const c=document.getElementById('eventPageContent');
   if(!ev){c.innerHTML='<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">📅</div><p>Événement non trouvé</p></div>';return}
-  const d = new Date(ev.date+'T00:00:00');
-  const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const spotsLeft = ev.maxSpots - ev.bookedSpots;
-  const pct = (ev.bookedSpots / ev.maxSpots) * 100;
+  const left=spotsLeft(ev);
+  const booked=parseInt(ev.bookedSpots)||0;
+  const max=parseInt(ev.maxSpots)||0;
+  const pct=max?Math.min(100,(booked/max)*100):0;
+  const includes=eventIncludes(ev);
   c.innerHTML=`
     <button class="product-back" onclick="navigate('#/party')">← Retour aux événements</button>
-    <div class="event-detail-layout">
-      <img src="${ev.image}" alt="${ev.title}" class="event-detail-img">
-      <div class="event-detail-info">
-        <div class="event-detail-date">📅 ${dateStr} à ${ev.time||'18:00'}</div>
-        <h1>${ev.title}</h1>
-        <div class="event-detail-price">$${ev.price.toFixed(2)} <span style="font-size:.9rem;color:var(--text-light);font-family:var(--font-b)">/personne</span></div>
-        <p>${ev.description}</p>
-        <div class="event-detail-meta">
-          <span class="event-meta-tag">⏱ ${ev.duration||'2 heures'}</span>
-          <span class="event-meta-tag">📍 ${ev.location||'À déterminer'}</span>
-          <span class="event-meta-tag">👥 Max ${ev.maxSpots} personnes</span>
+    <div class="event-detail-modern">
+      <div class="event-detail-media">
+        <img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" class="event-detail-img">
+        <div class="event-detail-floating-card">
+          <span>${left>0?left:'0'}</span>
+          <small>place${left!==1?'s':''} disponible${left!==1?'s':''}</small>
         </div>
+      </div>
+      <div class="event-detail-info event-detail-modern-info">
+        <div class="event-type-badge">${safeText(ev.eventType||'Atelier peinture')}</div>
+        <div class="event-detail-date">${formatEventDate(ev,true)} · ${safeText(ev.time||'18:00')}</div>
+        <h1>${safeText(ev.title)}</h1>
+        <div class="product-price">$${toMoney(ev.price)} <span>/personne</span></div>
+        <p class="product-desc">${safeText(ev.description||'Une activité créative Arty avec tout le matériel inclus.')}</p>
+        <div class="event-detail-meta">
+          <span class="event-meta-tag">⏱ ${safeText(ev.duration||'2 heures')}</span>
+          <span class="event-meta-tag">📍 ${safeText(ev.location||'Lieu à confirmer')}</span>
+          <span class="event-meta-tag">👥 Max ${max||20} personnes</span>
+        </div>
+        ${includes.length?`<div class="event-includes-box"><h3>Inclus dans l’événement</h3><ul>${includes.map(i=>`<li>${safeText(i)}</li>`).join('')}</ul></div>`:''}
         <div class="event-spots-info">
-          <span class="spots-text">${spotsLeft} place${spotsLeft!==1?'s':''} restante${spotsLeft!==1?'s':''}</span>
+          <div class="event-spots-row"><span class="spots-text">${left>0?left+' place'+(left>1?'s':'')+' restante'+(left>1?'s':''):'Complet'}</span><span>${booked}/${max||0} réservé${booked>1?'s':''}</span></div>
           <div class="event-spots-bar"><div class="event-spots-bar-fill" style="width:${pct}%"></div></div>
         </div>
-        <button class="btn btn-orange" onclick="openBooking(${ev.id})" ${spotsLeft<=0?'disabled style="opacity:.4"':''} style="width:100%;justify-content:center">
-          ${spotsLeft<=0?'Complet':'Réserver ma place →'}
-        </button>
+        ${ev.hostNote?`<p class="event-host-note">${safeText(ev.hostNote)}</p>`:''}
+        <div class="event-detail-actions">
+          <button class="btn btn-orange" onclick="openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>${left<=0?'Complet':'Réserver ma place →'}</button>
+          <button class="btn btn-ghost" onclick="navigate('#/party');setTimeout(scrollToEventRequest,250)">Demander un événement privé</button>
+        </div>
       </div>
     </div>`;
 }
 
 // ===== PARTY PAGE EVENTS =====
-function renderPartyEvents(){
-  const partyGrid = document.getElementById('partyEventsGrid');
-  if(!partyGrid) return;
-  const sorted = [...allEvents].sort((a,b)=>new Date(a.date)-new Date(b.date));
-  partyGrid.innerHTML = sorted.map(ev=>{
-    const d = new Date(ev.date+'T00:00:00');
-    const dateStr = d.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'});
-    const spotsLeft = ev.maxSpots - ev.bookedSpots;
-    return `<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
-      <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
-      <div class="event-card-body">
-        <div class="event-card-date">${dateStr} · ${ev.time||''}</div>
-        <h3 class="event-card-title">${ev.title}</h3>
-        <p class="event-card-desc">${ev.description}</p>
-        <div class="event-card-footer">
-          <span class="event-card-price">$${ev.price.toFixed(2)}</span>
-          <span class="event-card-spots">${spotsLeft<=0?'Complet':spotsLeft+' places'}</span>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  if(!sorted.length) partyGrid.innerHTML='<div class="empty-state"><div class="empty-state-icon">📅</div><p>Aucun événement programmé pour le moment.</p></div>';
+function renderPartyPage(){
+  renderPartyEvents();
   initScrollEffects();
 }
-
+function renderPartyEvents(){
+  const partyGrid=document.getElementById('partyEventsGrid');
+  const count=document.getElementById('eventPublishedCount');
+  if(!partyGrid)return;
+  const sorted=[...allEvents].sort((a,b)=>new Date((a.date||'')+'T'+(a.time||'00:00'))-new Date((b.date||'')+'T'+(b.time||'00:00')));
+  if(count)count.textContent=String(sorted.length);
+  partyGrid.innerHTML=sorted.map(ev=>{
+    const left=spotsLeft(ev);
+    const booked=parseInt(ev.bookedSpots)||0;
+    const max=parseInt(ev.maxSpots)||0;
+    const pct=max?Math.min(100,(booked/max)*100):0;
+    return `<article class="event-card event-card-modern" onclick="navigate('#/event/${ev.id}')">
+      <div class="event-card-img"><img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" loading="lazy"><span class="event-card-type">${safeText(ev.eventType||'Atelier')}</span></div>
+      <div class="event-card-body">
+        <div class="event-card-date">${formatEventDate(ev)} · ${safeText(ev.time||'18:00')}</div>
+        <h3 class="event-card-title">${safeText(ev.title)}</h3>
+        <p class="event-card-desc">${safeText(ev.description||'Réservez votre place pour une activité peinture Arty.')}</p>
+        <div class="event-card-mini-meta"><span>${safeText(ev.duration||'2 heures')}</span><span>${safeText(ev.location||'Lieu à confirmer')}</span></div>
+        <div class="event-card-seatbar"><div style="width:${pct}%"></div></div>
+        <div class="event-card-footer">
+          <span class="event-card-price">$${toMoney(ev.price)}</span>
+          <span class="event-card-spots ${left<=0?'is-full':''}">${left<=0?'Complet':left+' place'+(left>1?'s':'')}</span>
+        </div>
+        <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver</button>
+      </div>
+    </article>`;
+  }).join('');
+  if(!sorted.length)partyGrid.innerHTML=`<div class="event-empty-card"><h3>Aucun événement publié pour le moment</h3><p>Vous pouvez quand même demander un événement privé pour un anniversaire, mariage, fête ou activité familiale.</p><button class="btn btn-orange" onclick="scrollToEventRequest()">Demander un événement →</button></div>`;
+}
 // ===== TEAM PAGE =====
 function renderTeamPage(){
   const activities = [
@@ -529,12 +563,70 @@ function initGoogleSignIn(){const w=document.getElementById('googleBtnWrap');if(
 async function handleGoogle(r){try{const res=await fetch('/api/users/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential})});const d=await res.json();if(!res.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Échec Google','error')}}
 
 // ===== BOOKING =====
-function openBooking(eventId){if(!currentUser){openModal('auth');return showToast('Connectez-vous pour réserver','error')}const ev=allEvents.find(e=>e.id===eventId);if(!ev)return;document.getElementById('bookingEventTitle').textContent=ev.title;document.getElementById('bookingPrice').textContent=ev.price.toFixed(2);document.getElementById('bookingName').value=currentUser.name;document.getElementById('bookingEmail').value=currentUser.email;document.getElementById('bookingModal').classList.add('active');document.getElementById('bookingModal').dataset.eid=eventId;document.body.style.overflow='hidden'}
-async function confirmBooking(){const eid=document.getElementById('bookingModal').dataset.eid,n=document.getElementById('bookingName').value,e=document.getElementById('bookingEmail').value,g=document.getElementById('bookingGuests').value;if(!n||!e)return showToast('Remplissez nom et courriel','error');try{const r=await fetch('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:currentUser?.id,eventId:eid,name:n,email:e,guests:g})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');closeModal('booking');showToast('Réservation confirmée! 🎉','success');await loadEvents();handleRoute()}catch{showToast('Erreur de connexion','error')}}
+function openBooking(eventId){
+  const ev=allEvents.find(e=>e.id===eventId);
+  if(!ev)return;
+  const left=spotsLeft(ev);
+  if(left<=0)return showToast('Cet événement est complet','error');
+  document.getElementById('bookingEventTitle').textContent=ev.title;
+  document.getElementById('bookingPrice').textContent=toMoney(ev.price);
+  document.getElementById('bookingName').value=currentUser?.name||'';
+  document.getElementById('bookingEmail').value=currentUser?.email||'';
+  const phone=document.getElementById('bookingPhone');if(phone)phone.value='';
+  const notes=document.getElementById('bookingNotes');if(notes)notes.value='';
+  const sel=document.getElementById('bookingGuests');
+  if(sel)sel.innerHTML=Array.from({length:Math.min(left,10)},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join('');
+  const summary=document.getElementById('bookingSummaryText');
+  if(summary)summary.textContent=`${formatEventDate(ev,true)} à ${ev.time||'18:00'} · ${left} place${left>1?'s':''} disponible${left>1?'s':''}`;
+  document.getElementById('bookingModal').classList.add('active');
+  document.getElementById('bookingModal').dataset.eid=eventId;
+  document.body.style.overflow='hidden';
+}
+async function confirmBooking(){
+  const modal=document.getElementById('bookingModal');
+  const eid=modal.dataset.eid;
+  const n=document.getElementById('bookingName').value.trim();
+  const e=document.getElementById('bookingEmail').value.trim();
+  const p=document.getElementById('bookingPhone')?.value.trim()||'';
+  const g=document.getElementById('bookingGuests').value;
+  const notes=document.getElementById('bookingNotes')?.value.trim()||'';
+  if(!n||!e)return showToast('Remplissez nom et courriel','error');
+  try{
+    const r=await fetch('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:currentUser?.id,eventId:eid,name:n,email:e,phone:p,guests:g,notes})});
+    const d=await r.json();
+    if(!r.ok)return showToast(d.error,'error');
+    closeModal('booking');
+    showToast('Réservation confirmée! 🎉','success');
+    await loadEvents();
+    handleRoute();
+  }catch{showToast('Erreur de connexion','error')}
+}
+async function submitPrivateEventRequest(){
+  const payload={
+    name:document.getElementById('reqName')?.value.trim(),
+    email:document.getElementById('reqEmail')?.value.trim(),
+    phone:document.getElementById('reqPhone')?.value.trim(),
+    eventType:document.getElementById('reqType')?.value,
+    preferredDate:document.getElementById('reqDate')?.value,
+    guests:document.getElementById('reqGuests')?.value,
+    location:document.getElementById('reqLocation')?.value.trim(),
+    budget:document.getElementById('reqBudget')?.value.trim(),
+    message:document.getElementById('reqMessage')?.value.trim()
+  };
+  if(!payload.name||!payload.email||!payload.eventType)return showToast('Nom, courriel et type d’événement requis','error');
+  try{
+    const r=await fetch('/api/event-requests',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!r.ok)return showToast(d.error,'error');
+    showToast('Demande envoyée! Arty pourra vous répondre bientôt.','success');
+    ['reqName','reqEmail','reqPhone','reqDate','reqGuests','reqLocation','reqBudget','reqMessage'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+    const type=document.getElementById('reqType');if(type)type.value='Anniversaire';
+  }catch{showToast('Erreur de connexion','error')}
+}
 async function submitContact(){const n=document.getElementById('contactName').value,e=document.getElementById('contactEmail').value,m=document.getElementById('contactMessage').value;if(!n||!e||!m)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,message:m})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');showToast(d.message,'success');['contactName','contactEmail','contactMessage'].forEach(id=>document.getElementById(id).value='')}catch{showToast('Erreur','error')}}
 
 // ===== ADMIN =====
-async function loadAdminData(){try{const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents()}
+async function loadAdminData(){try{await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests()]);const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents()}
 function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none'}
 
 function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-group"><label>Badges / tags de filtre</label><input type="text" id="aKitTags" placeholder="ex: enfants, cadeau, couple, mini-kit"><small class="admin-help">Séparez les badges par virgule. Ils deviennent automatiquement des filtres clients.</small></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> En stock</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Badges</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));const tags=normalizeKitTags(k);return`<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td>${tags.length?tags.slice(0,3).map(t=>`<span class="admin-tag-mini">${safeText(t)}</span>`).join(''):'-'}</td><td>${k.inStock!==false?'<span class="admin-status ok">En stock</span>':'<span class="admin-status out">Épuisé</span>'}</td><td>$${toMoney(k.price)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
@@ -559,11 +651,73 @@ function editBun(id){const b=allBundles.find(x=>x.id===id);if(!b)return;document
 function resetBunForm(){['editBunId','aBunName','aBunPrice','aBunDesc','aBunOrigPrice','aBunTag','aBunImg'].forEach(id=>document.getElementById(id).value='');const sel=document.getElementById('aBunKits');if(sel)Array.from(sel.options).forEach(o=>o.selected=false);document.getElementById('bunFormTitle').textContent='Ajouter un Bundle';document.getElementById('cancelBun').style.display='none'}
 async function deleteBun(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/bundles/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadBundles();loadAdminData()}
 
-function renderAdminEvents(){document.getElementById('adminEventsPanel').innerHTML=`<div class="admin-form-card"><h3 id="evFormTitle">Ajouter un Événement</h3><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix ($)</label><input type="number" id="aEvPrice" step="0.01"></div><div class="form-group"><label>Places max</label><input type="number" id="aEvSpots"></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg"></div></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveEv()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Événement</th><th>Date</th><th>Prix</th><th>Places</th><th>Actions</th></tr></thead><tbody>${allEvents.map(e=>`<tr><td><strong>${e.title}</strong></td><td>${e.date}</td><td>$${e.price.toFixed(2)}</td><td>${e.bookedSpots||0}/${e.maxSpots}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editEv(${e.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteEv(${e.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
-async function saveEv(){const eid=document.getElementById('editEvId').value;const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value};if(!p.title||!p.date)return showToast('Titre et date requis','error');await fetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadEvents();loadAdminData()}
-function editEv(id){const e=allEvents.find(x=>x.id===id);if(!e)return;document.getElementById('editEvId').value=e.id;document.getElementById('aEvTitle').value=e.title;document.getElementById('aEvDate').value=e.date;document.getElementById('aEvDesc').value=e.description||'';document.getElementById('aEvTime').value=e.time||'18:00';document.getElementById('aEvDur').value=e.duration||'';document.getElementById('aEvPrice').value=e.price;document.getElementById('aEvSpots').value=e.maxSpots;document.getElementById('aEvLoc').value=e.location||'';document.getElementById('aEvImg').value=e.image||'';document.getElementById('evFormTitle').textContent='Modifier';document.getElementById('cancelEv').style.display='inline-flex'}
-function resetEvForm(){['editEvId','aEvTitle','aEvDate','aEvDesc','aEvDur','aEvPrice','aEvSpots','aEvLoc','aEvImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('aEvTime').value='18:00';document.getElementById('evFormTitle').textContent='Ajouter un Événement';document.getElementById('cancelEv').style.display='none'}
-async function deleteEv(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/events/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadEvents();loadAdminData()}
+function renderAdminEvents(){
+  const panel=document.getElementById('adminEventsPanel');
+  const requestRows=eventRequests.map(r=>`<tr><td><strong>${safeText(r.name)}</strong><br><small>${safeText(r.email)} ${r.phone?'· '+safeText(r.phone):''}</small></td><td>${safeText(r.eventType)}<br><small>${r.preferredDate?safeText(r.preferredDate):'Date flexible'} · ${r.guests||'?'} pers.</small></td><td>${safeText(r.location||'À confirmer')}</td><td><span class="admin-status-badge">${safeText(r.status||'nouvelle')}</span></td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="updateEventRequestStatus(${r.id},'contactée')">Contactée</button><button class="admin-btn admin-btn-delete" onclick="deleteEventRequest(${r.id})">Supprimer</button></div></td></tr>`).join('');
+  const bookingRows=adminBookings.slice(0,25).map(b=>`<tr><td><strong>${safeText(b.name)}</strong><br><small>${safeText(b.email)} ${b.phone?'· '+safeText(b.phone):''}</small></td><td>${safeText(b.event?.title||'Événement supprimé')}</td><td>${b.guests} place${b.guests>1?'s':''}</td><td>${new Date(b.bookedAt).toLocaleDateString('fr-CA')}</td><td>${safeText(b.status||'confirmée')}</td></tr>`).join('');
+  const eventRows=adminEvents.map(e=>`<tr><td><strong>${safeText(e.title)}</strong><br><small>${safeText(e.eventType||'atelier')} · ${safeText(e.location||'Lieu à confirmer')}</small></td><td>${safeText(e.date||'')} ${safeText(e.time||'')}</td><td><span class="admin-status-badge ${e.status==='draft'?'draft':e.status==='cancelled'?'cancelled':''}">${safeText(e.status||'published')}</span></td><td>$${toMoney(e.price)}</td><td>${e.bookedSpots||0}/${e.maxSpots||0}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editEv(${e.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteEv(${e.id})">Supprimer</button></div></td></tr>`).join('');
+  panel.innerHTML=`
+    <div class="admin-event-dashboard">
+      <div class="admin-event-card"><span>${adminEvents.filter(e=>(e.status||'published')==='published').length}</span><p>Événements publiés</p></div>
+      <div class="admin-event-card"><span>${adminBookings.reduce((s,b)=>s+(parseInt(b.guests)||0),0)}</span><p>Places réservées</p></div>
+      <div class="admin-event-card"><span>${eventRequests.filter(r=>(r.status||'nouvelle')==='nouvelle').length}</span><p>Nouvelles demandes privées</p></div>
+    </div>
+    <div class="admin-form-card admin-event-builder">
+      <div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Créez un atelier public avec date, prix, places et statut de publication.</p></div><button class="btn btn-ghost btn-sm" onclick="resetEvForm()">Nouveau</button></div>
+      <input type="hidden" id="editEvId">
+      <div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle" placeholder="Ex: Soirée peinture fleurs séchées"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div>
+      <div class="form-group"><label>Description</label><textarea id="aEvDesc" placeholder="Expliquez l’expérience, l’ambiance et ce qui est inclus."></textarea></div>
+      <div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div>
+      <div class="form-row"><div class="form-group"><label>Prix / personne ($)</label><input type="number" id="aEvPrice" step="0.01"></div><div class="form-group"><label>Places max</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div>
+      <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!, Montréal"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg" placeholder="/images/evenement.jpg ou URL"></div></div>
+      <div class="form-group"><label>Inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peintures, pinceaux, tutoriel, collation"></div>
+      <div class="form-group"><label>Note importante</label><input type="text" id="aEvHostNote" placeholder="Ex: Arrivez 10 minutes avant le début."></div>
+      <label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveEv()">Sauvegarder l’événement</button><button class="btn btn-ghost" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div>
+    </div>
+    <div class="admin-section-title"><h3>Événements publiables</h3><p>Un événement avec statut “Publié” sera visible aux clients et disponible à la réservation.</p></div>
+    <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Événement</th><th>Date</th><th>Statut</th><th>Prix</th><th>Places</th><th>Actions</th></tr></thead><tbody>${eventRows||'<tr><td colspan="6">Aucun événement.</td></tr>'}</tbody></table></div>
+    <div class="admin-section-title"><h3>Réservations récentes</h3><p>Les 25 dernières réservations de places.</p></div>
+    <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Client</th><th>Événement</th><th>Places</th><th>Date</th><th>Statut</th></tr></thead><tbody>${bookingRows||'<tr><td colspan="5">Aucune réservation.</td></tr>'}</tbody></table></div>
+    <div class="admin-section-title"><h3>Demandes d’événements privés</h3><p>Mariages, anniversaires, fêtes, groupes privés et demandes sur mesure.</p></div>
+    <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Client</th><th>Projet</th><th>Lieu</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${requestRows||'<tr><td colspan="5">Aucune demande privée.</td></tr>'}</tbody></table></div>`;
+}
+async function saveEv(){
+  const eid=document.getElementById('editEvId').value;
+  const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value,eventType:document.getElementById('aEvType').value,status:document.getElementById('aEvStatus').value,includes:document.getElementById('aEvIncludes').value,hostNote:document.getElementById('aEvHostNote').value,featured:document.getElementById('aEvFeatured').checked};
+  if(!p.title||!p.date)return showToast('Titre et date requis','error');
+  const r=await fetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)return showToast(d.error||'Erreur','error');
+  showToast(eid?'Événement modifié!':'Événement publié!','success');
+  await loadEvents();
+  await loadAdminData();
+}
+function editEv(id){
+  const e=adminEvents.find(x=>x.id===id);if(!e)return;
+  document.getElementById('editEvId').value=e.id;
+  document.getElementById('aEvTitle').value=e.title||'';
+  document.getElementById('aEvType').value=e.eventType||'Atelier public';
+  document.getElementById('aEvStatus').value=e.status||'published';
+  document.getElementById('aEvDate').value=e.date||'';
+  document.getElementById('aEvDesc').value=e.description||'';
+  document.getElementById('aEvTime').value=e.time||'18:00';
+  document.getElementById('aEvDur').value=e.duration||'';
+  document.getElementById('aEvPrice').value=e.price||'';
+  document.getElementById('aEvSpots').value=e.maxSpots||'';
+  document.getElementById('aEvLoc').value=e.location||'';
+  document.getElementById('aEvImg').value=e.image||'';
+  document.getElementById('aEvIncludes').value=eventIncludes(e).join(', ');
+  document.getElementById('aEvHostNote').value=e.hostNote||'';
+  document.getElementById('aEvFeatured').checked=!!e.featured;
+  document.getElementById('evFormTitle').textContent='Modifier l’événement';
+  document.getElementById('cancelEv').style.display='inline-flex';
+  document.querySelector('.admin-event-builder')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function resetEvForm(){['editEvId','aEvTitle','aEvDate','aEvDesc','aEvDur','aEvPrice','aEvSpots','aEvLoc','aEvImg','aEvIncludes','aEvHostNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const t=document.getElementById('aEvTime');if(t)t.value='18:00';const type=document.getElementById('aEvType');if(type)type.value='Atelier public';const status=document.getElementById('aEvStatus');if(status)status.value='published';const feat=document.getElementById('aEvFeatured');if(feat)feat.checked=false;document.getElementById('evFormTitle').textContent='Publier un événement';document.getElementById('cancelEv').style.display='none'}
+async function deleteEv(id){if(!confirm('Supprimer cet événement?'))return;await fetch(`/api/admin/events/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadEvents();await loadAdminData()}
+async function updateEventRequestStatus(id,status){await fetch(`/api/admin/event-requests/${id}`,{method:'PATCH',headers:authH(),body:JSON.stringify({status})});showToast('Demande mise à jour','success');await loadAdminData()}
+async function deleteEventRequest(id){if(!confirm('Supprimer cette demande?'))return;await fetch(`/api/admin/event-requests/${id}`,{method:'DELETE',headers:authH()});showToast('Demande supprimée','success');await loadAdminData()}
 
 // ===== UTILS =====
 function showToast(m,t='success'){const el=document.getElementById('toast');el.textContent=m;el.className=`toast ${t} show`;setTimeout(()=>el.classList.remove('show'),3500)}
