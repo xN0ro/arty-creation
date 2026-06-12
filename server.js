@@ -13,33 +13,184 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const DATA_DIR = path.join(__dirname, 'data');
-const DB_PATH = path.join(DATA_DIR, 'db.json');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// ========== DATABASE STORAGE ==========
+// Render's regular filesystem is ephemeral, so use a persistent disk path in production.
+// In Render, create a Persistent Disk and set ARTY_DATA_DIR to the disk mount path, for example /var/data.
+const DEFAULT_DB = {
+  adminEmails: [],
+  googleClientId: '',
+  categories: [],
+  kits: [],
+  events: [],
+  teamActivities: [],
+  bundles: [],
+  users: [],
+  orders: [],
+  bookings: [],
+  sessions: []
+};
+
+const APP_DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = path.resolve(
+  process.env.ARTY_DATA_DIR ||
+  process.env.DATA_DIR ||
+  process.env.RENDER_DISK_PATH ||
+  APP_DATA_DIR
+);
+const DB_PATH = path.resolve(process.env.ARTY_DB_PATH || path.join(DATA_DIR, 'db.json'));
+const DB_DIR = path.dirname(DB_PATH);
+const DB_BACKUP_PATH = `${DB_PATH}.bak`;
+
+function ensureDBDir() {
+  if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
+}
+
+function normalizeDB(db = {}) {
+  return {
+    ...DEFAULT_DB,
+    ...db,
+    adminEmails: Array.isArray(db.adminEmails) ? db.adminEmails : [],
+    categories: Array.isArray(db.categories) ? db.categories : [],
+    kits: Array.isArray(db.kits) ? db.kits : [],
+    events: Array.isArray(db.events) ? db.events : [],
+    teamActivities: Array.isArray(db.teamActivities) ? db.teamActivities : [],
+    bundles: Array.isArray(db.bundles) ? db.bundles : [],
+    users: Array.isArray(db.users) ? db.users : [],
+    orders: Array.isArray(db.orders) ? db.orders : [],
+    bookings: Array.isArray(db.bookings) ? db.bookings : [],
+    sessions: Array.isArray(db.sessions) ? db.sessions : []
+  };
+}
+
+function safeReadJSON(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+}
+
+function writeDB(data) {
+  ensureDBDir();
+  const normalized = normalizeDB(data);
+  const tmpPath = `${DB_PATH}.${process.pid}.${Date.now()}.tmp`;
+
+  // Keep a last-known-good backup before replacing the database.
+  try {
+    if (fs.existsSync(DB_PATH)) fs.copyFileSync(DB_PATH, DB_BACKUP_PATH);
+  } catch (err) {
+    console.warn('Could not create DB backup:', err.message);
+  }
+
+  fs.writeFileSync(tmpPath, JSON.stringify(normalized, null, 2));
+  fs.renameSync(tmpPath, DB_PATH);
+}
+
+function initializeDB() {
+  ensureDBDir();
+
+  if (fs.existsSync(DB_PATH)) {
+    try {
+      const db = normalizeDB(safeReadJSON(DB_PATH));
+      writeDB(db);
+      return;
+    } catch (err) {
+      console.error('DB file is unreadable. Trying backup...', err.message);
+      if (fs.existsSync(DB_BACKUP_PATH)) {
+        const backup = normalizeDB(safeReadJSON(DB_BACKUP_PATH));
+        writeDB(backup);
+        return;
+      }
+    }
+  }
+
+  // First deploy on a new persistent disk: seed from the app's bundled data/db.json if it exists.
+  const bundledSeedPath = path.join(APP_DATA_DIR, 'db.json');
+  if (fs.existsSync(bundledSeedPath) && bundledSeedPath !== DB_PATH) {
+    try {
+      writeDB(normalizeDB(safeReadJSON(bundledSeedPath)));
+      console.log(`Arty DB seeded from ${bundledSeedPath}`);
+      return;
+    } catch (err) {
+      console.warn('Could not seed DB from bundled data:', err.message);
+    }
+  }
+
+  writeDB({ ...DEFAULT_DB });
+}
 
 function readDB() {
-  try { return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8')); }
-  catch { const d = { adminEmails:[], googleClientId:'', categories:[], kits:[], events:[], teamActivities:[], users:[], orders:[], bookings:[] }; writeDB(d); return d; }
+  try {
+    return normalizeDB(safeReadJSON(DB_PATH));
+  } catch (err) {
+    console.error('Could not read DB. Trying backup...', err.message);
+    if (fs.existsSync(DB_BACKUP_PATH)) {
+      const backup = normalizeDB(safeReadJSON(DB_BACKUP_PATH));
+      writeDB(backup);
+      return backup;
+    }
+    const empty = { ...DEFAULT_DB };
+    writeDB(empty);
+    return empty;
+  }
 }
-function writeDB(data) { fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2)); }
 
-const sessions = new Map();
+initializeDB();
+console.log(`Arty DB path: ${DB_PATH}`);
+
+const SESSION_TTL_DAYS = parseInt(process.env.ARTY_SESSION_TTL_DAYS || '30', 10);
+const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function cleanExpiredSessions(db) {
+  const now = Date.now();
+  const before = (db.sessions || []).length;
+  db.sessions = (db.sessions || []).filter(s => !s.expiresAt || new Date(s.expiresAt).getTime() > now);
+  return db.sessions.length !== before;
+}
+
 function createToken(user) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions.set(token, { userId: user.id, email: user.email, role: user.role || 'user' });
+  const db = readDB();
+  cleanExpiredSessions(db);
+  db.sessions.push({
+    tokenHash: hashToken(token),
+    userId: user.id,
+    email: user.email,
+    role: user.role || 'user',
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString()
+  });
+  writeDB(db);
   return token;
 }
-function auth(req, res, next) {
+
+function getSession(req) {
   const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token || !sessions.has(token)) return res.status(401).json({ error: 'Non authentifié' });
-  req.session = sessions.get(token); next();
+  if (!token) return null;
+  const db = readDB();
+  const tokenHash = hashToken(token);
+  const session = (db.sessions || []).find(s => s.tokenHash === tokenHash);
+  if (!session) return null;
+  if (session.expiresAt && new Date(session.expiresAt).getTime() <= Date.now()) {
+    db.sessions = (db.sessions || []).filter(s => s.tokenHash !== tokenHash);
+    writeDB(db);
+    return null;
+  }
+  return session;
+}
+
+function auth(req, res, next) {
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: 'Non authentifié' });
+  req.session = s;
+  next();
 }
 function adminOnly(req, res, next) {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
-  if (!token || !sessions.has(token)) return res.status(401).json({ error: 'Non authentifié' });
-  const s = sessions.get(token);
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error: 'Non authentifié' });
   if (s.role !== 'admin') return res.status(403).json({ error: 'Accès admin requis' });
-  req.session = s; next();
+  req.session = s;
+  next();
 }
 function verifyGoogleToken(idToken) {
   return new Promise((resolve, reject) => {
@@ -102,7 +253,16 @@ app.post('/api/users/google', async (req, res) => {
   } catch (err) { res.status(401).json({ error: 'Échec Google: ' + err.message }); }
 });
 
-app.post('/api/users/logout', (req, res) => { const t = req.headers['authorization']?.replace('Bearer ',''); if(t) sessions.delete(t); res.json({success:true}); });
+app.post('/api/users/logout', (req, res) => {
+  const t = req.headers['authorization']?.replace('Bearer ','');
+  if (t) {
+    const db = readDB();
+    const tokenHash = hashToken(t);
+    db.sessions = (db.sessions || []).filter(s => s.tokenHash !== tokenHash);
+    writeDB(db);
+  }
+  res.json({success:true});
+});
 app.get('/api/users/me', auth, (req, res) => { const u = readDB().users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:'Non trouvé'}); res.json({id:u.id,name:u.name,email:u.email,role:u.role,picture:u.picture,provider:u.provider,createdAt:u.createdAt}); });
 app.put('/api/users/me', auth, async (req, res) => {
   const db = readDB(); const idx = db.users.findIndex(u=>u.id===req.session.userId); if(idx===-1) return res.status(404).json({error:'Non trouvé'});
@@ -158,6 +318,7 @@ function normalizeKitPayload(body, existing = {}) {
 
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length}); });
+app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ dbPath: DB_PATH, dataDir: DATA_DIR, backupPath: DB_BACKUP_PATH, usingPersistentPath: DB_DIR !== APP_DATA_DIR, dbExists: fs.existsSync(DB_PATH), backupExists: fs.existsSync(DB_BACKUP_PATH) }); });
 
 // Categories CRUD
 app.post('/api/admin/categories', adminOnly, (req, res) => {
