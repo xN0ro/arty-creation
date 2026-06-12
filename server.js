@@ -27,6 +27,7 @@ const DEFAULT_DB = {
   users: [],
   orders: [],
   bookings: [],
+  eventRequests: [],
   sessions: []
 };
 
@@ -58,6 +59,7 @@ function normalizeDB(db = {}) {
     users: Array.isArray(db.users) ? db.users : [],
     orders: Array.isArray(db.orders) ? db.orders : [],
     bookings: Array.isArray(db.bookings) ? db.bookings : [],
+    eventRequests: Array.isArray(db.eventRequests) ? db.eventRequests : [],
     sessions: Array.isArray(db.sessions) ? db.sessions : []
   };
 }
@@ -207,7 +209,14 @@ app.get('/api/config', (req, res) => res.json({ googleClientId: readDB().googleC
 app.get('/api/kits', (req, res) => res.json(readDB().kits));
 app.get('/api/kits/:id', (req, res) => { const k = readDB().kits.find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
-app.get('/api/events', (req, res) => res.json(readDB().events));
+app.get('/api/events', (req, res) => {
+  const now = new Date();
+  const db = readDB();
+  const events = (db.events || [])
+    .filter(e => (e.status || 'published') === 'published')
+    .sort((a,b) => new Date((a.date || '') + 'T' + (a.time || '00:00')) - new Date((b.date || '') + 'T' + (b.time || '00:00')));
+  res.json(events);
+});
 app.get('/api/team-activities', (req, res) => res.json(readDB().teamActivities || []));
 app.get('/api/bundles', (req, res) => res.json(readDB().bundles || []));
 app.get('/api/bundles/:id', (req, res) => { const b = (readDB().bundles||[]).find(b=>b.id===parseInt(req.params.id)); b ? res.json(b) : res.status(404).json({error:'Non trouvé'}); });
@@ -287,14 +296,63 @@ app.post('/api/orders', auth, (req, res) => {
 });
 app.get('/api/orders/mine', auth, (req, res) => { const db=readDB(); res.json((db.orders||[]).filter(o=>o.userId===req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))); });
 app.post('/api/bookings', (req, res) => {
-  const db=readDB(); const {userId,eventId,name,email,guests}=req.body;
-  const ev=db.events.find(e=>e.id===parseInt(eventId)); if(!ev) return res.status(404).json({error:'Événement non trouvé'});
-  if(ev.bookedSpots>=ev.maxSpots) return res.status(400).json({error:'Complet'});
-  const b={id:Date.now(),userId:userId||null,eventId:parseInt(eventId),name,email,guests:parseInt(guests)||1,bookedAt:new Date().toISOString(),status:'confirmée'};
-  ev.bookedSpots+=b.guests; db.bookings.push(b); writeDB(db);
-  res.json({success:true,booking:b});
+  const db = readDB();
+  const { userId, eventId, name, email, phone, guests, notes } = req.body;
+  const guestCount = Math.max(1, parseInt(guests) || 1);
+  if (!eventId || !name || !email) return res.status(400).json({ error: 'Nom, courriel et événement requis' });
+  const ev = (db.events || []).find(e => e.id === parseInt(eventId));
+  if (!ev) return res.status(404).json({ error: 'Événement non trouvé' });
+  if ((ev.status || 'published') !== 'published') return res.status(400).json({ error: 'Cet événement n’est pas disponible à la réservation' });
+  const booked = parseInt(ev.bookedSpots) || 0;
+  const max = parseInt(ev.maxSpots) || 0;
+  const spotsLeft = Math.max(0, max - booked);
+  if (spotsLeft <= 0) return res.status(400).json({ error: 'Complet' });
+  if (guestCount > spotsLeft) return res.status(400).json({ error: `Il reste seulement ${spotsLeft} place${spotsLeft > 1 ? 's' : ''}` });
+  const b = {
+    id: Date.now(),
+    userId: userId || null,
+    eventId: parseInt(eventId),
+    name: String(name).trim(),
+    email: String(email).trim(),
+    phone: String(phone || '').trim(),
+    guests: guestCount,
+    notes: String(notes || '').trim(),
+    bookedAt: new Date().toISOString(),
+    status: 'confirmée'
+  };
+  if (!db.bookings) db.bookings = [];
+  ev.bookedSpots = booked + guestCount;
+  db.bookings.push(b);
+  writeDB(db);
+  res.json({ success: true, booking: b });
 });
-app.get('/api/bookings/mine', auth, (req, res) => { const db=readDB(); res.json(db.bookings.filter(b=>b.userId===req.session.userId).map(b=>({...b,event:db.events.find(e=>e.id===b.eventId)})).sort((a,b)=>new Date(b.bookedAt)-new Date(a.bookedAt))); });
+app.get('/api/bookings/mine', auth, (req, res) => {
+  const db = readDB();
+  res.json((db.bookings || []).filter(b => b.userId === req.session.userId).map(b => ({ ...b, event: (db.events || []).find(e => e.id === b.eventId) })).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+});
+app.post('/api/event-requests', (req, res) => {
+  const db = readDB();
+  const { name, email, phone, eventType, preferredDate, guests, location, budget, message } = req.body;
+  if (!name || !email || !eventType) return res.status(400).json({ error: 'Nom, courriel et type d’événement requis' });
+  const request = {
+    id: Date.now(),
+    name: String(name).trim(),
+    email: String(email).trim(),
+    phone: String(phone || '').trim(),
+    eventType: String(eventType).trim(),
+    preferredDate: String(preferredDate || '').trim(),
+    guests: parseInt(guests) || 0,
+    location: String(location || '').trim(),
+    budget: String(budget || '').trim(),
+    message: String(message || '').trim(),
+    status: 'nouvelle',
+    createdAt: new Date().toISOString()
+  };
+  if (!db.eventRequests) db.eventRequests = [];
+  db.eventRequests.push(request);
+  writeDB(db);
+  res.json({ success: true, request });
+});
 app.post('/api/contact', (req, res) => { const {name,email,message}=req.body; if(!name||!email||!message) return res.status(400).json({error:'Champs requis'}); console.log('Contact:',req.body); res.json({success:true,message:'Merci! Nous vous répondrons bientôt.'}); });
 
 
@@ -313,6 +371,26 @@ function normalizeKitPayload(body, existing = {}) {
   payload.description = body.description || '';
   payload.image = body.image || '';
   payload.difficulty = body.difficulty || existing.difficulty || 'Débutant';
+  return payload;
+}
+
+function normalizeEventPayload(body, existing = {}) {
+  const payload = { ...body };
+  payload.title = body.title || existing.title || '';
+  payload.description = body.description || '';
+  payload.date = body.date || existing.date || '';
+  payload.time = body.time || existing.time || '18:00';
+  payload.duration = body.duration || existing.duration || '2 heures';
+  payload.price = parseFloat(body.price) || 0;
+  payload.maxSpots = parseInt(body.maxSpots) || existing.maxSpots || 20;
+  payload.bookedSpots = parseInt(existing.bookedSpots) || 0;
+  payload.location = body.location || '';
+  payload.image = body.image || '';
+  payload.eventType = body.eventType || existing.eventType || 'atelier';
+  payload.status = body.status || existing.status || 'published';
+  payload.featured = body.featured === true || body.featured === 'true';
+  payload.includes = normalizeTags(body.includes ?? existing.includes);
+  payload.hostNote = body.hostNote || '';
   return payload;
 }
 
@@ -345,9 +423,46 @@ app.put('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); con
 app.delete('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); db.kits=db.kits.filter(k=>k.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
 // Events CRUD
-app.post('/api/admin/events', adminOnly, (req, res) => { const db=readDB(); const {title,date}=req.body; if(!title||!date) return res.status(400).json({error:'Titre et date requis'}); const ev={id:db.events.length>0?Math.max(...db.events.map(e=>e.id))+1:1,...req.body,price:parseFloat(req.body.price)||0,maxSpots:parseInt(req.body.maxSpots)||20,bookedSpots:0}; db.events.push(ev); writeDB(db); res.json({success:true,event:ev}); });
-app.put('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB(); const i=db.events.findIndex(e=>e.id===parseInt(req.params.id)); if(i===-1) return res.status(404).json({error:'Non trouvé'}); db.events[i]={...db.events[i],...req.body,id:db.events[i].id}; writeDB(db); res.json({success:true,event:db.events[i]}); });
-app.delete('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB(); db.events=db.events.filter(e=>e.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
+app.get('/api/admin/events', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.events || []).sort((a,b) => new Date((b.date || '') + 'T' + (b.time || '00:00')) - new Date((a.date || '') + 'T' + (a.time || '00:00'))));
+});
+app.post('/api/admin/events', adminOnly, (req, res) => {
+  const db = readDB();
+  const { title, date } = req.body;
+  if (!title || !date) return res.status(400).json({ error: 'Titre et date requis' });
+  const ev = { id: (db.events || []).length > 0 ? Math.max(...db.events.map(e => e.id)) + 1 : 1, ...normalizeEventPayload(req.body), createdAt: new Date().toISOString() };
+  if (!db.events) db.events = [];
+  db.events.push(ev);
+  writeDB(db);
+  res.json({ success: true, event: ev });
+});
+app.put('/api/admin/events/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  const i = (db.events || []).findIndex(e => e.id === parseInt(req.params.id));
+  if (i === -1) return res.status(404).json({ error: 'Non trouvé' });
+  db.events[i] = { ...db.events[i], ...normalizeEventPayload(req.body, db.events[i]), id: db.events[i].id };
+  writeDB(db);
+  res.json({ success: true, event: db.events[i] });
+});
+app.delete('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB(); db.events=(db.events||[]).filter(e=>e.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
+app.get('/api/admin/bookings', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.bookings || []).map(b => ({ ...b, event: (db.events || []).find(e => e.id === b.eventId) || null })).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+});
+app.get('/api/admin/event-requests', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.eventRequests || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+});
+app.patch('/api/admin/event-requests/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  const i = (db.eventRequests || []).findIndex(r => r.id === parseInt(req.params.id));
+  if (i === -1) return res.status(404).json({ error: 'Non trouvé' });
+  db.eventRequests[i] = { ...db.eventRequests[i], status: req.body.status || db.eventRequests[i].status, adminNote: req.body.adminNote ?? db.eventRequests[i].adminNote };
+  writeDB(db);
+  res.json({ success: true, request: db.eventRequests[i] });
+});
+app.delete('/api/admin/event-requests/:id', adminOnly, (req, res) => { const db=readDB(); db.eventRequests=(db.eventRequests||[]).filter(r=>r.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
 // Bundles CRUD
 app.post('/api/admin/bundles', adminOnly, (req, res) => {
