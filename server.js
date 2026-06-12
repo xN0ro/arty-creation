@@ -954,6 +954,24 @@ function buildOrderItems(db, rawItems = []) {
     const qty = Math.max(1, parseInt(raw.qty) || 1);
     if (!rawId) return { error: 'Article invalide' };
 
+    if (rawId.startsWith('custom-photo-') || rawId.startsWith('custom-bag-') || String(raw.type || '').startsWith('custom-')) {
+      const type = String(raw.type || (rawId.startsWith('custom-bag-') ? 'custom-bag' : 'custom-photo'));
+      const name = String(raw.name || (type === 'custom-bag' ? 'Sac personnalisé' : 'Tableau personnalisé')).trim();
+      const unitPrice = Math.max(0, Number(raw.price) || Number(raw.unitPrice) || 0);
+      if (!unitPrice) return { error: 'Prix invalide pour le produit personnalisé' };
+      items.push({
+        id: rawId,
+        type,
+        name,
+        unitPrice,
+        price: unitPrice,
+        image: String(raw.image || '').trim(),
+        qty,
+        customData: raw.customData && typeof raw.customData === 'object' ? raw.customData : {}
+      });
+      continue;
+    }
+
     if (rawId.startsWith('bundle-')) {
       const bundleId = parseInt(rawId.replace('bundle-', ''));
       const bundle = (db.bundles || []).find(b => b.id === bundleId);
@@ -972,6 +990,7 @@ function buildOrderItems(db, rawItems = []) {
   }
   return { items };
 }
+
 function discountAmountForItem(discount, kitLike, item) {
   const qty = Number(item.qty) || 1;
   const unitPrice = Number(item.unitPrice) || Number(item.price) || 0;
