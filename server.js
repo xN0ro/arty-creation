@@ -92,6 +92,26 @@ function getStorageHealth() {
   };
 }
 
+function getCollectionCountsSafe() {
+  try {
+    if (!fs.existsSync(DB_PATH)) return {};
+    const db = normalizeDB(safeReadJSON(DB_PATH));
+    return {
+      users: db.users.length,
+      kits: db.kits.length,
+      categories: db.categories.length,
+      events: db.events.length,
+      bookings: db.bookings.length,
+      eventRequests: db.eventRequests.length,
+      orders: db.orders.length,
+      bundles: db.bundles.length,
+      sessions: db.sessions.length
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 function normalizeDB(db = {}) {
   return {
     ...DEFAULT_DB,
@@ -255,7 +275,7 @@ function verifyGoogleToken(idToken) {
 
 // ========== PUBLIC ==========
 app.get('/api/config', (req, res) => res.json({ googleClientId: readDB().googleClientId || '' }));
-app.get('/api/storage-health', (req, res) => res.json(getStorageHealth()));
+app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }));
 app.get('/api/kits', (req, res) => res.json(readDB().kits));
 app.get('/api/kits/:id', (req, res) => { const k = readDB().kits.find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
@@ -446,7 +466,7 @@ function normalizeEventPayload(body, existing = {}) {
 
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length}); });
-app.get('/api/admin/storage', adminOnly, (req, res) => { res.json(getStorageHealth()); });
+app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
 
 // Categories CRUD
 app.post('/api/admin/categories', adminOnly, (req, res) => {
