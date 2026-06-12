@@ -452,6 +452,13 @@
   </div>
 </div>
 
+<!-- ===================== CHECKOUT ===================== -->
+<div class="page" id="page-checkout">
+  <div class="checkout-page section-pad">
+    <div class="container" id="checkoutPageContent"></div>
+  </div>
+</div>
+
 <!-- ===================== PROFILE ===================== -->
 <div class="page" id="page-profile"><div class="profile-page"><div class="container" id="profilePageContent"></div></div></div>
 
@@ -461,11 +468,12 @@
     <div class="admin-header-bar"><div class="container"><h2>🎨 Arty! Admin</h2><button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour</button></div></div>
     <div class="container" style="padding-bottom:60px">
       <div class="admin-stats"><div class="admin-stat-card"><div class="num" id="statKits">0</div><div class="label">Kits</div></div><div class="admin-stat-card"><div class="num" id="statCats">0</div><div class="label">Catégories</div></div><div class="admin-stat-card"><div class="num" id="statUsers">0</div><div class="label">Utilisateurs</div></div><div class="admin-stat-card"><div class="num" id="statOrders">0</div><div class="label">Commandes</div></div></div>
-      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits',this)">Kits</button><button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button><button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button><button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button></div>
+      <div class="admin-tabs"><button class="admin-tab active" onclick="switchAdminTab('kits',this)">Kits</button><button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button><button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button><button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button><button class="admin-tab" onclick="switchAdminTab('orders',this)">Commandes</button></div>
       <div id="adminKitsPanel"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
       <div id="adminBundlesPanel" style="display:none"></div>
       <div id="adminEventsPanel" style="display:none"></div>
+      <div id="adminOrdersPanel" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -495,10 +503,9 @@
   </div>
 </div>
 <div class="modal-overlay" id="bookingModal"><div class="modal"><button class="modal-close" onclick="closeModal('booking')">&times;</button><h2>Réserver une place</h2><p class="modal-subtitle" id="bookingEventTitle"></p><div class="booking-summary-box" id="bookingSummaryText"></div><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="bookingName"></div><div class="form-group"><label>Courriel</label><input type="email" id="bookingEmail"></div></div><div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="bookingPhone" placeholder="Optionnel"></div><div class="form-group"><label>Personnes</label><select id="bookingGuests"><option value="1">1</option></select></div></div><div class="form-group"><label>Note</label><textarea id="bookingNotes" placeholder="Allergie, demande spéciale, groupe..."></textarea></div><div style="background:var(--orange-pale);border:1px solid rgba(232,134,58,.15);padding:12px;border-radius:12px;margin-bottom:14px;font-size:.86rem;color:var(--orange)"><strong>Prix:</strong> $<span id="bookingPrice"></span>/personne</div><button class="btn btn-orange" onclick="confirmBooking()">Confirmer la réservation →</button></div></div>
-<div class="modal-overlay" id="checkoutModal"><div class="modal"><button class="modal-close" onclick="closeModal('checkout')">&times;</button><h2>Paiement</h2><p class="modal-subtitle">Livraison en 1 à quelques jours.</p><div id="checkoutSummary"></div><div class="form-group"><label>Nom</label><input type="text" id="checkoutName"></div><div class="form-group"><label>Courriel</label><input type="email" id="checkoutEmail"></div><div class="form-group"><label>Adresse de livraison</label><input type="text" id="checkoutAddress" placeholder="Adresse complète"></div><div class="form-row"><div class="form-group"><label>Carte</label><input type="text" id="checkoutCard" placeholder="4242 4242 4242 4242" maxlength="19"></div><div class="form-group"><label>Expiration</label><input type="text" id="checkoutExpiry" placeholder="MM/AA" maxlength="5"></div></div><div class="form-row"><div class="form-group"><label>CVC</label><input type="text" id="checkoutCVC" placeholder="123" maxlength="4"></div><div class="form-group"><label>Total</label><div class="checkout-total" id="checkoutTotal">$0</div></div></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="placeOrder()">Passer la Commande →</button></div></div>
-<div class="modal-overlay" id="successModal"><div class="modal" style="text-align:center"><div style="font-size:4rem;margin-bottom:14px">🎉</div><h2>Commande Confirmée!</h2><p class="modal-subtitle">Vos kits sont en route!</p><p style="font-size:.88rem;color:var(--teal);margin-bottom:20px" id="successOrderId"></p><button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continuer →</button></div></div>
+<div class="modal-overlay" id="successModal"><div class="modal" style="text-align:center"><div style="font-size:4rem;margin-bottom:14px">🎉</div><h2 id="successTitle">Commande reçue!</h2><p class="modal-subtitle" id="successSubtitle">Votre commande a été enregistrée.</p><p style="font-size:.88rem;color:var(--teal);margin-bottom:14px" id="successOrderId"></p><div class="success-payment-note" id="successPaymentNote"></div><button class="btn btn-orange" onclick="closeModal('success');navigate('#/')" style="width:100%;justify-content:center">Continuer →</button></div></div>
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
-<div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>🛒 Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="checkout()">Paiement →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
+<div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="goToCheckout()">Continuer →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
 </body>

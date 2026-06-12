@@ -1,5 +1,5 @@
 /* Arty! — Application v3 */
-let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[];
+let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
 let catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 
 document.addEventListener('DOMContentLoaded',async()=>{
@@ -40,6 +40,7 @@ function handleRoute(){
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
+  else if(h==='#/checkout'){show('page-checkout');renderCheckoutPage();window.scrollTo(0,0)}
   else if(h==='#/party'){show('page-party');renderPartyPage();window.scrollTo(0,0)}
   else if(h==='#/team'){show('page-team');renderTeamPage();window.scrollTo(0,0)}
   else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
@@ -117,7 +118,7 @@ function toggleMobile(){document.getElementById('navLinks').classList.toggle('op
 function toggleDropdown(){document.querySelector('.nav-dropdown-menu')?.classList.toggle('open')}
 function updateAuthUI(){
   const a=document.getElementById('navAuth');
-  const cartH=`<button class="btn-cart" onclick="openCart()" id="cartBtn" style="${cart.length?'display:flex':'display:none'}"><span class="cart-label">Panier</span><span id="cartCount">${cart.reduce((s,i)=>s+i.qty,0)}</span></button>`;
+  const cartH=`<button class="btn-cart nav-cart-btn" onclick="openCart()" id="cartBtn" aria-label="Panier" style="${cart.length?'display:flex':'display:none'}"><span class="cart-icon">🛒</span><span id="cartCount" class="cart-count-badge">${cart.reduce((s,i)=>s+i.qty,0)}</span></button>`;
   if(currentUser){
     const av=currentUser.picture?`<img src="${currentUser.picture}">`:`${currentUser.name.charAt(0).toUpperCase()}`;
     const adm=currentUser.role==='admin'?`<a href="#/admin" class="admin-link">Admin</a>`:'';
@@ -133,6 +134,7 @@ async function loadTeam(){try{teamActivities=await(await fetch('/api/team-activi
 async function loadBundles(){try{allBundles=await(await fetch('/api/bundles')).json()}catch{allBundles=[]}}
 async function loadAdminEvents(){try{adminEvents=await(await fetch('/api/admin/events',{headers:authH()})).json()}catch{adminEvents=[]}}
 async function loadAdminBookings(){try{adminBookings=await(await fetch('/api/admin/bookings',{headers:authH()})).json()}catch{adminBookings=[]}}
+async function loadAdminOrders(){try{adminOrders=await(await fetch('/api/admin/orders',{headers:authH()})).json()}catch{adminOrders=[]}}
 async function loadEventRequests(){try{eventRequests=await(await fetch('/api/admin/event-requests',{headers:authH()})).json()}catch{eventRequests=[]}}
 function formatEventDate(ev,withYear=false){
   if(!ev?.date)return 'Date à confirmer';
@@ -514,12 +516,6 @@ function renderBundleCard(b){
   </div>`;
 }
 
-function addBundleToCart(bundleId){
-  const b=allBundles.find(x=>x.id===bundleId);if(!b)return;
-  const ex=cart.find(i=>i.id==='bundle-'+b.id);
-  if(ex){ex.qty+=1}else{cart.push({id:'bundle-'+b.id,name:b.name+' (Bundle)',price:b.price,image:b.image,qty:1})}
-  saveCart();updateCartUI();showToast(`${b.name} ajouté au panier!`,'success');
-}
 
 // ===== PROFILE =====
 async function renderProfilePage(){
@@ -534,33 +530,150 @@ async function renderProfilePage(){
 function switchPTab(t,btn){document.querySelectorAll('.profile-tab').forEach(b=>b.classList.remove('active'));document.querySelectorAll('.profile-panel').forEach(p=>p.classList.remove('active'));btn.classList.add('active');document.getElementById('panel-'+t).classList.add('active')}
 async function updateProfile(){const body={name:document.getElementById('profileName').value};if(currentUser.provider==='local'){const cp=document.getElementById('pCurPw')?.value,np=document.getElementById('pNewPw')?.value;if(np){body.currentPassword=cp;body.newPassword=np}}try{const r=await fetch('/api/users/me',{method:'PUT',headers:authH(),body:JSON.stringify(body)});const d=await r.json();if(!r.ok)return showToast(d.error,'error');currentUser=d.user;localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();showToast('Profil mis à jour!','success')}catch{showToast('Erreur','error')}}
 
-// ===== CART =====
-function addToCart(kitId){const kit=allKits.find(k=>k.id===kitId);if(!kit)return;const qty=parseInt(document.getElementById('pQty')?.value||1);const ex=cart.find(i=>i.id===kitId);if(ex)ex.qty+=qty;else cart.push({id:kit.id,name:kit.name,price:kit.price,image:kit.image,qty});saveCart();updateCartUI();showToast(`${kit.name} ajouté au panier!`,'success')}
-function buyNow(id){addToCart(id);setTimeout(()=>checkout(),300)}
-function removeFromCart(id){cart=cart.filter(i=>i.id!==id&&i.id!==''+id);saveCart();updateCartUI();renderCartItems()}
-function clearCart(){cart=[];saveCart();updateCartUI();renderCartItems()}
-function saveCart(){localStorage.setItem('arty_cart',JSON.stringify(cart))}
-function updateCartUI(){const n=cart.reduce((s,i)=>s+i.qty,0);const b=document.getElementById('cartBtn'),c=document.getElementById('cartCount');if(b)b.style.display=n>0?'flex':'none';if(c)c.textContent=n}
-function getTotal(){return cart.reduce((s,i)=>s+i.price*i.qty,0)}
+// ===== CART & CHECKOUT =====
+function normalizeCartId(id){return String(id)}
+function cleanCart(){
+  cart=(cart||[]).map(i=>({
+    id:normalizeCartId(i.id),
+    name:String(i.name||''),
+    price:Number(i.price)||0,
+    image:i.image||'',
+    qty:Math.max(1,parseInt(i.qty)||1),
+    type:i.type || (String(i.id).startsWith('bundle-')?'bundle':'kit')
+  })).filter(i=>i.id&&i.name&&i.qty>0);
+}
+function addToCart(kitId){
+  const kit=allKits.find(k=>String(k.id)===String(kitId));
+  if(!kit)return;
+  if(kit.inStock===false)return showToast('Ce produit est épuisé','error');
+  const qty=parseInt(document.getElementById('pQty')?.value||1);
+  const id=normalizeCartId(kit.id);
+  const ex=cart.find(i=>String(i.id)===id);
+  if(ex)ex.qty+=qty;
+  else cart.push({id,name:kit.name,price:Number(kit.price)||0,image:kit.image,qty,type:'kit'});
+  saveCart();updateCartUI();showToast(`${kit.name} ajouté au panier!`,'success');
+}
+function buyNow(id){addToCart(id);setTimeout(()=>goToCheckout(),250)}
+function addBundleToCart(bundleId){
+  const b=allBundles.find(x=>String(x.id)===String(bundleId));
+  if(!b)return;
+  const id='bundle-'+b.id;
+  const ex=cart.find(i=>String(i.id)===id);
+  if(ex)ex.qty+=1;
+  else cart.push({id,name:b.name+' (Ensemble)',price:Number(b.price)||0,image:b.image,qty:1,type:'bundle'});
+  saveCart();updateCartUI();showToast('Ensemble ajouté au panier!','success')
+}
+function removeFromCart(id){
+  const sid=String(id);
+  cart=cart.filter(i=>String(i.id)!==sid);
+  saveCart();updateCartUI();renderCartItems();refreshCheckoutIfOpen();
+}
+function changeCartQty(id,delta){
+  const item=cart.find(i=>String(i.id)===String(id));
+  if(!item)return;
+  item.qty=Math.max(1,(parseInt(item.qty)||1)+delta);
+  saveCart();updateCartUI();renderCartItems();refreshCheckoutIfOpen();
+}
+function clearCart(){cart=[];saveCart();updateCartUI();renderCartItems();refreshCheckoutIfOpen()}
+function saveCart(){cleanCart();localStorage.setItem('arty_cart',JSON.stringify(cart))}
+function updateCartUI(){const n=cart.reduce((s,i)=>s+(parseInt(i.qty)||0),0);const b=document.getElementById('cartBtn'),c=document.getElementById('cartCount');if(b)b.style.display=n>0?'inline-flex':'none';if(c)c.textContent=n}
+function getSubtotal(){return cart.reduce((s,i)=>s+(Number(i.price)||0)*(parseInt(i.qty)||0),0)}
+function getTotal(){return getSubtotal()}
 function openCart(){renderCartItems();document.getElementById('cartOverlay').classList.add('open');document.getElementById('cartSidebar').classList.add('open');document.body.style.overflow='hidden'}
 function closeCart(){document.getElementById('cartOverlay').classList.remove('open');document.getElementById('cartSidebar').classList.remove('open');document.body.style.overflow=''}
-function renderCartItems(){const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">Panier</div><p>Panier vide</p></div>';f.style.display='none';return}f.style.display='block';c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${i.image}" class="cart-item-img"><div class="cart-item-info"><div class="cart-item-name">${i.name}</div><div class="cart-item-price">$${i.price.toFixed(2)}</div><div class="cart-item-qty">Qté: ${i.qty}</div></div><button class="cart-item-remove" onclick="removeFromCart('${i.id}')">✕</button></div>`).join('');document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`}
-
-// ===== CHECKOUT =====
-function checkout(){if(!cart.length)return showToast('Panier vide','error');if(!currentUser){closeCart();openModal('auth');return showToast('Connectez-vous pour commander','error')}closeCart();document.getElementById('checkoutSummary').innerHTML=cart.map(i=>`<div class="checkout-summary-item"><span>${i.name} × ${i.qty}</span><span>$${(i.price*i.qty).toFixed(2)}</span></div>`).join('');document.getElementById('checkoutTotal').textContent=`$${getTotal().toFixed(2)}`;document.getElementById('checkoutName').value=currentUser.name;document.getElementById('checkoutEmail').value=currentUser.email;document.getElementById('checkoutModal').classList.add('active');document.body.style.overflow='hidden'}
-async function placeOrder(){const addr=document.getElementById('checkoutAddress').value,card=document.getElementById('checkoutCard').value;if(!addr)return showToast('Entrez l\'adresse de livraison','error');if(!card)return showToast('Entrez les informations de paiement','error');try{const r=await fetch('/api/orders',{method:'POST',headers:authH(),body:JSON.stringify({items:cart,address:addr,total:getTotal()})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');closeModal('checkout');cart=[];saveCart();updateCartUI();['checkoutName','checkoutEmail','checkoutAddress','checkoutCard','checkoutExpiry','checkoutCVC'].forEach(id=>document.getElementById(id).value='');document.getElementById('successOrderId').textContent=`Commande #${d.order.id}`;document.getElementById('successModal').classList.add('active');document.body.style.overflow='hidden'}catch{showToast('Erreur lors de la commande','error')}}
+function goToCheckout(){if(!cart.length)return showToast('Panier vide','error');closeCart();navigate('#/checkout')}
+function renderCartItems(){
+  const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');
+  if(!c||!f)return;
+  if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">Panier</div><p>Panier vide</p></div>';f.style.display='none';return}
+  f.style.display='block';
+  c.innerHTML=cart.map(i=>`<div class="cart-item">
+    <img src="${safeAttr(i.image)}" class="cart-item-img" alt="${safeAttr(i.name)}">
+    <div class="cart-item-info"><div class="cart-item-name">${safeText(i.name)}</div><div class="cart-item-price">$${toMoney(i.price)}</div>
+      <div class="cart-qty-control"><button onclick="changeCartQty('${safeAttr(i.id)}',-1)">−</button><span>${i.qty}</span><button onclick="changeCartQty('${safeAttr(i.id)}',1)">+</button></div>
+    </div>
+    <button class="cart-item-remove" onclick="removeFromCart('${safeAttr(i.id)}')" aria-label="Retirer">×</button>
+  </div>`).join('');
+  document.getElementById('cartTotal').textContent=`$${getTotal().toFixed(2)}`;
+}
+function checkout(){goToCheckout()}
+function refreshCheckoutIfOpen(){if((window.location.hash||'')==='#/checkout')renderCheckoutPage()}
+function validateEmail(email){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email||'').trim())}
+function renderCheckoutPage(){
+  const c=document.getElementById('checkoutPageContent');
+  if(!c)return;
+  if(!cart.length){c.innerHTML=`<div class="checkout-empty"><div class="section-tag">Panier</div><h2 class="section-heading">Votre panier est <span class="accent">vide</span></h2><p class="section-sub">Ajoutez un kit ou un ensemble avant de continuer.</p><a href="#/paintings" class="btn btn-orange">Voir les kits →</a></div>`;return}
+  const userBox=currentUser?`<div class="checkout-account-box connected"><strong>Connecté comme ${safeText(currentUser.name)}</strong><span>${safeText(currentUser.email)}</span></div>`:`<div class="checkout-account-box"><strong>Pas de compte?</strong><span>Vous pouvez créer un compte ou acheter comme invité. Le courriel est obligatoire pour recevoir la confirmation.</span><div class="checkout-account-actions"><button class="btn btn-orange btn-sm" onclick="openModal('auth','register')">Créer un compte</button><button class="btn btn-ghost btn-sm" onclick="openModal('auth','login')">Connexion</button></div></div>`;
+  const summary=cart.map(i=>`<div class="checkout-line"><img src="${safeAttr(i.image)}" alt="${safeAttr(i.name)}"><div><strong>${safeText(i.name)}</strong><small>Qté ${i.qty} × $${toMoney(i.price)}</small></div><span>$${toMoney(i.price*i.qty)}</span></div>`).join('');
+  c.innerHTML=`
+    <div class="checkout-hero-clean">
+      <div><div class="section-tag">Paiement</div><h2 class="section-heading">Finaliser votre <span class="accent">commande</span></h2><p>Un vrai parcours panier → informations → commande. Les cartes seront traitées plus tard par un fournisseur sécurisé comme Stripe, Square ou Moneris.</p></div>
+      <button class="btn btn-ghost" onclick="navigate('#/paintings')">← Continuer à magasiner</button>
+    </div>
+    <div class="checkout-layout">
+      <section class="checkout-card-main">
+        <div class="checkout-step-title"><span>1</span><div><h3>Client</h3><p>Compte ou achat invité.</p></div></div>
+        ${userBox}
+        <div class="form-row"><div class="form-group"><label>Nom complet</label><input type="text" id="coName" value="${safeAttr(currentUser?.name||'')}" placeholder="Votre nom"></div><div class="form-group"><label>Courriel *</label><input type="email" id="coEmail" value="${safeAttr(currentUser?.email||'')}" placeholder="nom@exemple.com"></div></div>
+        <div class="form-group"><label>Téléphone</label><input type="text" id="coPhone" placeholder="Optionnel"></div>
+        <div class="checkout-step-title"><span>2</span><div><h3>Livraison</h3><p>Adresse pour recevoir les kits.</p></div></div>
+        <div class="form-group"><label>Adresse complète *</label><input type="text" id="coAddress" placeholder="Numéro, rue, appartement"></div>
+        <div class="form-row"><div class="form-group"><label>Ville</label><input type="text" id="coCity" placeholder="Ville"></div><div class="form-group"><label>Province</label><input type="text" id="coProvince" value="QC"></div></div>
+        <div class="form-row"><div class="form-group"><label>Code postal</label><input type="text" id="coPostal" placeholder="A1A 1A1"></div><div class="form-group"><label>Pays</label><input type="text" id="coCountry" value="Canada"></div></div>
+        <div class="form-group"><label>Note de livraison</label><textarea id="coNotes" placeholder="Instructions spéciales, date souhaitée, etc."></textarea></div>
+        <div class="checkout-step-title"><span>3</span><div><h3>Paiement sécurisé</h3><p>Aucune carte n'est entrée dans Arty pour le moment.</p></div></div>
+        <div class="payment-provider-box"><strong>Fournisseur de paiement à connecter</strong><p>La commande sera enregistrée en statut “en attente de paiement”. Quand Stripe/Square/Moneris sera branché, ce bouton redirigera vers leur page sécurisée.</p></div>
+        <button class="btn btn-orange checkout-submit" onclick="placeOrder()">Créer la commande →</button>
+      </section>
+      <aside class="checkout-summary-card">
+        <h3>Résumé</h3>${summary}
+        <div class="checkout-total-row"><span>Sous-total</span><strong>$${toMoney(getSubtotal())}</strong></div>
+        <div class="checkout-note-small">Taxes/livraison peuvent être ajoutées quand le fournisseur de paiement sera connecté.</div>
+      </aside>
+    </div>`;
+}
+async function placeOrder(){
+  if(!cart.length)return showToast('Panier vide','error');
+  const name=document.getElementById('coName')?.value.trim();
+  const email=document.getElementById('coEmail')?.value.trim();
+  const phone=document.getElementById('coPhone')?.value.trim();
+  const address=document.getElementById('coAddress')?.value.trim();
+  const city=document.getElementById('coCity')?.value.trim();
+  const province=document.getElementById('coProvince')?.value.trim();
+  const postal=document.getElementById('coPostal')?.value.trim();
+  const country=document.getElementById('coCountry')?.value.trim();
+  const notes=document.getElementById('coNotes')?.value.trim();
+  if(!name)return showToast('Entrez votre nom','error');
+  if(!email||!validateEmail(email))return showToast('Entrez un courriel valide','error');
+  if(!address)return showToast('Entrez l’adresse de livraison','error');
+  const payload={items:cart,total:getTotal(),customer:{name,email,phone},address:{line1:address,city,province,postal,country,notes},checkoutMode:currentUser?'account':'guest'};
+  try{
+    const r=await fetch('/api/orders',{method:'POST',headers:authH(),body:JSON.stringify(payload)});
+    const d=await r.json();
+    if(!r.ok)return showToast(d.error||'Erreur','error');
+    cart=[];saveCart();updateCartUI();
+    document.getElementById('successTitle').textContent='Commande reçue!';
+    document.getElementById('successSubtitle').textContent='Nous avons enregistré votre commande.';
+    document.getElementById('successOrderId').textContent=`Commande #${d.order.id}`;
+    document.getElementById('successPaymentNote').innerHTML=d.payment?.redirectUrl?`Redirection vers paiement sécurisé...`:`Paiement: en attente. Le fournisseur de paiement sera connecté séparément.`;
+    document.getElementById('successModal').classList.add('active');
+    document.body.style.overflow='hidden';
+    if(d.payment?.redirectUrl)setTimeout(()=>{window.location.href=d.payment.redirectUrl},700);
+    renderCheckoutPage();
+  }catch{showToast('Erreur lors de la commande','error')}
+}
 
 // ===== AUTH =====
 function openModal(t,tab){document.getElementById(t+'Modal').classList.add('active');document.body.style.overflow='hidden';if(tab==='register')switchAuthTab('register');else if(t==='auth')switchAuthTab('login')}
 function closeModal(t){document.getElementById(t+'Modal').classList.remove('active');document.body.style.overflow=''}
 function switchAuthTab(t){document.getElementById('tabLogin').classList.toggle('active',t==='login');document.getElementById('tabRegister').classList.toggle('active',t==='register');document.getElementById('loginForm').style.display=t==='login'?'block':'none';document.getElementById('registerForm').style.display=t==='register'?'block':'none';document.getElementById('authModalTitle').textContent=t==='login'?'Bienvenue':'Créer un Compte';document.getElementById('authModalSub').textContent=t==='login'?'Connectez-vous à votre compte.':'Inscrivez-vous gratuitement.'}
-async function doLogin(){const e=document.getElementById('loginEmail').value,p=document.getElementById('loginPassword').value;if(!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Erreur de connexion','error')}}
-async function doRegister(){const n=document.getElementById('regName').value,e=document.getElementById('regEmail').value,p=document.getElementById('regPassword').value;if(!n||!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue chez Arty!, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}}
+async function doLogin(){const e=document.getElementById('loginEmail').value,p=document.getElementById('loginPassword').value;if(!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Erreur de connexion','error')}}
+async function doRegister(){const n=document.getElementById('regName').value,e=document.getElementById('regEmail').value,p=document.getElementById('regPassword').value;if(!n||!e||!p)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue chez Arty!, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}}
 function logout(s){fetch('/api/users/logout',{method:'POST',headers:authH()}).catch(()=>{});authToken=null;currentUser=null;localStorage.removeItem('arty_token');localStorage.removeItem('arty_user');updateAuthUI();navigate('#/');if(!s)showToast('Déconnecté','success')}
 
 // ===== GOOGLE =====
 function initGoogleSignIn(){const w=document.getElementById('googleBtnWrap');if(!googleClientId||googleClientId==='YOUR_GOOGLE_CLIENT_ID_HERE'){w.innerHTML=`<button class="google-btn" onclick="showToast('Google non configuré. Ajoutez votre Client ID dans data/db.json','error')" style="opacity:.6"><svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continuer avec Google</button>`;return}try{google.accounts.id.initialize({client_id:googleClientId,callback:handleGoogle});w.innerHTML='';google.accounts.id.renderButton(w,{theme:'outline',size:'large',width:380,text:'continue_with',shape:'pill',locale:'fr'})}catch{w.innerHTML='<button class="google-btn" style="opacity:.5">Google non disponible</button>'}}
-async function handleGoogle(r){try{const res=await fetch('/api/users/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential})});const d=await res.json();if(!res.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Échec Google','error')}}
+async function handleGoogle(r){try{const res=await fetch('/api/users/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:r.credential})});const d=await res.json();if(!res.ok)return showToast(d.error,'error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue, ${currentUser.name}!`,'success')}catch{showToast('Échec Google','error')}}
 
 // ===== BOOKING =====
 function openBooking(eventId){
@@ -626,8 +739,21 @@ async function submitPrivateEventRequest(){
 async function submitContact(){const n=document.getElementById('contactName').value,e=document.getElementById('contactEmail').value,m=document.getElementById('contactMessage').value;if(!n||!e||!m)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,message:m})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');showToast(d.message,'success');['contactName','contactEmail','contactMessage'].forEach(id=>document.getElementById(id).value='')}catch{showToast('Erreur','error')}}
 
 // ===== ADMIN =====
-async function loadAdminData(){try{await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests()]);const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents()}
-function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none'}
+async function loadAdminData(){try{await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders()]);const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents();renderAdminOrders()}
+function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none';document.getElementById('adminOrdersPanel').style.display=t==='orders'?'block':'none'}
+function renderAdminOrders(){
+  const panel=document.getElementById('adminOrdersPanel');
+  if(!panel)return;
+  const rows=(adminOrders||[]).map(o=>{
+    const cust=o.customer||{};
+    const itemText=(o.items||[]).map(i=>`${safeText(i.name)} ×${i.qty}`).join('<br>');
+    return `<tr><td><strong>${safeText(o.id)}</strong><br><span class="admin-muted">${new Date(o.createdAt).toLocaleDateString('fr-CA')}</span></td><td>${safeText(cust.name||'')}<br><span class="admin-muted">${safeText(cust.email||o.guestEmail||'')}</span></td><td>${itemText}</td><td>$${toMoney(o.total)}</td><td><span class="admin-status ${o.paymentStatus==='paid'?'ok':'out'}">${safeText(o.paymentStatus||'pending')}</span></td><td><select class="admin-status-select" onchange="updateOrderStatus('${safeAttr(o.id)}',this.value)"><option value="en attente de paiement" ${o.status==='en attente de paiement'?'selected':''}>En attente paiement</option><option value="payée" ${o.status==='payée'?'selected':''}>Payée</option><option value="préparation" ${o.status==='préparation'?'selected':''}>Préparation</option><option value="expédiée" ${o.status==='expédiée'?'selected':''}>Expédiée</option><option value="annulée" ${o.status==='annulée'?'selected':''}>Annulée</option></select></td></tr>`;
+  }).join('');
+  panel.innerHTML=`<div class="admin-form-card"><h3>Commandes clients</h3><p class="admin-help">Les commandes invitées et connectées restent sauvegardées dans la base persistante.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Articles</th><th>Total</th><th>Paiement</th><th>Statut</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="admin-muted">Aucune commande pour le moment.</td></tr>'}</tbody></table></div>`;
+}
+async function updateOrderStatus(id,status){
+  try{const r=await fetch(`/api/admin/orders/${encodeURIComponent(id)}/status`,{method:'PUT',headers:authH(),body:JSON.stringify({status})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Statut mis à jour','success');await loadAdminOrders();renderAdminOrders()}catch{showToast('Erreur','error')}
+}
 
 function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-group"><label>Badges / tags de filtre</label><input type="text" id="aKitTags" placeholder="ex: enfants, cadeau, couple, mini-kit"><small class="admin-help">Séparez les badges par virgule. Ils deviennent automatiquement des filtres clients.</small></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> En stock</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Badges</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));const tags=normalizeKitTags(k);return`<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td>${tags.length?tags.slice(0,3).map(t=>`<span class="admin-tag-mini">${safeText(t)}</span>`).join(''):'-'}</td><td>${k.inStock!==false?'<span class="admin-status ok">En stock</span>':'<span class="admin-status out">Épuisé</span>'}</td><td>$${toMoney(k.price)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
 async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value,tags:document.getElementById('aKitTags').value.split(',').map(t=>t.trim()).filter(Boolean),inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Modifié!':'Ajouté!','success');await loadKits();loadAdminData()}catch{showToast('Erreur','error')}}
