@@ -1427,3 +1427,114 @@ function reserveInventoryForItems(db, items, orderId) {
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.listen(PORT, () => console.log(`Arty! server → http://localhost:${PORT}`));
+
+// ===== FINAL SERVER-SIDE PACKAGE PRICING OVERRIDE =====
+// Do not trust client totals for custom bundles/events. Recalculate from kit prices and bundle deal rules.
+function effectiveKitUnitPriceForPackage(db, kit) {
+  const base = Number(kit?.price) || 0;
+  const best = typeof getBestSingleKitDiscount === 'function' ? getBestSingleKitDiscount(db, kit) : null;
+  const amount = best && Number(best.amount) > 0 ? Number(best.amount) : 0;
+  return money(Math.max(0, base - amount));
+}
+function bestBundleDealRuleServer(db, totalQty, purpose) {
+  const rules = (typeof getBundleDealRules === 'function' ? getBundleDealRules(db) : (db.bundleDealRules || []))
+    .filter(r => r && r.active !== false)
+    .sort((a,b)=>(Number(b.minQty)||0)-(Number(a.minQty)||0));
+  return rules.find(r => totalQty >= (Number(r.minQty)||1) && ((r.appliesTo||'all') === 'all' || (r.appliesTo||'all') === purpose)) || null;
+}
+function calculateCustomPackageItem(db, raw, type) {
+  const cd = raw.customData && typeof raw.customData === 'object' ? raw.customData : {};
+  const purpose = type === 'custom-event-package'
+    ? (cd.eventType === 'wedding' ? 'wedding' : 'event')
+    : (['group','event','wedding'].includes(cd.purpose) ? cd.purpose : 'group');
+  const rawItems = Array.isArray(cd.items) ? cd.items : [];
+  const cleanItems = [];
+  for (const rawItem of rawItems) {
+    const kitId = parseInt(rawItem.kitId);
+    const qty = Math.max(0, parseInt(rawItem.qty) || 0);
+    if (!kitId || qty <= 0) continue;
+    const kit = (db.kits || []).find(k => Number(k.id) === Number(kitId));
+    if (!kit) return { error: `Kit non trouvé dans le forfait: ${kitId}` };
+    if (!isKitAvailable(kit)) return { error: `${kit.name} est épuisé` };
+    const unitPrice = effectiveKitUnitPriceForPackage(db, kit);
+    cleanItems.push({ kitId: kit.id, name: kit.name, qty, unitPrice, lineTotal: money(unitPrice * qty) });
+  }
+  const totalQty = cleanItems.reduce((s,i)=>s+i.qty,0);
+  if (!totalQty) return { error: 'Sélectionnez au moins un produit pour le forfait' };
+  const subtotal = money(cleanItems.reduce((s,i)=>s+i.lineTotal,0));
+  const rule = bestBundleDealRuleServer(db, totalQty, purpose);
+  const percent = rule ? Math.max(0, Math.min(90, Number(rule.percent)||0)) : 0;
+  const discount = money(subtotal * percent / 100);
+  const customText = String(cd.customText || '').trim().slice(0, 90);
+  const customTextFee = customText ? money(Number(rule?.customTextFee ?? 12) || 0) : 0;
+  const total = money(Math.max(0, subtotal - discount + customTextFee));
+  const name = type === 'custom-event-package'
+    ? `Événement ${String(cd.eventLabel || 'personnalisé').trim()} (${totalQty} kits)`
+    : `Forfait personnalisé (${totalQty} kits)`;
+  return {
+    id: String(raw.id || `${type}-${Date.now()}`),
+    type,
+    name,
+    unitPrice: total,
+    price: total,
+    image: String(raw.image || '').trim(),
+    qty: Math.max(1, parseInt(raw.qty) || 1),
+    customData: {
+      ...cd,
+      purpose,
+      customText,
+      subtotal,
+      discount,
+      customTextFee,
+      discountRule: rule || null,
+      serverPriced: true,
+      items: cleanItems
+    }
+  };
+}
+function buildOrderItems(db, rawItems = []) {
+  const items = [];
+  for (const raw of rawItems) {
+    const rawId = String(raw.id || '').trim();
+    const rawType = String(raw.type || '').trim();
+    const qty = Math.max(1, parseInt(raw.qty) || 1);
+    if (!rawId) return { error: 'Article invalide' };
+
+    if (rawType === 'custom-bundle' || rawId.startsWith('client-bundle-')) {
+      const built = calculateCustomPackageItem(db, { ...raw, qty }, 'custom-bundle');
+      if (built.error) return built;
+      items.push(built);
+      continue;
+    }
+    if (rawType === 'custom-event-package' || rawId.startsWith('event-package-')) {
+      const built = calculateCustomPackageItem(db, { ...raw, qty }, 'custom-event-package');
+      if (built.error) return built;
+      items.push(built);
+      continue;
+    }
+    if (rawId.startsWith('custom-photo-') || rawId.startsWith('custom-bag-') || rawType === 'custom-photo' || rawType === 'custom-bag') {
+      const type = rawType || (rawId.startsWith('custom-bag-') ? 'custom-bag' : 'custom-photo');
+      const name = String(raw.name || (type === 'custom-bag' ? 'Sac personnalisé' : 'Tableau personnalisé')).trim();
+      const unitPrice = Math.max(0, Number(raw.price) || Number(raw.unitPrice) || 0);
+      if (!unitPrice) return { error: 'Prix invalide pour le produit personnalisé' };
+      items.push({ id: rawId, type, name, unitPrice: money(unitPrice), price: money(unitPrice), image: String(raw.image || '').trim(), qty, customData: raw.customData && typeof raw.customData === 'object' ? raw.customData : {} });
+      continue;
+    }
+    if (rawId.startsWith('bundle-')) {
+      const bundleId = parseInt(rawId.replace('bundle-', ''));
+      const bundle = (db.bundles || []).find(b => Number(b.id) === Number(bundleId));
+      if (!bundle) return { error: `Ensemble non trouvé: ${rawId}` };
+      items.push({ id: rawId, bundleId, type: 'bundle', name: bundle.name, unitPrice: money(parseFloat(bundle.price) || 0), price: money(parseFloat(bundle.price) || 0), image: bundle.image || '', qty, kitIds: bundle.kitIds || [] });
+      continue;
+    }
+    const kitId = parseInt(rawId);
+    const kit = (db.kits || []).find(k => Number(k.id) === Number(kitId));
+    if (!kit) return { error: `Kit non trouvé: ${rawId}` };
+    if (!isKitAvailable(kit)) return { error: `${kit.name} est épuisé` };
+    const stock = getStockQty(kit);
+    if (stock !== null && qty > stock) return { error: `Il reste seulement ${stock} ${kit.name}` };
+    const unitPrice = effectiveKitUnitPriceForPackage(db, kit);
+    items.push({ id: String(kit.id), kitId: kit.id, type: 'kit', categoryId: kit.categoryId, tags: kit.tags || [], name: kit.name, unitPrice, price: unitPrice, image: kit.image || '', qty });
+  }
+  return { items };
+}
