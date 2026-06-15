@@ -35,7 +35,8 @@ const DEFAULT_DB = {
   sessions: [],
   discounts: [],
   refunds: [],
-  inventoryMovements: []
+  inventoryMovements: [],
+  bundleDealRules: []
 };
 
 const APP_DATA_DIR = path.join(__dirname, 'data');
@@ -115,7 +116,8 @@ function getCollectionCountsSafe() {
       sessions: db.sessions.length,
       discounts: db.discounts.length,
       refunds: db.refunds.length,
-      inventoryMovements: db.inventoryMovements.length
+      inventoryMovements: db.inventoryMovements.length,
+      bundleDealRules: (db.bundleDealRules||[]).length
     };
   } catch (err) {
     return { error: err.message };
@@ -139,7 +141,8 @@ function normalizeDB(db = {}) {
     sessions: Array.isArray(db.sessions) ? db.sessions : [],
     discounts: Array.isArray(db.discounts) ? db.discounts : [],
     refunds: Array.isArray(db.refunds) ? db.refunds : [],
-    inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : []
+    inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : [],
+    bundleDealRules: Array.isArray(db.bundleDealRules) ? db.bundleDealRules : []
   };
 }
 
@@ -1324,5 +1327,103 @@ function computeAdminAnalytics(db) {
     latestOrders: orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,6)
   };
 }
+
+// ========== CLIENT-CREATED BUNDLE DEAL RULES ==========
+function defaultBundleDealRules() {
+  return [
+    { id: 101, label: 'Rabais groupe 10+', appliesTo: 'all', minQty: 10, percent: 10, customTextFee: 12, active: true, createdAt: new Date().toISOString() },
+    { id: 102, label: 'Rabais événement 20+', appliesTo: 'event', minQty: 20, percent: 15, customTextFee: 0, active: true, createdAt: new Date().toISOString() },
+    { id: 103, label: 'Rabais mariage 30+', appliesTo: 'wedding', minQty: 30, percent: 18, customTextFee: 0, active: true, createdAt: new Date().toISOString() }
+  ];
+}
+function getBundleDealRules(db) {
+  if (!Array.isArray(db.bundleDealRules) || !db.bundleDealRules.length) return defaultBundleDealRules();
+  return db.bundleDealRules;
+}
+app.get('/api/bundle-deals', (req, res) => {
+  const db = readDB();
+  res.json(getBundleDealRules(db).filter(r => r.active !== false).sort((a,b)=>(Number(a.minQty)||0)-(Number(b.minQty)||0)));
+});
+app.get('/api/admin/bundle-deals', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json(getBundleDealRules(db).sort((a,b)=>(Number(a.minQty)||0)-(Number(b.minQty)||0)));
+});
+app.post('/api/admin/bundle-deals', adminOnly, (req, res) => {
+  const db = readDB();
+  const body = req.body || {};
+  const rule = {
+    id: Date.now(),
+    label: String(body.label || '').trim(),
+    appliesTo: ['all','group','event','wedding'].includes(body.appliesTo) ? body.appliesTo : 'all',
+    minQty: Math.max(1, parseInt(body.minQty) || 1),
+    percent: Math.max(0, Math.min(90, Number(body.percent) || 0)),
+    customTextFee: Math.max(0, Number(body.customTextFee) || 0),
+    active: body.active !== false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  if (!rule.label) return res.status(400).json({ error: 'Nom de règle requis' });
+  db.bundleDealRules = Array.isArray(db.bundleDealRules) && db.bundleDealRules.length ? db.bundleDealRules : defaultBundleDealRules();
+  db.bundleDealRules.push(rule);
+  writeDB(db);
+  res.json({ success: true, rule });
+});
+app.put('/api/admin/bundle-deals/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  db.bundleDealRules = Array.isArray(db.bundleDealRules) && db.bundleDealRules.length ? db.bundleDealRules : defaultBundleDealRules();
+  const i = db.bundleDealRules.findIndex(r => String(r.id) === String(req.params.id));
+  if (i === -1) return res.status(404).json({ error: 'Règle non trouvée' });
+  const body = req.body || {};
+  db.bundleDealRules[i] = {
+    ...db.bundleDealRules[i],
+    label: String(body.label ?? db.bundleDealRules[i].label).trim(),
+    appliesTo: ['all','group','event','wedding'].includes(body.appliesTo) ? body.appliesTo : db.bundleDealRules[i].appliesTo,
+    minQty: Math.max(1, parseInt(body.minQty) || db.bundleDealRules[i].minQty || 1),
+    percent: Math.max(0, Math.min(90, Number(body.percent ?? db.bundleDealRules[i].percent) || 0)),
+    customTextFee: Math.max(0, Number(body.customTextFee ?? db.bundleDealRules[i].customTextFee) || 0),
+    active: body.active !== false,
+    updatedAt: new Date().toISOString()
+  };
+  writeDB(db);
+  res.json({ success: true, rule: db.bundleDealRules[i] });
+});
+app.delete('/api/admin/bundle-deals/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  db.bundleDealRules = (Array.isArray(db.bundleDealRules) && db.bundleDealRules.length ? db.bundleDealRules : defaultBundleDealRules()).filter(r => String(r.id) !== String(req.params.id));
+  writeDB(db);
+  res.json({ success: true });
+});
+
+// Override inventory reservation so client-created bundles/events also reduce stock.
+function reserveInventoryForItems(db, items, orderId) {
+  const needs = new Map();
+  function addNeed(kitId, qty) {
+    if (!kitId) return;
+    needs.set(Number(kitId), (needs.get(Number(kitId)) || 0) + Math.max(1, parseInt(qty) || 1));
+  }
+  for (const item of items) {
+    const qty = Math.max(1, parseInt(item.qty) || 1);
+    if (item.type === 'kit') addNeed(item.kitId, qty);
+    if (item.type === 'bundle') for (const kitId of (item.kitIds || [])) addNeed(kitId, qty);
+    const customItems = item.customData?.items || item.customData?.placements || [];
+    if (['custom-bundle','custom-event-package'].includes(item.type) || item.customData?.kind === 'client-bundle' || item.customData?.kind === 'event-package') {
+      for (const ci of customItems) addNeed(ci.kitId, (Number(ci.qty) || 1) * qty);
+    }
+  }
+  for (const [kitId, qty] of needs.entries()) {
+    const kit = findKit(db, kitId);
+    if (!kit) continue;
+    if (!isKitAvailable(kit)) return { error: `${kit.name} est épuisé` };
+    const stock = getStockQty(kit);
+    if (stock !== null && qty > stock) return { error: `Inventaire insuffisant pour ${kit.name}. Reste: ${stock}` };
+  }
+  for (const [kitId, qty] of needs.entries()) {
+    const kit = findKit(db, kitId);
+    if (!kit) continue;
+    updateKitStock(kit, -qty, db, orderId, 'Commande / forfait client');
+  }
+  return { success: true };
+}
+
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.listen(PORT, () => console.log(`Arty! server → http://localhost:${PORT}`));
