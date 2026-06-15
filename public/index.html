@@ -23,6 +23,7 @@
           <a href="#/bundles">Ensembles de kits</a>
           <a href="#/custom-photo">Photo personnalisée</a>
           <a href="#/custom-bag">Sac personnalisé</a>
+          <a href="#/bundle-builder">Créer un forfait</a>
         </div>
       </div>
       <div class="nav-item nav-has-submenu">
@@ -32,6 +33,7 @@
           <a href="#/party?section=calendar">Calendrier public</a>
           <a href="#/party?section=private">Événement privé</a>
           <a href="#/party?section=team">Entreprise / équipe</a>
+          <a href="#/event-builder">Créer mon événement</a>
         </div>
       </div>
       <a href="#/tutorials">TUTORIELS</a>
@@ -542,6 +544,7 @@
         <button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button>
         <button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button>
         <button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button>
+        <button class="admin-tab" onclick="switchAdminTab('bundleDeals',this)">Forfaits clients</button>
       </div>
       <div id="adminDashboardPanel"></div>
       <div id="adminKitsPanel" style="display:none"></div>
@@ -551,6 +554,7 @@
       <div id="adminEventsPanel" style="display:none"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
       <div id="adminBundlesPanel" style="display:none"></div>
+      <div id="adminBundleDealsPanel" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -571,6 +575,25 @@
   <div class="custom-page section-pad">
     <div class="container">
       <div id="customBagPageContent"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================== CLIENT BUNDLE BUILDER ===================== -->
+<div class="page" id="page-bundle-builder">
+  <div class="client-builder-page section-pad">
+    <div class="container">
+      <div id="bundleBuilderPageContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== EVENT BUILDER ===================== -->
+<div class="page" id="page-event-builder">
+  <div class="event-builder-page section-pad">
+    <div class="container">
+      <div id="eventBuilderPageContent"></div>
     </div>
   </div>
 </div>
