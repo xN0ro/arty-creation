@@ -1122,3 +1122,8 @@ a,button,.btn,.kit-card,.cat-card,.event-card,.nav-user,.nav-links a,.footer a{u
 .builder-nav-actions .btn[disabled]{pointer-events:none}
 .builder-empty-modern{padding:30px;border:1px dashed var(--border);border-radius:20px;color:var(--text-light);text-align:center;background:var(--bg2)}
 @media(max-width:760px){.builder-purpose-row-modern,.event-builder-progress{border-radius:24px;width:100%;display:grid}.modern-field-grid{grid-template-columns:1fr}.catalog-toolbar-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}.builder-hero-polished{display:block}.builder-hero-polished .btn{margin-top:14px}}
+
+
+/* Builder page container safety */
+.builder-page{background:var(--bg);min-height:calc(100vh - 120px);padding-top:130px}
+@media(max-width:900px){.builder-page{padding-top:110px}}

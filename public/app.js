@@ -63,7 +63,16 @@ function handleRoute(){
   else if(h==='#/team'){show('page-party');renderPartyPage();setTimeout(scrollToTeamEvents,220)}
   else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
 }
-function show(id){document.getElementById(id).classList.add('active')}
+function show(id){
+  const el=document.getElementById(id);
+  if(!el){
+    console.warn('Page container missing:',id);
+    const home=document.getElementById('page-home');
+    if(home){home.classList.add('active');try{renderHomePage()}catch(e){console.error(e)}}
+    return;
+  }
+  el.classList.add('active');
+}
 function scrollToSection(id){navigate('#/');setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'})},200)}
 
 // ===== HOME PAGE RENDERING =====
