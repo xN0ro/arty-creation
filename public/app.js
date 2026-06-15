@@ -1704,3 +1704,125 @@ function renderAdminOrders(){
   const panel=document.getElementById('adminOrdersPanel');if(!panel)return;const refundRows=(adminRefunds||[]).map(r=>`<tr><td>${safeText(r.id)}</td><td>${safeText(r.orderId)}</td><td>$${toMoney(r.amount)}</td><td>${safeText(r.reason||'')}</td><td>${safeText(r.status||'noté')}</td></tr>`).join('');
   const rows=(adminOrders||[]).map(o=>{const cust=o.customer||{};const itemText=(o.items||[]).map(i=>{let details='';if(i.customData?.kind==='client-bundle')details=`<div class="admin-muted">Forfait client · ${(i.customData.items||[]).map(x=>safeText(x.name)+' x'+x.qty).join(', ')}${i.customData.customText?'<br>Texte: '+safeText(i.customData.customText):''}</div>`;if(i.customData?.kind==='event-package')details=`<div class="admin-muted">${safeText(i.customData.eventLabel||'Événement')} · ${safeText(i.customData.guests||'')} invités · ${safeText(i.customData.date||'date flexible')}<br>${(i.customData.items||[]).map(x=>safeText(x.name)+' x'+x.qty).join(', ')}${i.customData.customText?'<br>Texte souvenir: '+safeText(i.customData.customText):''}</div>`;if(i.customData?.kind==='photo-canvas-trace')details=`<div class="admin-muted">Format: ${safeText(i.customData.sizeLabel||'')}</div>`;if(i.customData?.kind==='bag-trace-design')details=`<div class="admin-muted">Images: ${safeText(i.customData.imageCount||0)}</div>`;return `${safeText(i.name)} ×${i.qty}${details}${i.discountAmount?` <span class="admin-muted">(-$${toMoney(i.discountAmount)})</span>`:''}`}).join('<br>');return `<tr><td><strong>${safeText(o.id)}</strong><br><span class="admin-muted">${new Date(o.createdAt).toLocaleDateString('fr-CA')}</span></td><td>${safeText(cust.name||'')}<br><span class="admin-muted">${safeText(cust.email||o.guestEmail||'')}</span></td><td>${itemText}</td><td><strong>$${toMoney(o.total)}</strong><br>${o.discountTotal?`<span class="admin-muted">Rabais: $${toMoney(o.discountTotal)}</span>`:''}${o.refundedTotal?`<span class="admin-muted">Remb.: $${toMoney(o.refundedTotal)}</span>`:''}</td><td><span class="admin-status ${o.paymentStatus==='paid'?'ok':o.paymentStatus==='cancelled'?'out':'pending'}">${safeText(o.paymentStatus||'pending')}</span></td><td><select class="admin-status-select" onchange="updateOrderStatus('${safeAttr(o.id)}',this.value)"><option value="en attente de paiement" ${o.status==='en attente de paiement'?'selected':''}>En attente paiement</option><option value="payée" ${o.status==='payée'?'selected':''}>Payée</option><option value="préparation" ${o.status==='préparation'?'selected':''}>Préparation</option><option value="expédiée" ${o.status==='expédiée'?'selected':''}>Expédiée</option><option value="annulée" ${o.status==='annulée'?'selected':''}>Annulée</option><option value="remboursée" ${o.status==='remboursée'?'selected':''}>Remboursée</option></select><div class="admin-actions" style="margin-top:8px"><button class="admin-btn admin-btn-edit" onclick="createRefund('${safeAttr(o.id)}')">Rembourser</button></div></td></tr>`}).join('');panel.innerHTML=`<div class="admin-form-card"><h3>Commandes & remboursements</h3><p class="admin-help">Les forfaits créés par les clients et les événements personnalisés apparaissent ici avec les quantités, textes souvenirs et détails.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Articles</th><th>Total</th><th>Paiement</th><th>Statut / action</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="admin-muted">Aucune commande pour le moment.</td></tr>'}</tbody></table></div><div class="admin-section-title"><h3>Historique des remboursements</h3></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Remboursement</th><th>Commande</th><th>Montant</th><th>Raison</th><th>Statut</th></tr></thead><tbody>${refundRows||'<tr><td colspan="5" class="admin-muted">Aucun remboursement.</td></tr>'}</tbody></table></div>`;
 }
+
+
+/* ===== BUILDER UX POLISH OVERRIDES ===== */
+function startBundleWithKit(kitId){
+  const key=String(kitId);
+  bundleBuilderState.selected[key]=(Number(bundleBuilderState.selected[key])||0)+1;
+  navigate('#/bundle-builder');
+}
+function setBundlePurpose(v){
+  bundleBuilderState.purpose=v;
+  document.querySelectorAll('[data-bundle-purpose]').forEach(b=>b.classList.toggle('active',b.dataset.bundlePurpose===v));
+  updateBuilderLive('bundle');
+}
+function setBundlePeople(v){
+  bundleBuilderState.people=Math.max(1,parseInt(v)||1);
+  const el=document.getElementById('bundlePeopleValue');if(el)el.value=bundleBuilderState.people;
+  updateBuilderLive('bundle');
+}
+function adjustBundlePeople(delta){setBundlePeople((Number(bundleBuilderState.people)||1)+delta)}
+function setBundleCustomText(v){
+  bundleBuilderState.customText=String(v||'').slice(0,90);
+  const p=document.getElementById('bundleCustomTextPreview');
+  if(p)p.textContent=bundleBuilderState.customText||'Votre texte souvenir apparaîtra ici';
+  updateBuilderLive('bundle');
+}
+function setEventGuests(v){
+  eventBuilderState.guests=Math.max(1,parseInt(v)||1);
+  const el=document.getElementById('eventGuestsValue');if(el)el.value=eventBuilderState.guests;
+  updateBuilderLive('event');
+}
+function adjustEventGuests(delta){setEventGuests((Number(eventBuilderState.guests)||1)+delta)}
+function setEventCustomText(v){
+  eventBuilderState.customText=String(v||'').slice(0,90);
+  const p=document.getElementById('eventCustomTextPreview');
+  if(p)p.textContent=eventBuilderState.customText||'Ex: Mariage Anna & David · 12 juillet 2026';
+  updateBuilderLive('event');
+}
+function setEventHostName(v){eventBuilderState.hostName=String(v||'')}
+function setEventLocation(v){eventBuilderState.location=String(v||'');updateBuilderLive('event')}
+function setEventDate(v){eventBuilderState.date=String(v||'');updateBuilderLive('event')}
+function setEventNotes(v){eventBuilderState.notes=String(v||'')}
+function kitPickerHTMLPro(state,context){
+  const kits=allKits.filter(k=>k.inStock!==false);
+  if(!kits.length)return '<div class="builder-empty-modern">Aucun kit disponible pour le moment.</div>';
+  return `<div class="builder-kit-grid builder-kit-grid-pro">${kits.map(k=>{
+    const qty=Number(state.selected[String(k.id)]||0);
+    return `<article class="builder-kit-card builder-kit-card-pro ${qty?'selected':''}" data-builder-card="${context}-${k.id}">
+      <button type="button" class="builder-kit-click" onclick="changeBuilderQty('${context}',${k.id},1)" aria-label="Ajouter ${safeAttr(k.name)}"></button>
+      <img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}">
+      <div class="builder-kit-info"><strong>${safeText(k.name)}</strong><span>${kitPriceHTML ? kitPriceHTML(k) : ('$'+toMoney(k.price))}</span></div>
+      <div class="builder-qty builder-qty-modern">
+        <button type="button" onclick="event.stopPropagation();changeBuilderQty('${context}',${k.id},-1)">−</button>
+        <b data-builder-qty="${context}-${k.id}">${qty}</b>
+        <button type="button" onclick="event.stopPropagation();changeBuilderQty('${context}',${k.id},1)">+</button>
+      </div>
+    </article>`}).join('')}</div>`;
+}
+function changeBuilderQty(context,kitId,delta){
+  const s=context==='event'?eventBuilderState:bundleBuilderState;
+  const key=String(kitId);
+  s.selected[key]=Math.max(0,(Number(s.selected[key])||0)+delta);
+  if(!s.selected[key])delete s.selected[key];
+  const qty=s.selected[key]||0;
+  const qtyEl=document.querySelector(`[data-builder-qty="${context}-${kitId}"]`);
+  if(qtyEl)qtyEl.textContent=qty;
+  const card=document.querySelector(`[data-builder-card="${context}-${kitId}"]`);
+  if(card)card.classList.toggle('selected',qty>0);
+  updateBuilderLive(context);
+}
+function builderSummaryHTML(t,context){
+  const selected=t.items.map(i=>`<div class="builder-summary-line"><span>${safeText(i.kit.name)} ×${i.qty}</span><strong>$${toMoney((getKitDisplayPrice?getKitDisplayPrice(i.kit):i.kit.price)*i.qty)}</strong></div>`).join('')||'<p class="builder-muted">Aucun produit sélectionné.</p>';
+  const label=context==='event'?'Rabais événement':'Rabais quantité';
+  return `${selected}<hr><div class="builder-summary-line"><span>Sous-total</span><strong>$${toMoney(t.subtotal)}</strong></div><div class="builder-summary-line discount"><span>${t.rule?safeText(t.rule.label||label):label}</span><strong>${t.rule?'- $'+toMoney(t.discount):'Aucun'}</strong></div>${t.customTextFee?`<div class="builder-summary-line"><span>Texte personnalisé</span><strong>$${toMoney(t.customTextFee)}</strong></div>`:''}<div class="builder-total"><span>Total instantané</span><strong>$${toMoney(t.total)}</strong></div>`;
+}
+function updateBuilderLive(context){
+  const state=context==='event'?eventBuilderState:bundleBuilderState;
+  const purpose=context==='event'?(eventBuilderState.eventType==='wedding'?'wedding':'event'):(bundleBuilderState.purpose||'group');
+  const t=builderTotals(state,purpose);
+  const summary=document.getElementById(context==='event'?'eventBuilderSummaryLines':'bundleBuilderSummaryLines');
+  if(summary)summary.innerHTML=builderSummaryHTML(t,context);
+  const count=document.getElementById(context==='event'?'eventSelectedCount':'bundleSelectedCount');
+  if(count)count.textContent=`${t.qty} kit${t.qty>1?'s':''}`;
+  const action=document.getElementById(context==='event'?'eventFinalActionBtn':'bundleAddBtn');
+  if(action){action.disabled=!t.qty;action.style.opacity=t.qty?'1':'.55'}
+}
+function renderBundleBuilderPage(){
+  const c=document.getElementById('bundleBuilderPageContent');if(!c)return;
+  const t=builderTotals(bundleBuilderState,bundleBuilderState.purpose);
+  c.innerHTML=`<div class="builder-hero builder-hero-polished"><div><div class="section-tag">Forfait sur mesure</div><h2 class="section-heading">Créez votre <span class="accent">forfait Arty</span></h2><p>Choisissez vos kits, les quantités et un texte souvenir. Le prix se met à jour automatiquement avec les rabais configurés dans l’admin.</p></div><button type="button" class="btn btn-ghost" onclick="navigate('#/paintings')">Voir les produits</button></div>
+  <div class="client-builder-layout"><section class="builder-main-card builder-main-modern">
+    <div class="builder-purpose-row builder-purpose-row-modern"><button type="button" data-bundle-purpose="group" class="builder-purpose ${bundleBuilderState.purpose==='group'?'active':''}" onclick="setBundlePurpose('group')">Groupe / amis</button><button type="button" data-bundle-purpose="event" class="builder-purpose ${bundleBuilderState.purpose==='event'?'active':''}" onclick="setBundlePurpose('event')">Événement</button><button type="button" data-bundle-purpose="wedding" class="builder-purpose ${bundleBuilderState.purpose==='wedding'?'active':''}" onclick="setBundlePurpose('wedding')">Mariage</button></div>
+    <div class="modern-field-grid"><div class="modern-field-card"><label>Nombre de personnes</label><div class="modern-number-stepper"><button type="button" onclick="adjustBundlePeople(-1)">−</button><input id="bundlePeopleValue" type="number" min="1" value="${bundleBuilderState.people}" oninput="setBundlePeople(this.value)"><button type="button" onclick="adjustBundlePeople(1)">+</button></div><small>Utilisé pour suggérer la bonne quantité.</small></div><div class="modern-field-card modern-text-card"><label>Texte personnalisé</label><input type="text" maxlength="90" value="${safeAttr(bundleBuilderState.customText||'')}" placeholder="Ex: Soirée peinture famille · 2026" oninput="setBundleCustomText(this.value)"><div class="souvenir-preview"><span>Texte aperçu</span><strong id="bundleCustomTextPreview">${safeText(bundleBuilderState.customText||'Votre texte souvenir apparaîtra ici')}</strong></div></div></div>
+    <div class="builder-section-title"><h3>Choisir les produits</h3><span id="bundleSelectedCount">${t.qty} kit${t.qty>1?'s':''}</span></div>${kitPickerHTMLPro(bundleBuilderState,'bundle')}
+  </section><aside class="builder-summary-card builder-summary-modern"><div class="summary-art-badge">Arty</div><h3>Résumé du forfait</h3><div id="bundleBuilderSummaryLines">${builderSummaryHTML(t,'bundle')}</div><button type="button" id="bundleAddBtn" class="btn btn-orange" onclick="addClientBundleToCart()" ${!t.qty?'disabled style="opacity:.55"':''}>Ajouter au panier →</button><button type="button" class="btn btn-ghost" onclick="addClientBundleToCart(true)" ${!t.qty?'disabled style="opacity:.55"':''}>Acheter maintenant</button><p class="builder-footnote">Le stock et le paiement sont vérifiés au checkout Stripe.</p></aside></div>`;
+  initScrollEffects();
+}
+function setEventType(v){eventBuilderState.eventType=v;eventBuilderState.step=2;renderEventBuilderPage()}
+function setEventStep(n){eventBuilderState.step=Math.max(1,Math.min(3,Number(n)||1));renderEventBuilderPage()}
+function autoFillEventQty(){
+  const target=Math.max(1,Number(eventBuilderState.guests)||1);
+  const ids=Object.keys(eventBuilderState.selected);
+  if(!ids.length&&allKits[0])eventBuilderState.selected[String(allKits[0].id)]=target;
+  else ids.forEach(id=>eventBuilderState.selected[id]=target);
+  eventBuilderState.step=3;
+  renderEventBuilderPage();
+}
+function eventNextAction(){
+  if(eventBuilderState.step<3)return setEventStep(eventBuilderState.step+1);
+  return addEventPackageToCart();
+}
+function renderEventBuilderPage(){
+  const c=document.getElementById('eventBuilderPageContent');if(!c)return;
+  const t=builderTotals(eventBuilderState,eventBuilderState.eventType==='wedding'?'wedding':'event');
+  const types=[['wedding','Mariage','Une activité souvenir pour les invités'],['birthday','Anniversaire','Une fête créative simple à organiser'],['corporate','Entreprise / équipe','Team building moderne'],['family','Famille','Moment chaleureux à la maison'],['friends','Entre amis','Soirée peinture relax'],['kids','Enfants','Activité facile et encadrée']];
+  const step1=`<div class="event-builder-step"><h3>Choisissez le style d’événement</h3><div class="event-type-grid">${types.map(([id,title,sub])=>`<button type="button" class="event-type-card ${eventBuilderState.eventType===id?'active':''}" onclick="setEventType('${id}')"><span>${id==='wedding'?'💍':id==='birthday'?'🎂':id==='corporate'?'🏢':id==='family'?'🏡':id==='friends'?'🥂':'🎈'}</span><strong>${title}</strong><small>${sub}</small></button>`).join('')}</div></div>`;
+  const step2=`<div class="event-builder-step"><h3>Détails de l’événement</h3><div class="modern-field-grid"><div class="modern-field-card"><label>Nom du contact</label><input value="${safeAttr(eventBuilderState.hostName||currentUser?.name||'')}" oninput="setEventHostName(this.value)" placeholder="Votre nom"></div><div class="modern-field-card"><label>Nombre d’invités</label><div class="modern-number-stepper"><button type="button" onclick="adjustEventGuests(-1)">−</button><input id="eventGuestsValue" type="number" min="1" value="${eventBuilderState.guests}" oninput="setEventGuests(this.value)"><button type="button" onclick="adjustEventGuests(1)">+</button></div></div><div class="modern-field-card"><label>Date souhaitée</label><input type="date" value="${safeAttr(eventBuilderState.date||'')}" onchange="setEventDate(this.value)"></div><div class="modern-field-card"><label>Lieu</label><input value="${safeAttr(eventBuilderState.location||'')}" oninput="setEventLocation(this.value)" placeholder="Adresse, ville ou à confirmer"></div></div><button type="button" class="btn btn-teal" onclick="autoFillEventQty()">Préparer ${eventBuilderState.guests} kits automatiquement</button></div>`;
+  const step3=`<div class="event-builder-step"><h3>Produits et personnalisation</h3><p class="builder-muted">Sélectionnez les kits pour l’événement. Vous pouvez mélanger plusieurs modèles.</p>${kitPickerHTMLPro(eventBuilderState,'event')}<div class="modern-field-grid"><div class="modern-field-card modern-text-card"><label>Texte souvenir sur les peintures</label><input type="text" maxlength="90" value="${safeAttr(eventBuilderState.customText||'')}" placeholder="Ex: Mariage Anna & David · 12 juillet 2026" oninput="setEventCustomText(this.value)"><div class="souvenir-preview"><span>Aperçu texte</span><strong id="eventCustomTextPreview">${safeText(eventBuilderState.customText||'Ex: Mariage Anna & David · 12 juillet 2026')}</strong></div></div><div class="modern-field-card"><label>Notes spéciales</label><textarea oninput="setEventNotes(this.value)" placeholder="Ex: couleurs du mariage, livraison avant une date précise...">${safeText(eventBuilderState.notes||'')}</textarea></div></div></div>`;
+  const stepHTML=eventBuilderState.step===1?step1:eventBuilderState.step===2?step2:step3;
+  const actionText=eventBuilderState.step<3?'Continuer →':'Ajouter au panier →';
+  c.innerHTML=`<div class="event-builder-hero event-builder-hero-polished"><div class="event-sparkle">✦</div><div><div class="section-tag">Expérience Arty</div><h2 class="section-heading">Créez votre <span class="accent">événement</span> en quelques clics</h2><p>Construisez un mariage, anniversaire ou événement d’équipe avec prix instantané, kits sélectionnés et texte souvenir.</p></div></div><div class="event-builder-progress"><button type="button" class="${eventBuilderState.step===1?'active':''}" onclick="setEventStep(1)">1. Style</button><button type="button" class="${eventBuilderState.step===2?'active':''}" onclick="setEventStep(2)">2. Détails</button><button type="button" class="${eventBuilderState.step===3?'active':''}" onclick="setEventStep(3)">3. Produits</button></div><div class="client-builder-layout"><section class="builder-main-card animated-builder builder-main-modern">${stepHTML}<div class="builder-nav-actions"><button type="button" class="btn btn-ghost" onclick="setEventStep(eventBuilderState.step-1)" ${eventBuilderState.step===1?'disabled style="opacity:.45"':''}>← Retour</button><button type="button" id="eventFinalActionBtn" class="btn ${eventBuilderState.step<3?'btn-teal':'btn-orange'}" onclick="eventNextAction()" ${eventBuilderState.step===3&&!t.qty?'disabled style="opacity:.55"':''}>${actionText}</button></div></section><aside class="builder-summary-card event-summary-card builder-summary-modern"><div class="summary-art-badge">${eventBuilderState.eventType==='wedding'?'💍':'🎨'}</div><h3>${safeText(eventTypeLabel(eventBuilderState.eventType))}</h3><div class="builder-summary-line"><span>Invités</span><strong>${eventBuilderState.guests}</strong></div><div class="builder-summary-line"><span>Date</span><strong>${eventBuilderState.date?safeText(eventBuilderState.date):'Flexible'}</strong></div><div id="eventBuilderSummaryLines">${builderSummaryHTML(t,'event')}</div><button type="button" class="btn btn-ghost" onclick="submitBuiltEventRequest()">Demander une validation</button></aside></div>`;
+  initScrollEffects();
+}

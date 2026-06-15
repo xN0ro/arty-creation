@@ -23,7 +23,6 @@
           <a href="#/bundles">Ensembles de kits</a>
           <a href="#/custom-photo">Photo personnalisée</a>
           <a href="#/custom-bag">Sac personnalisé</a>
-          <a href="#/bundle-builder">Créer un forfait</a>
         </div>
       </div>
       <div class="nav-item nav-has-submenu">
@@ -33,7 +32,6 @@
           <a href="#/party?section=calendar">Calendrier public</a>
           <a href="#/party?section=private">Événement privé</a>
           <a href="#/party?section=team">Entreprise / équipe</a>
-          <a href="#/event-builder">Créer mon événement</a>
         </div>
       </div>
       <a href="#/tutorials">TUTORIELS</a>
@@ -270,6 +268,7 @@
           <div class="catalog-toolbar">
             <div><h3>Tous les kits</h3><p id="catalogResultText">0 produit trouvé</p></div>
             <div class="catalog-toolbar-actions">
+              <button class="btn btn-orange btn-sm catalog-builder-cta" onclick="navigate('#/bundle-builder')">Créer mon forfait</button>
               <button class="catalog-filter-toggle" onclick="toggleCatalogFilters()">Filtres</button>
               <select id="kitSortSelect" onchange="updateCatalogFromInput('sort',this)">
                 <option value="featured">Populaires d'abord</option>
@@ -299,9 +298,9 @@
             <h2 class="section-heading">Ateliers peinture, fêtes privées et <span class="accent">activités d'équipe</span></h2>
             <p class="event-intro-highlight">Une seule page claire pour tous les événements Arty : réserver une place à un atelier publié, demander une fête privée ou organiser une activité créative pour une entreprise.</p>
             <div class="event-hero-actions">
-              <button class="btn btn-orange" onclick="scrollToPartyEvents()">Voir le calendrier</button>
-              <button class="btn btn-teal" onclick="scrollToEventRequest()">Demander un événement</button>
-              <button class="btn btn-ghost" onclick="scrollToTeamEvents()">Activités d'équipe</button>
+              <button class="btn btn-orange" onclick="navigate('#/event-builder')">Créer mon événement</button>
+              <button class="btn btn-teal" onclick="scrollToPartyEvents()">Voir le calendrier</button>
+              <button class="btn btn-ghost" onclick="scrollToEventRequest()">Demande rapide</button>
             </div>
           </div>
           <div class="event-hero-panel">
@@ -318,7 +317,7 @@
       <div class="container">
         <div class="event-options-grid fade-up">
           <div class="event-option-card"><span>🎟️</span><h3>Réserver une place</h3><p>Les clients peuvent choisir un événement publié, voir les places disponibles et réserver directement.</p></div>
-          <div class="event-option-card"><span>🎂</span><h3>Événement privé</h3><p>Anniversaire, mariage, fête familiale ou soirée entre amis — envoyez une demande personnalisée.</p></div>
+          <div class="event-option-card event-builder-promo-card"><span>✨</span><h3>Créer mon événement</h3><p>Choisissez le type, les invités, les kits, la date et le texte souvenir avec un prix instantané.</p><button class="btn btn-orange btn-sm" onclick="navigate('#/event-builder')">Commencer →</button></div>
           <div class="event-option-card"><span>🤝</span><h3>Entreprise / équipe</h3><p>Team building, réunion créative ou journée de reconnaissance avec kits livrés et animation possible.</p></div>
         </div>
       </div>
@@ -544,7 +543,6 @@
         <button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button>
         <button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button>
         <button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button>
-        <button class="admin-tab" onclick="switchAdminTab('bundleDeals',this)">Forfaits clients</button>
       </div>
       <div id="adminDashboardPanel"></div>
       <div id="adminKitsPanel" style="display:none"></div>
@@ -554,7 +552,6 @@
       <div id="adminEventsPanel" style="display:none"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
       <div id="adminBundlesPanel" style="display:none"></div>
-      <div id="adminBundleDealsPanel" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -575,25 +572,6 @@
   <div class="custom-page section-pad">
     <div class="container">
       <div id="customBagPageContent"></div>
-    </div>
-  </div>
-</div>
-
-
-<!-- ===================== CLIENT BUNDLE BUILDER ===================== -->
-<div class="page" id="page-bundle-builder">
-  <div class="client-builder-page section-pad">
-    <div class="container">
-      <div id="bundleBuilderPageContent"></div>
-    </div>
-  </div>
-</div>
-
-<!-- ===================== EVENT BUILDER ===================== -->
-<div class="page" id="page-event-builder">
-  <div class="event-builder-page section-pad">
-    <div class="container">
-      <div id="eventBuilderPageContent"></div>
     </div>
   </div>
 </div>
