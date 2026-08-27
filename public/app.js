@@ -2,7 +2,8 @@
 let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
 let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventType:'wedding',guests:20,date:'',location:'',customText:'',selected:{},hostName:'',notes:''};
-let catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+let catalogFilters={category:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+let siteAnnouncement={enabled:false,message:''};
 
 document.addEventListener('DOMContentLoaded',async()=>{
   document.addEventListener('mousedown',e=>{
@@ -14,10 +15,10 @@ document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured}catch{}
+  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
   await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles(),loadBundleDealRules()]);
-  initNavbar();updateAuthUI();updateCartUI();initGoogleSignIn();initAuthValidation();
+  initNavbar();updateAuthUI();updateCartUI();renderSiteAnnouncement();initGoogleSignIn();initAuthValidation();
   window.addEventListener('hashchange',handleRoute);handleRoute();
 });
 
@@ -26,11 +27,6 @@ function navigate(h){window.location.hash=h}
 function safeText(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
 function safeAttr(v){return safeText(v).replace(/'/g,'&#39;')}
 function toMoney(v){return Number(v||0).toFixed(2)}
-function normalizeKitTags(kit){
-  const raw=kit?.tags??kit?.badges??[];
-  if(Array.isArray(raw))return raw.map(t=>String(t).trim()).filter(Boolean);
-  return String(raw||'').split(',').map(t=>t.trim()).filter(Boolean);
-}
 function uniqueList(values){return [...new Set(values.map(v=>String(v).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'))}
 
 // ===== ROUTER =====
@@ -54,7 +50,6 @@ function handleRoute(){
   else if(h==='#/bundle-builder'){show('page-bundle-builder');renderBundleBuilderPage();window.scrollTo(0,0)}
   else if(h==='#/event-builder'){show('page-event-builder');renderEventBuilderPage();window.scrollTo(0,0)}
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
-  else if(h==='#/bundles'){show('page-bundles');renderBundlesPage();window.scrollTo(0,0)}
   else if(h==='#/checkout'){show('page-checkout');renderCheckoutPage();window.scrollTo(0,0)}
   else if(h.startsWith('#/payment-complete')){show('page-checkout');renderPaymentCompletePage();window.scrollTo(0,0)}
   else if(h==='#/privacy'){show('page-privacy');initScrollEffects();window.scrollTo(0,0)}
@@ -72,6 +67,15 @@ function show(id){
     return;
   }
   el.classList.add('active');
+}
+function renderSiteAnnouncement(){
+  const bar=document.getElementById('siteAnnouncement');
+  const message=document.getElementById('siteAnnouncementMessage');
+  if(!bar||!message)return;
+  const visible=siteAnnouncement?.enabled===true&&String(siteAnnouncement?.message||'').trim().length>0;
+  message.textContent=visible?String(siteAnnouncement.message).trim():'';
+  bar.hidden=!visible;
+  document.body.classList.toggle('has-site-announcement',visible);
 }
 function scrollToSection(id){navigate('#/');setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'})},200)}
 
@@ -202,7 +206,7 @@ function initScrollEffects(){
 // ===== PAINTINGS PAGE =====
 function renderPaintingsPage(){
   const params=new URLSearchParams((window.location.hash.split('?')[1]||''));
-  catalogFilters={category:params.get('cat')||'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+  catalogFilters={category:params.get('cat')||'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
   renderCatalogFilterOptions();
   syncCatalogInputs();
   renderKitsGrid();
@@ -218,17 +222,6 @@ function renderCatalogFilterOptions(){
         return `<button class="catalog-pill" data-category="${safeAttr(c.id)}" onclick="setCatalogFilter('category','${safeAttr(c.id)}')">${safeText(c.name)} <span>${count}</span></button>`;
       }));
     cats.innerHTML=buttons.join('');
-  }
-
-  const badgeWrap=document.getElementById('badgeFilterList');
-  if(badgeWrap){
-    const badges=uniqueList(allKits.flatMap(k=>normalizeKitTags(k)));
-    if(!badges.length){
-      badgeWrap.innerHTML='<p class="filter-empty-note">Ajoutez des badges dans l\'admin: enfants, couple, cadeau, mini-kit, etc.</p>';
-    }else{
-      badgeWrap.innerHTML=`<button class="catalog-chip active" data-badge="all" onclick="setCatalogFilter('badge','all')">Tous</button>`+
-        badges.map(b=>`<button class="catalog-chip" data-badge="${safeAttr(b)}" onclick="setCatalogFilter('badge','${safeAttr(b)}')">${safeText(b)}</button>`).join('');
-    }
   }
 
   const diffWrap=document.getElementById('difficultyFilterList');
@@ -258,12 +251,11 @@ function syncCatalogInputs(){
   const max=document.getElementById('priceMaxInput'); if(max) max.value=catalogFilters.priceMax||'';
   const stock=document.getElementById('stockOnlyInput'); if(stock) stock.checked=catalogFilters.stock==='in';
   document.querySelectorAll('[data-category]').forEach(b=>b.classList.toggle('active',String(b.dataset.category)===String(catalogFilters.category)));
-  document.querySelectorAll('[data-badge]').forEach(b=>b.classList.toggle('active',String(b.dataset.badge)===String(catalogFilters.badge)));
   document.querySelectorAll('[data-difficulty]').forEach(b=>b.classList.toggle('active',String(b.dataset.difficulty)===String(catalogFilters.difficulty)));
 }
 
 function resetCatalogFilters(){
-  catalogFilters={category:'all',badge:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+  catalogFilters={category:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
   currentFilter='all';
   syncCatalogInputs();
   renderKitsGrid();
@@ -290,10 +282,8 @@ function getFilteredKits(){
   const max=catalogFilters.priceMax!==''?parseFloat(catalogFilters.priceMax):null;
   let kits=allKits.filter(k=>{
     const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
-    const tags=normalizeKitTags(k);
-    const hay=[k.name,k.shortDesc,k.description,k.difficulty,cat?.name,...tags].join(' ').toLowerCase();
+    const hay=[k.name,k.shortDesc,k.description,k.difficulty,cat?.name].join(' ').toLowerCase();
     if(catalogFilters.category!=='all' && String(k.categoryId)!==String(catalogFilters.category)) return false;
-    if(catalogFilters.badge!=='all' && !tags.some(t=>t.toLowerCase()===String(catalogFilters.badge).toLowerCase())) return false;
     if(catalogFilters.difficulty!=='all' && String(k.difficulty)!==String(catalogFilters.difficulty)) return false;
     if(catalogFilters.stock==='in' && k.inStock===false) return false;
     if(q && !hay.includes(q)) return false;
@@ -322,7 +312,6 @@ function renderActiveFilters(filtered){
     const cat=allCategories.find(c=>String(c.id)===String(catalogFilters.category));
     chips.push(`<button onclick="removeCatalogFilter('category')">Catégorie: ${safeText(cat?.name||catalogFilters.category)} ×</button>`);
   }
-  if(catalogFilters.badge!=='all') chips.push(`<button onclick="removeCatalogFilter('badge')">Badge: ${safeText(catalogFilters.badge)} ×</button>`);
   if(catalogFilters.difficulty!=='all') chips.push(`<button onclick="removeCatalogFilter('difficulty')">Niveau: ${safeText(catalogFilters.difficulty)} ×</button>`);
   if(catalogFilters.stock==='in') chips.push(`<button onclick="removeCatalogFilter('stock')">En stock seulement ×</button>`);
   if(catalogFilters.search) chips.push(`<button onclick="removeCatalogFilter('search')">Recherche: ${safeText(catalogFilters.search)} ×</button>`);
@@ -338,7 +327,6 @@ function renderKitsGrid(){
   g.classList.remove('visible');
   g.innerHTML=filtered.map(k=>{
     const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
-    const tags=normalizeKitTags(k).slice(0,4);
     const img=k.image||'logoarty.png';
     const isInStock=k.inStock!==false;
     const stockLabel=isInStock?'En stock':'Épuisé';
@@ -348,7 +336,6 @@ function renderKitsGrid(){
         <div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div>
         <h3 class="kit-card-title">${safeText(k.name)}</h3>
         <p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p>
-        <div class="kit-card-tags">${tags.map(t=>`<span>${safeText(t)}</span>`).join('')}</div>
         <div class="kit-card-footer"><span class="kit-card-price">$${toMoney(k.price)}</span><span class="kit-card-meta">${safeText(k.difficulty||stockLabel)}</span></div>
       </div>
     </div>`;
@@ -361,18 +348,6 @@ function toggleCatalogFilters(){
   document.getElementById('catalogSidebar')?.classList.toggle('open');
 }
 
-// ===== PRODUCT PAGE =====
-function renderProductPage(id){
-  const kit=allKits.find(k=>k.id===id);const c=document.getElementById('productPageContent');
-  if(!kit){c.innerHTML='<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">🎨</div><p>Kit non trouvé</p></div>';return}
-  const cat=allCategories.find(ct=>ct.id===kit.categoryId);
-  const imgs=kit.images?.length?kit.images:[kit.image];
-  const thumbs=imgs.length>1?`<div class="product-thumbs">${imgs.map((img,i)=>`<img src="${img}" class="product-thumb${i===0?' active':''}" onclick="switchImg(this,'${img}')">`).join('')}</div>`:'';
-  const inc=kit.includes?.length?`<div class="product-includes"><h3>Inclus dans ce kit</h3><ul>${kit.includes.map(i=>`<li>${i}</li>`).join('')}</ul></div>`:'';
-  const kitTags=normalizeKitTags(kit);
-  const productInStock=kit.inStock!==false;
-  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${safeAttr(imgs[0]||'logoarty.png')}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${safeText(cat?cat.name:'')}</div><h1>${safeText(kit.name)}</h1><div class="product-price">$${toMoney(kit.price)}</div><p class="product-desc">${safeText(kit.description||'')}</p><div class="product-tags"><span class="product-tag">${safeText(kit.difficulty||'')}</span><span class="product-tag">${productInStock?'En stock':'Épuisé'}</span>${kitTags.map(t=>`<span class="product-tag">${safeText(t)}</span>`).join('')}</div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!productInStock?'disabled style="opacity:.4"':''}>${productInStock?'Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!productInStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button></div></div></div>`;
-}
 function switchImg(th,src){document.getElementById('pMainImg').src=src;document.querySelectorAll('.product-thumb').forEach(t=>t.classList.remove('active'));th.classList.add('active')}
 function chgQty(d){const i=document.getElementById('pQty');if(!i)return;i.value=Math.min(10,Math.max(1,parseInt(i.value)+d))}
 
@@ -509,57 +484,6 @@ function renderTutorialsPage(){
   initScrollEffects();
 }
 function playVideo(el,url){el.innerHTML=`<iframe src="${url}?autoplay=1" allow="autoplay;encrypted-media" allowfullscreen></iframe>`}
-
-// ===== BUNDLES PAGE =====
-function renderBundlesPage(){
-  const allGrid = document.getElementById('bundlesGrid');
-  const miniGrid = document.getElementById('miniBundlesGrid');
-  const coupleGrid = document.getElementById('coupleBundlesGrid');
-  const noMsg = document.getElementById('noBundles');
-
-  if(!allBundles.length){
-    [allGrid, miniGrid, coupleGrid].forEach(g=>{ if(g) g.innerHTML=''; });
-    noMsg.style.display='block';
-    initScrollEffects();
-    return;
-  }
-
-  noMsg.style.display='none';
-  const hasWords = (bundle, words) => {
-    const txt = `${bundle.name||''} ${bundle.description||''} ${bundle.tag||''}`.toLowerCase();
-    return words.some(w=>txt.includes(w));
-  };
-  const miniBundles = allBundles.filter(b=>hasWords(b,['mini']));
-  const coupleBundles = allBundles.filter(b=>hasWords(b,['couple','duo','amoureux','soirée à deux','soiree a deux']));
-
-  allGrid.innerHTML = allBundles.map(renderBundleCard).join('');
-  miniGrid.innerHTML = miniBundles.length ? miniBundles.map(renderBundleCard).join('') : `<div class="bundle-empty-note">Aucun mini ensemble disponible pour le moment.</div>`;
-  coupleGrid.innerHTML = coupleBundles.length ? coupleBundles.map(renderBundleCard).join('') : `<div class="bundle-empty-note">Aucun ensemble duo disponible pour le moment.</div>`;
-  initScrollEffects();
-}
-
-function renderBundleCard(b){
-  const kitNames = (b.kitIds||[]).map(id=>{const k=allKits.find(x=>x.id===id);return k?k.name:'Kit'});
-  const price = Number(b.price)||0;
-  const originalPrice = Number(b.originalPrice)||0;
-  return `<div class="bundle-card">
-    ${b.tag?`<div class="bundle-card-ribbon">${b.tag}</div>`:''}
-    <div class="bundle-card-img"><img src="${b.image}" alt="${b.name}" loading="lazy"></div>
-    <div class="bundle-card-body">
-      <div class="bundle-card-tag">🎁 Ensemble de peinture</div>
-      <h3>${b.name}</h3>
-      <p class="bundle-card-desc">${b.description||''}</p>
-      <div class="bundle-card-includes">${kitNames.map(n=>`<span>${n}</span>`).join('')}</div>
-      <div class="bundle-card-footer">
-        <div class="bundle-card-price">
-          <span class="current">$${price.toFixed(2)}</span>
-          ${originalPrice?`<span class="original">$${originalPrice.toFixed(2)}</span>`:''}
-        </div>
-        <button class="btn btn-orange btn-sm" onclick="addBundleToCart(${b.id})">Ajouter</button>
-      </div>
-    </div>
-  </div>`;
-}
 
 
 // ===== PROFILE =====
@@ -920,8 +844,6 @@ async function submitPrivateEventRequest(){
 async function submitContact(){const n=document.getElementById('contactName').value,e=document.getElementById('contactEmail').value,m=document.getElementById('contactMessage').value;if(!n||!e||!m)return showToast('Remplissez tous les champs','error');try{const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,message:m})});const d=await r.json();if(!r.ok)return showToast(d.error,'error');showToast(d.message,'success');['contactName','contactEmail','contactMessage'].forEach(id=>document.getElementById(id).value='')}catch{showToast('Erreur','error')}}
 
 // ===== ADMIN =====
-async function loadAdminData(){try{await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders()]);const r=await fetch('/api/admin/stats',{headers:authH()});const s=await r.json();document.getElementById('statKits').textContent=s.totalKits;document.getElementById('statCats').textContent=s.totalCategories;document.getElementById('statUsers').textContent=s.totalUsers;document.getElementById('statOrders').textContent=s.totalOrders}catch{}renderAdminKits();renderAdminCategories();renderAdminBundles();renderAdminEvents();renderAdminOrders()}
-function switchAdminTab(t,btn){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));btn.classList.add('active');document.getElementById('adminKitsPanel').style.display=t==='kits'?'block':'none';document.getElementById('adminCategoriesPanel').style.display=t==='categories'?'block':'none';document.getElementById('adminBundlesPanel').style.display=t==='bundles'?'block':'none';document.getElementById('adminEventsPanel').style.display=t==='events'?'block':'none';document.getElementById('adminOrdersPanel').style.display=t==='orders'?'block':'none'}
 function renderAdminOrders(){
   const panel=document.getElementById('adminOrdersPanel');
   if(!panel)return;
@@ -936,10 +858,6 @@ async function updateOrderStatus(id,status){
   try{const r=await fetch(`/api/admin/orders/${encodeURIComponent(id)}/status`,{method:'PUT',headers:authH(),body:JSON.stringify({status})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Statut mis à jour','success');await loadAdminOrders();renderAdminOrders()}catch{showToast('Erreur','error')}
 }
 
-function renderAdminKits(){document.getElementById('adminKitsPanel').innerHTML=`<div class="admin-form-card"><h3 id="kitFormTitle">Ajouter un Kit</h3><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-group"><label>Badges / tags de filtre</label><input type="text" id="aKitTags" placeholder="ex: enfants, cadeau, couple, mini-kit"><small class="admin-help">Séparez les badges par virgule. Ils deviennent automatiquement des filtres clients.</small></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> En stock</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Kit</th><th>Catégorie</th><th>Badges</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));const tags=normalizeKitTags(k);return`<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td>${tags.length?tags.slice(0,3).map(t=>`<span class="admin-tag-mini">${safeText(t)}</span>`).join(''):'-'}</td><td>${k.inStock!==false?'<span class="admin-status ok">En stock</span>':'<span class="admin-status out">Épuisé</span>'}</td><td>$${toMoney(k.price)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('')}</tbody></table></div>`}
-async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value,tags:document.getElementById('aKitTags').value.split(',').map(t=>t.trim()).filter(Boolean),inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Modifié!':'Ajouté!','success');await loadKits();loadAdminData()}catch{showToast('Erreur','error')}}
-function editKit(id){const k=allKits.find(x=>x.id===id);if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.price||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitDiff').value=k.difficulty||'Débutant';document.getElementById('aKitImg').value=k.image||'';document.getElementById('aKitTags').value=normalizeKitTags(k).join(', ');document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;document.getElementById('kitFormTitle').textContent='Modifier le Kit';document.getElementById('cancelKit').style.display='inline-flex';window.scrollTo(0,0)}
-function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitDesc','aKitShortDesc','aKitImg','aKitTags'].forEach(id=>document.getElementById(id).value='');document.getElementById('aKitStock').checked=true;document.getElementById('aKitFeatured').checked=false;document.getElementById('kitFormTitle').textContent='Ajouter un Kit';document.getElementById('cancelKit').style.display='none'}
 async function deleteKit(id){if(!confirm('Supprimer ce kit?'))return;await fetch(`/api/admin/kits/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadKits();loadAdminData()}
 
 function renderAdminCategories(){document.getElementById('adminCategoriesPanel').innerHTML=`<div class="admin-form-card"><h3 id="catFormTitle">Ajouter une Catégorie</h3><input type="hidden" id="editCatId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aCatName"></div><div class="form-group"><label>Type</label><select id="aCatParent"><option value="individual">Individuel</option><option value="group">Groupe</option><option value="none">Autre</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aCatImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveCat()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetCatForm()" style="display:none" id="cancelCat">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Catégorie</th><th>Type</th><th>Actions</th></tr></thead><tbody>${allCategories.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.parent}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editCat(${c.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteCat(${c.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
@@ -948,15 +866,6 @@ function editCat(id){const c=allCategories.find(x=>x.id===id);if(!c)return;docum
 function resetCatForm(){['editCatId','aCatName','aCatImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('catFormTitle').textContent='Ajouter une Catégorie';document.getElementById('cancelCat').style.display='none'}
 async function deleteCat(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/categories/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadCategories();loadAdminData()}
 
-// Admin Bundles
-function renderAdminBundles(){
-  const kitOpts=allKits.map(k=>`<option value="${k.id}">${k.name} ($${k.price.toFixed(2)})</option>`).join('');
-  document.getElementById('adminBundlesPanel').innerHTML=`<div class="admin-form-card"><h3 id="bunFormTitle">Ajouter un Bundle</h3><input type="hidden" id="editBunId"><div class="form-row"><div class="form-group"><label>Nom du Bundle</label><input type="text" id="aBunName" placeholder="Ex: Forfait Famille"></div><div class="form-group"><label>Prix Bundle ($)</label><input type="number" id="aBunPrice" step="0.01"></div></div><div class="form-group"><label>Description</label><textarea id="aBunDesc" placeholder="Décrivez le bundle..."></textarea></div><div class="form-row"><div class="form-group"><label>Prix Original ($)</label><input type="number" id="aBunOrigPrice" step="0.01" placeholder="Pour montrer l'économie"></div><div class="form-group"><label>Étiquette</label><input type="text" id="aBunTag" placeholder="Ex: Économisez 30$"></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aBunImg"></div><div class="form-group"><label>Kits inclus (sélectionnez plusieurs avec Ctrl+clic)</label><select id="aBunKits" multiple style="min-height:100px">${kitOpts}</select></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveBun()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetBunForm()" style="display:none" id="cancelBun">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Bundle</th><th>Prix</th><th>Kits</th><th>Actions</th></tr></thead><tbody>${allBundles.map(b=>`<tr><td><strong>${b.name}</strong>${b.tag?` <span style="color:var(--orange);font-size:.75rem">${b.tag}</span>`:''}</td><td>$${b.price.toFixed(2)}</td><td>${(b.kitIds||[]).length} kits</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editBun(${b.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteBun(${b.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`;
-}
-async function saveBun(){const eid=document.getElementById('editBunId').value;const sel=document.getElementById('aBunKits');const kitIds=Array.from(sel.selectedOptions).map(o=>parseInt(o.value));const p={name:document.getElementById('aBunName').value,price:document.getElementById('aBunPrice').value,description:document.getElementById('aBunDesc').value,originalPrice:document.getElementById('aBunOrigPrice').value,tag:document.getElementById('aBunTag').value,image:document.getElementById('aBunImg').value,kitIds};if(!p.name||!p.price)return showToast('Nom et prix requis','error');await fetch(eid?`/api/admin/bundles/${eid}`:'/api/admin/bundles',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?'Modifié!':'Ajouté!','success');await loadBundles();loadAdminData()}
-function editBun(id){const b=allBundles.find(x=>x.id===id);if(!b)return;document.getElementById('editBunId').value=b.id;document.getElementById('aBunName').value=b.name;document.getElementById('aBunPrice').value=b.price;document.getElementById('aBunDesc').value=b.description||'';document.getElementById('aBunOrigPrice').value=b.originalPrice||'';document.getElementById('aBunTag').value=b.tag||'';document.getElementById('aBunImg').value=b.image||'';const sel=document.getElementById('aBunKits');Array.from(sel.options).forEach(o=>{o.selected=(b.kitIds||[]).includes(parseInt(o.value))});document.getElementById('bunFormTitle').textContent='Modifier le Bundle';document.getElementById('cancelBun').style.display='inline-flex';window.scrollTo(0,0)}
-function resetBunForm(){['editBunId','aBunName','aBunPrice','aBunDesc','aBunOrigPrice','aBunTag','aBunImg'].forEach(id=>document.getElementById(id).value='');const sel=document.getElementById('aBunKits');if(sel)Array.from(sel.options).forEach(o=>o.selected=false);document.getElementById('bunFormTitle').textContent='Ajouter un Bundle';document.getElementById('cancelBun').style.display='none'}
-async function deleteBun(id){if(!confirm('Supprimer?'))return;await fetch(`/api/admin/bundles/${id}`,{method:'DELETE',headers:authH()});showToast('Supprimé','success');await loadBundles();loadAdminData()}
 
 function renderAdminEvents(){
   const panel=document.getElementById('adminEventsPanel');
@@ -1069,23 +978,24 @@ async function loadAdminAnalytics(){try{adminAnalyticsPro=await(await fetch('/ap
 async function loadAdminDiscounts(){try{adminDiscounts=await(await fetch('/api/admin/discounts',{headers:authH()})).json()}catch{adminDiscounts=[]}}
 async function loadAdminBundleDeals(){try{adminBundleDealRules=await(await fetch('/api/admin/bundle-deals',{headers:authH()})).json();bundleDealRules=adminBundleDealRules}catch{adminBundleDealRules=[]}}
 async function loadAdminRefunds(){try{adminRefunds=await(await fetch('/api/admin/refunds',{headers:authH()})).json()}catch{adminRefunds=[]}}
+async function loadAdminAnnouncement(){try{siteAnnouncement=await(await fetch('/api/announcement')).json();renderSiteAnnouncement()}catch{siteAnnouncement={enabled:false,message:''}}}
 
 async function loadAdminData(){
   try{
-    await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders(),loadAdminAnalytics(),loadAdminDiscounts(),loadAdminRefunds(),loadKits(),loadCategories(),loadBundles()]);
+    await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders(),loadAdminAnalytics(),loadAdminDiscounts(),loadAdminRefunds(),loadAdminAnnouncement(),loadKits(),loadCategories()]);
     document.getElementById('statRevenue').textContent=`$${toMoney(adminAnalyticsPro?.revenue||0)}`;
     document.getElementById('statOrders').textContent=adminAnalyticsPro?.ordersCount??(adminOrders||[]).length;
     document.getElementById('statKits').textContent=allKits.length;
     document.getElementById('statLowInventory').textContent=adminAnalyticsPro?.lowInventoryCount??0;
   }catch(e){console.warn(e)}
-  renderAdminDashboard();renderAdminKits();renderAdminInventory();renderAdminDiscounts();renderAdminOrders();renderAdminCategories();renderAdminBundles();renderAdminEvents();
+  renderAdminDashboard();renderAdminKits();renderAdminInventory();renderAdminDiscounts();renderAdminOrders();renderAdminCategories();renderAdminEvents();renderAdminAnnouncement();
 }
 function switchAdminTab(t,btn){
   document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));
   if(btn)btn.classList.add('active');
-  const ids=['Dashboard','Kits','Inventory','Discounts','Orders','Events','Categories','Bundles'];
+  const ids=['Dashboard','Kits','Inventory','Discounts','Orders','Events','Categories','Announcement'];
   ids.forEach(name=>{const el=document.getElementById(`admin${name}Panel`);if(el)el.style.display='none'});
-  const map={dashboard:'Dashboard',kits:'Kits',inventory:'Inventory',discounts:'Discounts',orders:'Orders',events:'Events',categories:'Categories',bundles:'Bundles'};
+  const map={dashboard:'Dashboard',kits:'Kits',inventory:'Inventory',discounts:'Discounts',orders:'Orders',events:'Events',categories:'Categories',announcement:'Announcement'};
   const panel=document.getElementById(`admin${map[t]||'Dashboard'}Panel`);if(panel)panel.style.display='block';
 }
 
@@ -1097,9 +1007,8 @@ function renderHomePopularKits(){
 function getFilteredKits(){
   let kits=[...allKits];
   const q=(catalogFilters.search||'').toLowerCase().trim();
-  if(q)kits=kits.filter(k=>`${k.name||''} ${k.description||''} ${k.shortDesc||''} ${normalizeKitTags(k).join(' ')}`.toLowerCase().includes(q));
+  if(q)kits=kits.filter(k=>`${k.name||''} ${k.description||''} ${k.shortDesc||''}`.toLowerCase().includes(q));
   if(catalogFilters.category!=='all')kits=kits.filter(k=>String(k.categoryId)===String(catalogFilters.category));
-  if(catalogFilters.badge!=='all')kits=kits.filter(k=>normalizeKitTags(k).map(t=>t.toLowerCase()).includes(String(catalogFilters.badge).toLowerCase()));
   if(catalogFilters.difficulty!=='all')kits=kits.filter(k=>String(k.difficulty||'')===String(catalogFilters.difficulty));
   if(catalogFilters.stock==='in')kits=kits.filter(k=>k.inStock!==false);
   const min=parseFloat(catalogFilters.priceMin),max=parseFloat(catalogFilters.priceMax);
@@ -1111,7 +1020,7 @@ function getFilteredKits(){
 }
 function renderKitsGrid(){
   const g=document.getElementById('kitsGrid');if(!g)return;const filtered=getFilteredKits();renderActiveFilters(filtered);g.classList.remove('visible');
-  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));const tags=normalizeKitTags(k).slice(0,4);return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-tags">${tags.map(t=>`<span>${safeText(t)}</span>`).join('')}</div><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div><span class="kit-card-meta">${safeText(stockTagText(k))}</span></div></div></div>`}).join('');
+  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div><span class="kit-card-meta">${safeText(stockTagText(k))}</span></div></div></div>`}).join('');
   if(!filtered.length)g.innerHTML='<div class="empty-state catalog-empty"><div class="empty-state-icon">🎨</div><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
   setTimeout(()=>g.classList.add('visible'),50);
 }
@@ -1121,8 +1030,8 @@ function renderProductPage(id){
   const cat=allCategories.find(ct=>String(ct.id)===String(kit.categoryId));const imgs=kit.images?.length?kit.images:[kit.image||'logoarty.png'];
   const thumbs=imgs.length>1?`<div class="product-thumbs">${imgs.map((img,i)=>`<img src="${safeAttr(img)}" class="product-thumb${i===0?' active':''}" onclick="switchImg(this,'${safeAttr(img)}')">`).join('')}</div>`:'';
   const inc=kit.includes?.length?`<div class="product-includes"><h3>Inclus dans ce kit</h3><ul>${kit.includes.map(i=>`<li>${safeText(i)}</li>`).join('')}</ul></div>`:'';
-  const kitTags=normalizeKitTags(kit);const inStock=kit.inStock!==false;
-  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${safeAttr(imgs[0])}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${safeText(cat?cat.name:'')}</div><h1>${safeText(kit.name)}</h1><div class="product-price-wrap">${kitPriceHTML(kit,'product-price')}</div><p class="product-desc">${safeText(kit.description||'')}</p><div class="product-tags"><span class="product-tag">${safeText(kit.difficulty||'')}</span><span class="product-tag ${kit.isLowStock?'low-stock-tag':''}">${safeText(stockTagText(kit))}</span>${kitTags.map(t=>`<span class="product-tag">${safeText(t)}</span>`).join('')}</div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!inStock?'disabled style="opacity:.4"':''}>${inStock?'Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!inStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button><button class="btn btn-ghost" onclick="startBundleWithKit(${kit.id})">Créer un forfait avec ce kit</button></div></div></div>`;
+  const inStock=kit.inStock!==false;
+  c.innerHTML=`<button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button><div class="product-layout"><div class="product-gallery"><img src="${safeAttr(imgs[0])}" class="product-main-img" id="pMainImg">${thumbs}</div><div class="product-info"><div class="product-cat">${safeText(cat?cat.name:'')}</div><h1>${safeText(kit.name)}</h1><div class="product-price-wrap">${kitPriceHTML(kit,'product-price')}</div><p class="product-desc">${safeText(kit.description||'')}</p><div class="product-tags"><span class="product-tag">${safeText(kit.difficulty||'')}</span><span class="product-tag ${kit.isLowStock?'low-stock-tag':''}">${safeText(stockTagText(kit))}</span></div>${inc}<div class="product-qty-row"><label>Qté:</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)">−</button><input class="qty-val" id="pQty" value="1" readonly><button class="qty-btn" onclick="chgQty(1)">+</button></div></div><div class="product-buttons"><button class="btn btn-orange" onclick="addToCart(${kit.id})" ${!inStock?'disabled style="opacity:.4"':''}>${inStock?'Ajouter au panier':'Épuisé'}</button><button class="btn btn-teal" onclick="buyNow(${kit.id})" ${!inStock?'disabled style="opacity:.4"':''}>Acheter maintenant →</button><button class="btn btn-ghost" onclick="startBundleWithKit(${kit.id})">Créer un forfait avec ce kit</button></div></div></div>`;
 }
 function addToCart(kitId){
   const kit=allKits.find(k=>String(k.id)===String(kitId));if(!kit)return;if(kit.inStock===false)return showToast('Ce produit est épuisé','error');
@@ -1150,12 +1059,12 @@ function renderAdminDashboard(){
 
 function renderAdminKits(){
   const panel=document.getElementById('adminKitsPanel');if(!panel)return;
-  const rows=allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));const tags=normalizeKitTags(k);return `<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td>${tags.length?tags.slice(0,3).map(t=>`<span class="admin-tag-mini">${safeText(t)}</span>`).join(''):'-'}</td><td><span class="admin-status ${k.inStock!==false?'ok':'out'}">${safeText(stockTagText(k))}</span></td><td>${kitPriceHTML(k)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('');
-  panel.innerHTML=`<div class="admin-form-card"><div class="admin-form-head"><div><h3 id="kitFormTitle">Ajouter un produit</h3><p>Prix, image, badges de filtre, inventaire et seuil de stock bas.</p></div><button class="btn btn-ghost btn-sm" onclick="resetKitForm()">Nouveau</button></div><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix régulier ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div><div class="form-group"><label>Prix barré optionnel ($)</label><input type="number" id="aKitCompare" step="0.01" placeholder="39.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-group"><label>Badges / tags de filtre</label><input type="text" id="aKitTags" placeholder="ex: enfants, cadeau, couple, mini-kit"><small class="admin-help">Séparez par virgule. Ces badges deviennent des filtres clients.</small></div><div class="form-row"><div class="form-group"><label>Inventaire actuel</label><input type="number" id="aKitStockQty" min="0" placeholder="ex: 12"></div><div class="form-group"><label>Seuil stock bas</label><input type="number" id="aKitLowStock" min="0" value="3"></div></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> Visible / vendable</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Produit</th><th>Catégorie</th><th>Badges</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="6">Aucun produit.</td></tr>'}</tbody></table></div>`;
+  const rows=allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td><span class="admin-status ${k.inStock!==false?'ok':'out'}">${safeText(stockTagText(k))}</span></td><td>${kitPriceHTML(k)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('');
+  panel.innerHTML=`<div class="admin-form-card"><div class="admin-form-head"><div><h3 id="kitFormTitle">Ajouter un produit</h3><p>Gérez le prix, l’image, l’inventaire et le seuil de stock bas.</p></div><button class="btn btn-ghost btn-sm" onclick="resetKitForm()">Nouveau</button></div><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix régulier ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div><div class="form-group"><label>Prix barré optionnel ($)</label><input type="number" id="aKitCompare" step="0.01" placeholder="39.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-row"><div class="form-group"><label>Inventaire actuel</label><input type="number" id="aKitStockQty" min="0" placeholder="ex: 12"></div><div class="form-group"><label>Seuil stock bas</label><input type="number" id="aKitLowStock" min="0" value="3"></div></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> Visible / vendable</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Produit</th><th>Catégorie</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Aucun produit.</td></tr>'}</tbody></table></div>`;
 }
-async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,compareAtPrice:document.getElementById('aKitCompare').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value,tags:document.getElementById('aKitTags').value.split(',').map(t=>t.trim()).filter(Boolean),stockQty:document.getElementById('aKitStockQty').value,lowStockThreshold:document.getElementById('aKitLowStock').value,inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Produit modifié!':'Produit ajouté!','success');await loadAdminData()}catch{showToast('Erreur','error')}}
-function editKit(id){const k=allKits.find(x=>String(x.id)===String(id));if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.originalPrice||k.price||'';document.getElementById('aKitCompare').value=k.compareAtPrice||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitDiff').value=k.difficulty||'Débutant';document.getElementById('aKitImg').value=k.image||'';document.getElementById('aKitTags').value=normalizeKitTags(k).join(', ');document.getElementById('aKitStockQty').value=k.stockQty??'';document.getElementById('aKitLowStock').value=k.lowStockThreshold??3;document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;document.getElementById('kitFormTitle').textContent='Modifier le produit';document.getElementById('cancelKit').style.display='inline-flex';document.querySelector('#adminKitsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'})}
-function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitCompare','aKitDesc','aKitShortDesc','aKitImg','aKitTags','aKitStockQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const low=document.getElementById('aKitLowStock');if(low)low.value=3;const st=document.getElementById('aKitStock');if(st)st.checked=true;const feat=document.getElementById('aKitFeatured');if(feat)feat.checked=false;const title=document.getElementById('kitFormTitle');if(title)title.textContent='Ajouter un produit';const cancel=document.getElementById('cancelKit');if(cancel)cancel.style.display='none'}
+async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,compareAtPrice:document.getElementById('aKitCompare').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value,stockQty:document.getElementById('aKitStockQty').value,lowStockThreshold:document.getElementById('aKitLowStock').value,inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Produit modifié!':'Produit ajouté!','success');await loadAdminData()}catch{showToast('Erreur','error')}}
+function editKit(id){const k=allKits.find(x=>String(x.id)===String(id));if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.originalPrice||k.price||'';document.getElementById('aKitCompare').value=k.compareAtPrice||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitDiff').value=k.difficulty||'Débutant';document.getElementById('aKitImg').value=k.image||'';document.getElementById('aKitStockQty').value=k.stockQty??'';document.getElementById('aKitLowStock').value=k.lowStockThreshold??3;document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;document.getElementById('kitFormTitle').textContent='Modifier le produit';document.getElementById('cancelKit').style.display='inline-flex';document.querySelector('#adminKitsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'})}
+function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitCompare','aKitDesc','aKitShortDesc','aKitImg','aKitStockQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const low=document.getElementById('aKitLowStock');if(low)low.value=3;const st=document.getElementById('aKitStock');if(st)st.checked=true;const feat=document.getElementById('aKitFeatured');if(feat)feat.checked=false;const title=document.getElementById('kitFormTitle');if(title)title.textContent='Ajouter un produit';const cancel=document.getElementById('cancelKit');if(cancel)cancel.style.display='none'}
 
 function renderAdminInventory(){
   const panel=document.getElementById('adminInventoryPanel');if(!panel)return;
@@ -1168,13 +1077,32 @@ function renderAdminDiscounts(){
   const panel=document.getElementById('adminDiscountsPanel');if(!panel)return;
   const kitOptions=allKits.map(k=>`<option value="${k.id}">${safeText(k.name)}</option>`).join('');const catOptions=allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('');
   const rows=adminDiscounts.map(d=>`<tr><td><strong>${safeText(d.title)}</strong><br><span class="admin-muted">${d.code?`Code: ${safeText(d.code)}`:'Automatique'}</span></td><td>${safeText(d.type)}</td><td>${d.type==='percent'?`${toMoney(d.value)}%`:d.type==='fixed'?`$${toMoney(d.value)}`:`Achetez ${d.buyQty||1}, obtenez ${d.freeQty||1}`}</td><td>${safeText(d.scope||'all')}</td><td><span class="admin-status ${d.active!==false?'ok':'out'}">${d.active!==false?'Actif':'Inactif'}</span></td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editDiscount(${d.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteDiscount(${d.id})">Supprimer</button></div></td></tr>`).join('');
-  panel.innerHTML=`<div class="admin-form-card"><div class="admin-form-head"><div><h3 id="discountFormTitle">Créer un rabais</h3><p>Rabais automatique, code promo, pourcentage, montant fixe ou buy one get one free.</p></div><button class="btn btn-ghost btn-sm" onclick="resetDiscountForm()">Nouveau</button></div><input type="hidden" id="editDiscountId"><div class="form-row"><div class="form-group"><label>Nom du rabais</label><input id="aDisTitle" placeholder="Ex: Promo printemps 15%"></div><div class="form-group"><label>Code promo optionnel</label><input id="aDisCode" placeholder="PRINTEMPS15"></div></div><div class="form-row"><div class="form-group"><label>Type</label><select id="aDisType" onchange="toggleDiscountTypeFields()"><option value="percent">Pourcentage</option><option value="fixed">Montant fixe</option><option value="bogo">Buy one get one free</option></select></div><div class="form-group discount-value-field"><label>Valeur</label><input type="number" id="aDisValue" step="0.01" placeholder="15"></div><div class="form-group bogo-field" style="display:none"><label>Achetez</label><input type="number" id="aDisBuy" value="1" min="1"></div><div class="form-group bogo-field" style="display:none"><label>Obtenez gratuit</label><input type="number" id="aDisFree" value="1" min="1"></div></div><div class="form-row"><div class="form-group"><label>Appliquer à</label><select id="aDisScope"><option value="all">Tout le catalogue</option><option value="kits">Produits sélectionnés</option><option value="categories">Catégories</option><option value="tags">Badges / tags</option></select></div><div class="form-group"><label>Étiquette client</label><input id="aDisLabel" placeholder="Ex: 15% de rabais"></div></div><div class="form-row"><div class="form-group"><label>Produits</label><select id="aDisKits" multiple>${kitOptions}</select></div><div class="form-group"><label>Catégories</label><select id="aDisCats" multiple>${catOptions}</select></div><div class="form-group"><label>Tags</label><input id="aDisTags" placeholder="enfants, cadeau, couple"></div></div><div class="form-row"><div class="form-group"><label>Début</label><input type="date" id="aDisStart"></div><div class="form-group"><label>Fin</label><input type="date" id="aDisEnd"></div><div class="form-group"><label>Quantité minimum</label><input type="number" id="aDisMinQty" value="1" min="1"></div></div><label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aDisActive" checked> Rabais actif</label><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveDiscount()">Sauvegarder le rabais</button><button class="btn btn-ghost" onclick="resetDiscountForm()" style="display:none" id="cancelDiscount">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Rabais</th><th>Type</th><th>Valeur</th><th>Portée</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="6">Aucun rabais.</td></tr>'}</tbody></table></div>`;
+  panel.innerHTML=`<div class="admin-form-card"><div class="admin-form-head"><div><h3 id="discountFormTitle">Créer un rabais</h3><p>Rabais automatique, code promo, pourcentage, montant fixe ou buy one get one free.</p></div><button class="btn btn-ghost btn-sm" onclick="resetDiscountForm()">Nouveau</button></div><input type="hidden" id="editDiscountId"><div class="form-row"><div class="form-group"><label>Nom du rabais</label><input id="aDisTitle" placeholder="Ex: Promo printemps 15%"></div><div class="form-group"><label>Code promo optionnel</label><input id="aDisCode" placeholder="PRINTEMPS15"></div></div><div class="form-row"><div class="form-group"><label>Type</label><select id="aDisType" onchange="toggleDiscountTypeFields()"><option value="percent">Pourcentage</option><option value="fixed">Montant fixe</option><option value="bogo">Buy one get one free</option></select></div><div class="form-group discount-value-field"><label>Valeur</label><input type="number" id="aDisValue" step="0.01" placeholder="15"></div><div class="form-group bogo-field" style="display:none"><label>Achetez</label><input type="number" id="aDisBuy" value="1" min="1"></div><div class="form-group bogo-field" style="display:none"><label>Obtenez gratuit</label><input type="number" id="aDisFree" value="1" min="1"></div></div><div class="form-row"><div class="form-group"><label>Appliquer à</label><select id="aDisScope"><option value="all">Tout le catalogue</option><option value="kits">Produits sélectionnés</option><option value="categories">Catégories</option></select></div><div class="form-group"><label>Étiquette client</label><input id="aDisLabel" placeholder="Ex: 15% de rabais"></div></div><div class="form-row"><div class="form-group"><label>Produits</label><select id="aDisKits" multiple>${kitOptions}</select></div><div class="form-group"><label>Catégories</label><select id="aDisCats" multiple>${catOptions}</select></div></div><div class="form-row"><div class="form-group"><label>Début</label><input type="date" id="aDisStart"></div><div class="form-group"><label>Fin</label><input type="date" id="aDisEnd"></div><div class="form-group"><label>Quantité minimum</label><input type="number" id="aDisMinQty" value="1" min="1"></div></div><label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aDisActive" checked> Rabais actif</label><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveDiscount()">Sauvegarder le rabais</button><button class="btn btn-ghost" onclick="resetDiscountForm()" style="display:none" id="cancelDiscount">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Rabais</th><th>Type</th><th>Valeur</th><th>Portée</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="6">Aucun rabais.</td></tr>'}</tbody></table></div>`;
 }
 function toggleDiscountTypeFields(){const type=document.getElementById('aDisType')?.value;document.querySelectorAll('.bogo-field').forEach(el=>el.style.display=type==='bogo'?'block':'none');document.querySelectorAll('.discount-value-field').forEach(el=>el.style.display=type==='bogo'?'none':'block')}
-async function saveDiscount(){const id=document.getElementById('editDiscountId').value;const kits=Array.from(document.getElementById('aDisKits').selectedOptions).map(o=>parseInt(o.value));const cats=Array.from(document.getElementById('aDisCats').selectedOptions).map(o=>parseInt(o.value));const p={title:document.getElementById('aDisTitle').value,code:document.getElementById('aDisCode').value,type:document.getElementById('aDisType').value,value:document.getElementById('aDisValue').value,buyQty:document.getElementById('aDisBuy').value,freeQty:document.getElementById('aDisFree').value,scope:document.getElementById('aDisScope').value,kitIds:kits,categoryIds:cats,tags:document.getElementById('aDisTags').value,customerLabel:document.getElementById('aDisLabel').value,startsAt:document.getElementById('aDisStart').value,endsAt:document.getElementById('aDisEnd').value,minQty:document.getElementById('aDisMinQty').value,active:document.getElementById('aDisActive').checked};if(!p.title)return showToast('Nom du rabais requis','error');try{const r=await fetch(id?`/api/admin/discounts/${id}`:'/api/admin/discounts',{method:id?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Rabais sauvegardé','success');await loadAdminData()}catch{showToast('Erreur','error')}}
-function editDiscount(id){const d=adminDiscounts.find(x=>String(x.id)===String(id));if(!d)return;document.getElementById('editDiscountId').value=d.id;document.getElementById('aDisTitle').value=d.title||'';document.getElementById('aDisCode').value=d.code||'';document.getElementById('aDisType').value=d.type||'percent';document.getElementById('aDisValue').value=d.value||'';document.getElementById('aDisBuy').value=d.buyQty||1;document.getElementById('aDisFree').value=d.freeQty||1;document.getElementById('aDisScope').value=d.scope||'all';document.getElementById('aDisTags').value=(d.tags||[]).join(', ');document.getElementById('aDisLabel').value=d.customerLabel||'';document.getElementById('aDisStart').value=d.startsAt||'';document.getElementById('aDisEnd').value=d.endsAt||'';document.getElementById('aDisMinQty').value=d.minQty||1;document.getElementById('aDisActive').checked=d.active!==false;Array.from(document.getElementById('aDisKits').options).forEach(o=>o.selected=(d.kitIds||[]).map(String).includes(String(o.value)));Array.from(document.getElementById('aDisCats').options).forEach(o=>o.selected=(d.categoryIds||[]).map(String).includes(String(o.value)));document.getElementById('discountFormTitle').textContent='Modifier le rabais';document.getElementById('cancelDiscount').style.display='inline-flex';toggleDiscountTypeFields();document.querySelector('#adminDiscountsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'})}
-function resetDiscountForm(){['editDiscountId','aDisTitle','aDisCode','aDisValue','aDisTags','aDisLabel','aDisStart','aDisEnd'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const type=document.getElementById('aDisType');if(type)type.value='percent';const scope=document.getElementById('aDisScope');if(scope)scope.value='all';const buy=document.getElementById('aDisBuy');if(buy)buy.value=1;const free=document.getElementById('aDisFree');if(free)free.value=1;const min=document.getElementById('aDisMinQty');if(min)min.value=1;const act=document.getElementById('aDisActive');if(act)act.checked=true;['aDisKits','aDisCats'].forEach(id=>{const el=document.getElementById(id);if(el)Array.from(el.options).forEach(o=>o.selected=false)});const title=document.getElementById('discountFormTitle');if(title)title.textContent='Créer un rabais';const cancel=document.getElementById('cancelDiscount');if(cancel)cancel.style.display='none';toggleDiscountTypeFields()}
+async function saveDiscount(){const id=document.getElementById('editDiscountId').value;const kits=Array.from(document.getElementById('aDisKits').selectedOptions).map(o=>parseInt(o.value));const cats=Array.from(document.getElementById('aDisCats').selectedOptions).map(o=>parseInt(o.value));const p={title:document.getElementById('aDisTitle').value,code:document.getElementById('aDisCode').value,type:document.getElementById('aDisType').value,value:document.getElementById('aDisValue').value,buyQty:document.getElementById('aDisBuy').value,freeQty:document.getElementById('aDisFree').value,scope:document.getElementById('aDisScope').value,kitIds:kits,categoryIds:cats,customerLabel:document.getElementById('aDisLabel').value,startsAt:document.getElementById('aDisStart').value,endsAt:document.getElementById('aDisEnd').value,minQty:document.getElementById('aDisMinQty').value,active:document.getElementById('aDisActive').checked};if(!p.title)return showToast('Nom du rabais requis','error');try{const r=await fetch(id?`/api/admin/discounts/${id}`:'/api/admin/discounts',{method:id?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Rabais sauvegardé','success');await loadAdminData()}catch{showToast('Erreur','error')}}
+function editDiscount(id){const d=adminDiscounts.find(x=>String(x.id)===String(id));if(!d)return;document.getElementById('editDiscountId').value=d.id;document.getElementById('aDisTitle').value=d.title||'';document.getElementById('aDisCode').value=d.code||'';document.getElementById('aDisType').value=d.type||'percent';document.getElementById('aDisValue').value=d.value||'';document.getElementById('aDisBuy').value=d.buyQty||1;document.getElementById('aDisFree').value=d.freeQty||1;document.getElementById('aDisScope').value=['all','kits','categories'].includes(d.scope)?d.scope:'all';document.getElementById('aDisLabel').value=d.customerLabel||'';document.getElementById('aDisStart').value=d.startsAt||'';document.getElementById('aDisEnd').value=d.endsAt||'';document.getElementById('aDisMinQty').value=d.minQty||1;document.getElementById('aDisActive').checked=d.active!==false;Array.from(document.getElementById('aDisKits').options).forEach(o=>o.selected=(d.kitIds||[]).map(String).includes(String(o.value)));Array.from(document.getElementById('aDisCats').options).forEach(o=>o.selected=(d.categoryIds||[]).map(String).includes(String(o.value)));document.getElementById('discountFormTitle').textContent='Modifier le rabais';document.getElementById('cancelDiscount').style.display='inline-flex';toggleDiscountTypeFields();document.querySelector('#adminDiscountsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'})}
+function resetDiscountForm(){['editDiscountId','aDisTitle','aDisCode','aDisValue','aDisLabel','aDisStart','aDisEnd'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const type=document.getElementById('aDisType');if(type)type.value='percent';const scope=document.getElementById('aDisScope');if(scope)scope.value='all';const buy=document.getElementById('aDisBuy');if(buy)buy.value=1;const free=document.getElementById('aDisFree');if(free)free.value=1;const min=document.getElementById('aDisMinQty');if(min)min.value=1;const act=document.getElementById('aDisActive');if(act)act.checked=true;['aDisKits','aDisCats'].forEach(id=>{const el=document.getElementById(id);if(el)Array.from(el.options).forEach(o=>o.selected=false)});const title=document.getElementById('discountFormTitle');if(title)title.textContent='Créer un rabais';const cancel=document.getElementById('cancelDiscount');if(cancel)cancel.style.display='none';toggleDiscountTypeFields()}
 async function deleteDiscount(id){if(!confirm('Supprimer ce rabais?'))return;await fetch(`/api/admin/discounts/${id}`,{method:'DELETE',headers:authH()});showToast('Rabais supprimé','success');await loadAdminData()}
+
+function renderAdminAnnouncement(){
+  const panel=document.getElementById('adminAnnouncementPanel');if(!panel)return;
+  panel.innerHTML=`<div class="admin-form-card announcement-admin-card"><div class="admin-form-head"><div><h3>Annonce du site</h3><p>Affichez un court message promotionnel en haut du site, ou désactivez-le quand vous n’en avez pas besoin.</p></div></div><div class="form-group"><label>Message</label><input type="text" id="aAnnouncementMessage" maxlength="180" value="${safeAttr(siteAnnouncement?.message||'')}" placeholder="Ex: Livraison gratuite pour toute commande de 75 $ et plus"></div><label class="catalog-check announcement-toggle"><input type="checkbox" id="aAnnouncementEnabled" ${siteAnnouncement?.enabled===true?'checked':''}> Afficher cette annonce sur le site</label><div class="announcement-admin-preview"><span aria-hidden="true">🚚</span><span id="announcementPreviewText">${safeText(siteAnnouncement?.message||'Votre annonce apparaîtra ici')}</span></div><button class="btn btn-orange" onclick="saveAnnouncement()">Sauvegarder l’annonce</button></div>`;
+  const input=document.getElementById('aAnnouncementMessage');
+  if(input)input.addEventListener('input',()=>{const preview=document.getElementById('announcementPreviewText');if(preview)preview.textContent=input.value.trim()||'Votre annonce apparaîtra ici'});
+}
+async function saveAnnouncement(){
+  const message=document.getElementById('aAnnouncementMessage')?.value.trim()||'';
+  const enabled=document.getElementById('aAnnouncementEnabled')?.checked===true;
+  if(enabled&&!message)return showToast('Écrivez un message avant de l’afficher','error');
+  try{
+    const r=await fetch('/api/admin/announcement',{method:'PUT',headers:authH(),body:JSON.stringify({message,enabled})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)return showToast(d.error||'Erreur','error');
+    siteAnnouncement=d.announcement||{message,enabled};
+    renderSiteAnnouncement();renderAdminAnnouncement();showToast('Annonce mise à jour','success');
+  }catch{showToast('Erreur','error')}
+}
 
 function renderAdminOrders(){
   const panel=document.getElementById('adminOrdersPanel');if(!panel)return;
@@ -1697,10 +1625,11 @@ async function submitBuiltEventRequest(){const t=builderTotals(eventBuilderState
 const _oldSwitchAdminTab = typeof switchAdminTab==='function'?switchAdminTab:null;
 function switchAdminTab(t,btn){
   document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));if(btn)btn.classList.add('active');
-  ['adminDashboardPanel','adminKitsPanel','adminInventoryPanel','adminDiscountsPanel','adminOrdersPanel','adminEventsPanel','adminCategoriesPanel','adminBundlesPanel','adminBundleDealsPanel'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none'});
-  const map={dashboard:'adminDashboardPanel',kits:'adminKitsPanel',inventory:'adminInventoryPanel',discounts:'adminDiscountsPanel',orders:'adminOrdersPanel',events:'adminEventsPanel',categories:'adminCategoriesPanel',bundles:'adminBundlesPanel',bundleDeals:'adminBundleDealsPanel'};
+  ['adminDashboardPanel','adminKitsPanel','adminInventoryPanel','adminDiscountsPanel','adminOrdersPanel','adminEventsPanel','adminCategoriesPanel','adminAnnouncementPanel','adminBundleDealsPanel'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none'});
+  const map={dashboard:'adminDashboardPanel',kits:'adminKitsPanel',inventory:'adminInventoryPanel',discounts:'adminDiscountsPanel',orders:'adminOrdersPanel',events:'adminEventsPanel',categories:'adminCategoriesPanel',announcement:'adminAnnouncementPanel',bundleDeals:'adminBundleDealsPanel'};
   const el=document.getElementById(map[t]);if(el)el.style.display='block';
   if(t==='bundleDeals')renderAdminBundleDeals();
+  if(t==='announcement')renderAdminAnnouncement();
 }
 function renderAdminBundleDeals(){const panel=document.getElementById('adminBundleDealsPanel');if(!panel)return;const rows=(adminBundleDealRules||[]).map(r=>`<tr><td><strong>${safeText(r.label||'Rabais forfait')}</strong><br><span class="admin-muted">${safeText(r.appliesTo||'all')}</span></td><td>${r.minQty||1}+ kits</td><td>${toMoney(r.percent||0)}%</td><td>$${toMoney(r.customTextFee??12)}</td><td><span class="admin-status ${r.active!==false?'ok':'out'}">${r.active!==false?'Actif':'Inactif'}</span></td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editBundleDeal(${r.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteBundleDeal(${r.id})">Supprimer</button></div></td></tr>`).join('');panel.innerHTML=`<div class="admin-form-card"><h3 id="bundleDealFormTitle">Règles de forfait client</h3><p class="admin-help">Ces règles s’appliquent automatiquement quand un client crée un forfait ou un événement. Exemple: 10+ kits = 10%, 20+ kits mariage = 15%.</p><input type="hidden" id="editBundleDealId"><div class="form-row"><div class="form-group"><label>Nom visible</label><input id="bdLabel" placeholder="Ex: Rabais événement 10+"></div><div class="form-group"><label>S’applique à</label><select id="bdApplies"><option value="all">Tous</option><option value="group">Forfaits groupes</option><option value="event">Événements</option><option value="wedding">Mariages</option></select></div></div><div class="form-row"><div class="form-group"><label>Quantité minimum</label><input type="number" id="bdMinQty" min="1" value="10"></div><div class="form-group"><label>Rabais (%)</label><input type="number" id="bdPercent" step="0.1" value="10"></div></div><div class="form-row"><div class="form-group"><label>Frais texte personnalisé ($)</label><input type="number" id="bdTextFee" step="0.01" value="12"></div><div class="form-group"><label>Actif</label><select id="bdActive"><option value="true">Actif</option><option value="false">Inactif</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveBundleDeal()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetBundleDealForm()">Réinitialiser</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Règle</th><th>Minimum</th><th>Rabais</th><th>Texte</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="6" class="admin-muted">Aucune règle. Les forfaits fonctionneront sans rabais.</td></tr>'}</tbody></table></div>`}
 function editBundleDeal(id){const r=(adminBundleDealRules||[]).find(x=>String(x.id)===String(id));if(!r)return;document.getElementById('editBundleDealId').value=r.id;document.getElementById('bdLabel').value=r.label||'';document.getElementById('bdApplies').value=r.appliesTo||'all';document.getElementById('bdMinQty').value=r.minQty||1;document.getElementById('bdPercent').value=r.percent||0;document.getElementById('bdTextFee').value=r.customTextFee??12;document.getElementById('bdActive').value=String(r.active!==false)}

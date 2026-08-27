@@ -1,0 +1,4 @@
+node_modules/
+data/*.bak
+data/*.tmp
+npm-debug.log*

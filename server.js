@@ -36,7 +36,11 @@ const DEFAULT_DB = {
   discounts: [],
   refunds: [],
   inventoryMovements: [],
-  bundleDealRules: []
+  bundleDealRules: [],
+  announcement: {
+    enabled: true,
+    message: 'Livraison gratuite pour toute commande de 75 $ et plus'
+  }
 };
 
 const APP_DATA_DIR = path.join(__dirname, 'data');
@@ -130,7 +134,7 @@ function normalizeDB(db = {}) {
     ...db,
     adminEmails: Array.isArray(db.adminEmails) ? db.adminEmails : [],
     categories: Array.isArray(db.categories) ? db.categories : [],
-    kits: Array.isArray(db.kits) ? db.kits : [],
+    kits: Array.isArray(db.kits) ? db.kits.map(({ tags, badges, ...kit }) => kit) : [],
     events: Array.isArray(db.events) ? db.events : [],
     teamActivities: Array.isArray(db.teamActivities) ? db.teamActivities : [],
     bundles: Array.isArray(db.bundles) ? db.bundles : [],
@@ -142,7 +146,13 @@ function normalizeDB(db = {}) {
     discounts: Array.isArray(db.discounts) ? db.discounts : [],
     refunds: Array.isArray(db.refunds) ? db.refunds : [],
     inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : [],
-    bundleDealRules: Array.isArray(db.bundleDealRules) ? db.bundleDealRules : []
+    bundleDealRules: Array.isArray(db.bundleDealRules) ? db.bundleDealRules : [],
+    announcement: db.announcement && typeof db.announcement === 'object'
+      ? {
+          enabled: db.announcement.enabled === true,
+          message: String(db.announcement.message || '').replace(/\s+/g, ' ').trim().slice(0, 180)
+        }
+      : { ...DEFAULT_DB.announcement }
   };
 }
 
@@ -319,9 +329,11 @@ app.get('/api/config', (req, res) => {
     paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
     stripeMode: process.env.STRIPE_MODE || (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') ? 'live' : 'test'),
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
-    stripeConfigured: Boolean(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY)
+    stripeConfigured: Boolean(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY),
+    announcement: db.announcement || DEFAULT_DB.announcement
   });
 });
+app.get('/api/announcement', (req, res) => res.json(readDB().announcement || DEFAULT_DB.announcement));
 app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }));
 app.get('/api/kits', (req, res) => res.json(getPublicKits(readDB())));
 app.get('/api/kits/:id', (req, res) => { const db = readDB(); const k = getPublicKits(db).find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: 'Non trouvé' }); });
@@ -637,9 +649,10 @@ function normalizeTags(raw) {
 }
 function normalizeKitPayload(body, existing = {}) {
   const payload = { ...body };
+  delete payload.tags;
+  delete payload.badges;
   payload.price = parseFloat(body.price) || 0;
   payload.categoryId = body.categoryId ? parseInt(body.categoryId) : (existing.categoryId || null);
-  payload.tags = normalizeTags(body.tags ?? body.badges ?? existing.tags);
   payload.inStock = body.inStock === undefined ? (existing.inStock !== false) : (body.inStock === true || body.inStock === 'true');
   payload.featured = body.featured === undefined ? !!existing.featured : (body.featured === true || body.featured === 'true');
   payload.shortDesc = body.shortDesc || '';
@@ -823,6 +836,15 @@ app.put('/api/admin/categories/:id', adminOnly, (req, res) => {
 });
 app.delete('/api/admin/categories/:id', adminOnly, (req, res) => { const db=readDB(); db.categories=(db.categories||[]).filter(c=>c.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
+app.put('/api/admin/announcement', adminOnly, (req, res) => {
+  const db = readDB();
+  const message = String(req.body.message || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+  const enabled = (req.body.enabled === true || req.body.enabled === 'true') && Boolean(message);
+  db.announcement = { enabled, message };
+  writeDB(db);
+  res.json({ success: true, announcement: db.announcement });
+});
+
 // Kits CRUD
 app.post('/api/admin/kits', adminOnly, (req, res) => {
   const db=readDB(); const {name,price}=req.body; if(!name||!price) return res.status(400).json({error:'Nom et prix requis'});
@@ -913,10 +935,11 @@ function isKitAvailable(kit) {
 }
 function normalizeKitPayload(body, existing = {}) {
   const payload = { ...body };
+  delete payload.tags;
+  delete payload.badges;
   payload.price = parseFloat(body.price) || 0;
   payload.compareAtPrice = parseFloat(body.compareAtPrice) || parseFloat(body.originalPrice) || 0;
   payload.categoryId = body.categoryId ? parseInt(body.categoryId) : (existing.categoryId || null);
-  payload.tags = normalizeTags(body.tags ?? body.badges ?? existing.tags);
   payload.featured = body.featured === undefined ? !!existing.featured : (body.featured === true || body.featured === 'true');
   payload.shortDesc = body.shortDesc || '';
   payload.description = body.description || '';

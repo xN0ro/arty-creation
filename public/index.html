@@ -20,7 +20,6 @@
         <a href="#/paintings" class="nav-main-link">NOS PEINTURES</a>
         <div class="nav-submenu" aria-label="Sous-menu Nos peintures">
           <a href="#/paintings">Toutes les peintures</a>
-          <a href="#/bundles">Ensembles de kits</a>
           <a href="#/custom-photo">Photo personnalisée</a>
           <a href="#/custom-bag">Sac personnalisé</a>
         </div>
@@ -42,6 +41,11 @@
   </div>
 </nav>
 
+<div class="site-announcement" id="siteAnnouncement" hidden>
+  <span class="site-announcement-icon" aria-hidden="true">🚚</span>
+  <span id="siteAnnouncementMessage"></span>
+</div>
+
 <!-- ===================== HOME ===================== -->
 <div class="page active" id="page-home">
 
@@ -56,7 +60,6 @@
           <p class="hero-desc">Que vous cherchiez une activité en famille, une soirée créative entre amis, une fête pour enfants ou pour adultes, un moment romantique en amoureux, ou simplement une belle façon de vous détendre, <strong>Arty a le kit parfait pour vous.</strong></p>
           <div class="hero-actions">
             <a href="#/paintings" class="btn btn-orange">Voir les kits →</a>
-            <a href="#/bundles" class="btn btn-teal">Ensembles de kits</a>
           </div>
         </div>
         <div class="hero-visual">
@@ -216,10 +219,17 @@
 <div class="page" id="page-paintings">
   <div class="catalog-page section-pad">
     <div class="container">
-      <div class="catalog-hero text-center fade-up">
-        <div class="section-tag">Notre Collection</div>
-        <h2 class="section-heading">Trouvez le <span class="accent">bon kit</span> rapidement</h2>
-        <p class="section-sub">Recherchez par catégorie, badge, niveau, prix ou disponibilité pour trouver rapidement le bon kit.</p>
+      <section class="catalog-visual-hero fade-up" aria-label="Kit de peinture Arty complet">
+          <img src="catalog-hero.jpg" alt="Kit de peinture Arty avec toile tournesols, croquis, peintures et pinceaux">
+        <div class="catalog-visual-copy">
+          <h1>Un kit complet<br>pour tracer, peindre<br>et créer avec plaisir.</h1>
+          <span class="catalog-visual-stroke" aria-hidden="true"></span>
+        </div>
+      </section>
+
+      <div class="catalog-promise fade-up">
+        <strong>Tracez votre dessin sur la toile en seulement 5 à 10 minutes, puis peignez.</strong>
+        <span><span class="catalog-video-icon" aria-hidden="true">▶</span> Accès gratuit aux vidéos tutoriels pour apprendre à tracer votre dessin et à le peindre.</span>
       </div>
 
       <div class="catalog-layout fade-up">
@@ -237,11 +247,6 @@
           <div class="catalog-filter-group">
             <label class="catalog-label">Catégories</label>
             <div class="catalog-pill-list" id="categoryFilterList"></div>
-          </div>
-
-          <div class="catalog-filter-group">
-            <label class="catalog-label">Badges personnalisés</label>
-            <div class="catalog-chip-list" id="badgeFilterList"></div>
           </div>
 
           <div class="catalog-filter-group">
@@ -410,54 +415,6 @@
   </div>
 </div>
 
-<!-- ===================== BUNDLES ===================== -->
-<div class="page" id="page-bundles">
-  <div class="bundles-page-wrap section-pad">
-    <div class="container">
-      <div class="bundles-hero text-center fade-up">
-        <div class="section-tag">Nos kits ensemble</div>
-        <h2 class="section-heading">Nos <span class="accent">kits ensemble</span></h2>
-        <p class="section-sub bundles-main-sub">Entrez dans un univers coloré et créatif avec nos ensembles de peinture. Que ce soit pour peindre seul, avec des enfants, entre amis ou lors d’une soirée originale, nos kits transforment chaque moment en une expérience amusante, artistique et mémorable.</p>
-        <p class="bundle-discount">En commandant un ensemble de peinture, vous économisez <strong>10 % sur le prix régulier.</strong></p>
-      </div>
-
-      <div class="bundle-info-panels fade-up">
-        <div class="bundle-info-panel">
-          <span class="bundle-info-label">Mini kits</span>
-          <p>Nos mini kits de peinture à collectionner incluent tout le matériel nécessaire pour créer votre œuvre et les instructions détaillées étape par étape.</p>
-        </div>
-        <div class="bundle-info-panel teal-panel">
-          <span class="bundle-info-label">Ensembles pour soirée en couple</span>
-          <p>Des ensembles pensés pour partager une activité créative à deux, relaxante et mémorable.</p>
-        </div>
-      </div>
-
-      <div class="bundle-section-block fade-up">
-        <div class="bundle-section-title-row">
-          <h3>Mini kits</h3>
-        </div>
-        <div class="bundles-grid stagger-children" id="miniBundlesGrid"></div>
-      </div>
-
-      <div class="bundle-section-block fade-up">
-        <div class="bundle-section-title-row">
-          <h3>Ensembles pour soirée en couple</h3>
-        </div>
-        <div class="bundles-grid stagger-children" id="coupleBundlesGrid"></div>
-      </div>
-
-      <div class="bundle-section-block fade-up">
-        <div class="bundle-section-title-row">
-          <h3>Tous nos ensembles</h3>
-        </div>
-        <div class="bundles-grid stagger-children" id="bundlesGrid"></div>
-      </div>
-
-      <div id="noBundles" style="display:none" class="empty-state fade-up"><div class="empty-state-icon">🎁</div><p>Aucun ensemble disponible pour le moment. Revenez bientôt!</p></div>
-    </div>
-  </div>
-</div>
-
 <!-- ===================== CHECKOUT ===================== -->
 <div class="page" id="page-checkout">
   <div class="checkout-page section-pad">
@@ -542,7 +499,7 @@
         <button class="admin-tab" onclick="switchAdminTab('orders',this)">Commandes & remboursements</button>
         <button class="admin-tab" onclick="switchAdminTab('events',this)">Événements</button>
         <button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button>
-        <button class="admin-tab" onclick="switchAdminTab('bundles',this)">Bundles</button>
+        <button class="admin-tab" onclick="switchAdminTab('announcement',this)">Annonce du site</button>
       </div>
       <div id="adminDashboardPanel"></div>
       <div id="adminKitsPanel" style="display:none"></div>
@@ -551,7 +508,7 @@
       <div id="adminOrdersPanel" style="display:none"></div>
       <div id="adminEventsPanel" style="display:none"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
-      <div id="adminBundlesPanel" style="display:none"></div>
+      <div id="adminAnnouncementPanel" style="display:none"></div>
     </div>
   </div>
 </div>
@@ -595,7 +552,7 @@
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Création</span></a><p>Kits de peinture créatifs, tutoriels et événements qui libèrent votre artiste intérieur.</p></div>
-      <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les kits</a></li><li><a href="#/bundles">Ensembles de kits</a></li><li><a href="#/checkout">Panier / commande</a></li></ul></div>
+      <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les kits</a></li><li><a href="#/custom-photo">Photo personnalisée</a></li><li><a href="#/checkout">Panier / commande</a></li></ul></div>
       <div><h4>Événements</h4><ul><li><a href="#/party">Tous les événements</a></li><li><a href="#/party?section=calendar">Calendrier public</a></li><li><a href="#/party?section=private">Demande privée</a></li><li><a href="#/party?section=team">Entreprise / équipe</a></li></ul></div>
       <div><h4>Informations</h4><ul><li><a href="#/tutorials">Tutoriels</a></li><li><a href="#/privacy">Confidentialité</a></li><li><a href="#/policies">Politiques d'achat</a></li><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li></ul></div>
     </div>
