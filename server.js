@@ -37,6 +37,7 @@ const DEFAULT_DB = {
   refunds: [],
   inventoryMovements: [],
   bundleDealRules: [],
+  productTemplates: [],
   announcement: {
     enabled: true,
     message: 'Livraison gratuite pour toute commande de 75 $ et plus'
@@ -76,6 +77,10 @@ const DATA_DIR = path.resolve(resolveDataDir());
 const DB_PATH = path.resolve(process.env.ARTY_DB_PATH || path.join(DATA_DIR, 'db.json'));
 const DB_DIR = path.dirname(DB_PATH);
 const DB_BACKUP_PATH = `${DB_PATH}.bak`;
+const PRODUCT_UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+
+// Product images live beside the persistent JSON database so they survive deployments on Render.
+app.use('/uploads', express.static(PRODUCT_UPLOADS_DIR, { fallthrough: true, maxAge: '7d' }));
 
 function isLikelyPersistentPath() {
   return DB_DIR === RENDER_RECOMMENDED_DATA_DIR || DB_DIR.startsWith(`${RENDER_RECOMMENDED_DATA_DIR}/`);
@@ -121,7 +126,8 @@ function getCollectionCountsSafe() {
       discounts: db.discounts.length,
       refunds: db.refunds.length,
       inventoryMovements: db.inventoryMovements.length,
-      bundleDealRules: (db.bundleDealRules||[]).length
+      bundleDealRules: (db.bundleDealRules||[]).length,
+      productTemplates: (db.productTemplates||[]).length
     };
   } catch (err) {
     return { error: err.message };
@@ -147,6 +153,7 @@ function normalizeDB(db = {}) {
     refunds: Array.isArray(db.refunds) ? db.refunds : [],
     inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : [],
     bundleDealRules: Array.isArray(db.bundleDealRules) ? db.bundleDealRules : [],
+    productTemplates: Array.isArray(db.productTemplates) ? db.productTemplates : [],
     announcement: db.announcement && typeof db.announcement === 'object'
       ? {
           enabled: db.announcement.enabled === true,
@@ -685,6 +692,7 @@ function normalizeEventPayload(body, existing = {}) {
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
+app.get('/api/admin/kits', adminOnly, (req, res) => { const db=readDB(); res.json((db.kits||[]).map(k => enrichPublicKit(k, db))); });
 
 app.get('/api/admin/orders', adminOnly, (req, res) => {
   const db = readDB();
@@ -843,6 +851,69 @@ app.put('/api/admin/announcement', adminOnly, (req, res) => {
   db.announcement = { enabled, message };
   writeDB(db);
   res.json({ success: true, announcement: db.announcement });
+});
+
+const PRODUCT_IMAGE_TYPES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/avif': 'avif'
+};
+function isValidUploadedImage(buffer, mime) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  if (mime === 'image/jpeg') return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (mime === 'image/png') return buffer.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]));
+  if (mime === 'image/webp') return buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP';
+  if (mime === 'image/avif') return buffer.toString('ascii', 4, 12).includes('ftyp');
+  return false;
+}
+app.post('/api/admin/product-images', adminOnly, (req, res) => {
+  try {
+    const dataUrl = String(req.body.dataUrl || '');
+    const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|avif));base64,([a-z0-9+/=\r\n]+)$/i);
+    if (!match || !PRODUCT_IMAGE_TYPES[match[1].toLowerCase()]) return res.status(400).json({ error: 'Format accepté: JPG, PNG, WEBP ou AVIF' });
+    const mime = match[1].toLowerCase();
+    const buffer = Buffer.from(match[2], 'base64');
+    if (!buffer.length || buffer.length > 10 * 1024 * 1024) return res.status(400).json({ error: 'L’image doit faire moins de 10 Mo' });
+    if (!isValidUploadedImage(buffer, mime)) return res.status(400).json({ error: 'Le fichier image est invalide' });
+    fs.mkdirSync(PRODUCT_UPLOADS_DIR, { recursive: true });
+    const filename = `product-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${PRODUCT_IMAGE_TYPES[mime]}`;
+    fs.writeFileSync(path.join(PRODUCT_UPLOADS_DIR, filename), buffer, { flag: 'wx' });
+    res.json({ success: true, url: `/uploads/${filename}` });
+  } catch (err) {
+    console.error('Product image upload failed:', err.message);
+    res.status(500).json({ error: 'Impossible de téléverser l’image' });
+  }
+});
+
+function normalizeProductTemplatePayload(body, existing = {}) {
+  return {
+    name: String(body.name ?? existing.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    includes: normalizeProductIncludes(body.includes ?? existing.includes),
+    sizeOptions: normalizeProductChoices(body.sizeOptions ?? existing.sizeOptions, 'size'),
+    addOns: normalizeProductChoices(body.addOns ?? existing.addOns, 'addon')
+  };
+}
+app.get('/api/admin/product-templates', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.productTemplates || []).slice().sort((a,b) => String(a.name).localeCompare(String(b.name), 'fr')));
+});
+app.post('/api/admin/product-templates', adminOnly, (req, res) => {
+  const db = readDB();
+  const template = { id: Date.now(), ...normalizeProductTemplatePayload(req.body), createdAt: new Date().toISOString() };
+  if (!template.name) return res.status(400).json({ error: 'Nom du modèle requis' });
+  db.productTemplates = db.productTemplates || [];
+  db.productTemplates.push(template);
+  writeDB(db);
+  res.json({ success: true, template });
+});
+app.delete('/api/admin/product-templates/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  const before = (db.productTemplates || []).length;
+  db.productTemplates = (db.productTemplates || []).filter(template => String(template.id) !== String(req.params.id));
+  if (db.productTemplates.length === before) return res.status(404).json({ error: 'Modèle non trouvé' });
+  writeDB(db);
+  res.json({ success: true });
 });
 
 // Kits CRUD
@@ -1057,7 +1128,7 @@ function enrichPublicKit(kit, db) {
     lowStockThreshold,
     inStock: available,
     isLowStock: available && stockQty !== null && stockQty > 0 && stockQty <= lowStockThreshold,
-    stockLabel: !available ? 'Épuisé' : (stockQty !== null && stockQty <= lowStockThreshold ? `Stock limité: ${stockQty}` : 'En stock'),
+    stockLabel: !available ? 'Épuisé' : 'En stock',
     salePrice,
     effectivePrice: salePrice ?? (Number(kit.price) || 0),
     originalPrice: Number(kit.price) || 0,
@@ -1066,7 +1137,11 @@ function enrichPublicKit(kit, db) {
   };
 }
 function getPublicKits(db) {
-  return (db.kits || []).map(k => enrichPublicKit(k, db));
+  return (db.kits || []).map(k => {
+    const enriched = enrichPublicKit(k, db);
+    const { stockQty, lowStockThreshold, trackInventory, ...publicKit } = enriched;
+    return publicKit;
+  });
 }
 function buildOrderItems(db, rawItems = []) {
   const items = [];

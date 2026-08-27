@@ -340,7 +340,7 @@ function renderKitsGrid(){
       </div>
     </div>`;
   }).join('');
-  if(!filtered.length) g.innerHTML='<div class="empty-state catalog-empty"><div class="empty-state-icon">🎨</div><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
+  if(!filtered.length) g.innerHTML='<div class="empty-state catalog-empty"><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
   setTimeout(()=>g.classList.add('visible'),50);
 }
 
@@ -953,7 +953,7 @@ document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click
 /* =========================================================
    ADMIN PRO UPGRADE — analytics, inventory, discounts, refunds
    ========================================================= */
-let adminAnalyticsPro=null,adminDiscounts=[],adminRefunds=[],adminBundleDealRules=[];
+let adminAnalyticsPro=null,adminDiscounts=[],adminRefunds=[],adminBundleDealRules=[],adminProductTemplates=[];
 
 function getKitDisplayPrice(k){return Number(k?.effectivePrice ?? k?.salePrice ?? k?.price ?? 0)}
 function kitPriceHTML(k,cls='kit-card-price'){
@@ -965,12 +965,10 @@ function kitPriceHTML(k,cls='kit-card-price'){
 }
 function stockBadgeHTML(k){
   if(k?.inStock===false)return '<span class="kit-stock-badge">Épuisé</span>';
-  if(k?.isLowStock)return `<span class="kit-stock-badge low">${safeText(k.stockLabel||'Stock limité')}</span>`;
   return '';
 }
 function stockTagText(k){
   if(k?.inStock===false)return 'Épuisé';
-  if(k?.isLowStock)return k.stockLabel||'Stock limité';
   return 'En stock';
 }
 
@@ -979,10 +977,12 @@ async function loadAdminDiscounts(){try{adminDiscounts=await(await fetch('/api/a
 async function loadAdminBundleDeals(){try{adminBundleDealRules=await(await fetch('/api/admin/bundle-deals',{headers:authH()})).json();bundleDealRules=adminBundleDealRules}catch{adminBundleDealRules=[]}}
 async function loadAdminRefunds(){try{adminRefunds=await(await fetch('/api/admin/refunds',{headers:authH()})).json()}catch{adminRefunds=[]}}
 async function loadAdminAnnouncement(){try{siteAnnouncement=await(await fetch('/api/announcement')).json();renderSiteAnnouncement()}catch{siteAnnouncement={enabled:false,message:''}}}
+async function loadAdminKits(){try{const r=await fetch('/api/admin/kits',{headers:authH()});if(!r.ok)throw new Error();allKits=await r.json()}catch{await loadKits()}}
+async function loadAdminProductTemplates(){try{const r=await fetch('/api/admin/product-templates',{headers:authH()});if(!r.ok)throw new Error();adminProductTemplates=await r.json()}catch{adminProductTemplates=[]}}
 
 async function loadAdminData(){
   try{
-    await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders(),loadAdminAnalytics(),loadAdminDiscounts(),loadAdminRefunds(),loadAdminAnnouncement(),loadKits(),loadCategories()]);
+    await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders(),loadAdminAnalytics(),loadAdminDiscounts(),loadAdminRefunds(),loadAdminAnnouncement(),loadAdminKits(),loadAdminProductTemplates(),loadCategories()]);
     document.getElementById('statRevenue').textContent=`$${toMoney(adminAnalyticsPro?.revenue||0)}`;
     document.getElementById('statOrders').textContent=adminAnalyticsPro?.ordersCount??(adminOrders||[]).length;
     document.getElementById('statKits').textContent=allKits.length;
@@ -1020,8 +1020,8 @@ function getFilteredKits(){
 }
 function renderKitsGrid(){
   const g=document.getElementById('kitsGrid');if(!g)return;const filtered=getFilteredKits();renderActiveFilters(filtered);g.classList.remove('visible');
-  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div><span class="kit-card-meta">${safeText(stockTagText(k))}</span></div></div></div>`}).join('');
-  if(!filtered.length)g.innerHTML='<div class="empty-state catalog-empty"><div class="empty-state-icon">🎨</div><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
+  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div><span class="kit-card-meta">${safeText(k.difficulty||'')}</span></div></div></div>`}).join('');
+  if(!filtered.length)g.innerHTML='<div class="empty-state catalog-empty"><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
   setTimeout(()=>g.classList.add('visible'),50);
 }
 function productImageList(kit){
@@ -1058,9 +1058,17 @@ function switchProductImage(button){
   const main=document.getElementById('pMainImg');if(main)main.src=button.dataset.image||main.src;
   document.querySelectorAll('.product-thumb').forEach(thumb=>thumb.classList.remove('active'));button.classList.add('active');
 }
+function productServiceIcon(type){
+  const paths={
+    delivery:'<path d="M3 7h10v8H3z"></path><path d="M13 10h4l3 3v2h-7z"></path><circle cx="7" cy="17" r="2"></circle><circle cx="17" cy="17" r="2"></circle>',
+    secure:'<rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path>',
+    guide:'<path d="M4 5.5A3.5 3.5 0 0 1 7.5 2H20v16H7.5A3.5 3.5 0 0 0 4 21.5z"></path><path d="M4 5.5v16M9 7h7M9 11h7"></path>'
+  };
+  return `<span class="product-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${paths[type]||paths.guide}</svg></span>`;
+}
 function renderProductPage(id){
   const kit=allKits.find(k=>String(k.id)===String(id));const c=document.getElementById('productPageContent');
-  if(!kit){c.innerHTML='<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">🎨</div><p>Kit non trouvé</p></div>';return}
+  if(!kit){c.innerHTML='<div class="empty-state" style="padding:60px 0"><p>Kit non trouvé</p></div>';return}
   const cat=allCategories.find(ct=>String(ct.id)===String(kit.categoryId));
   const images=productImageList(kit),sizes=Array.isArray(kit.sizeOptions)?kit.sizeOptions:[],addOns=Array.isArray(kit.addOns)?kit.addOns:[],included=Array.isArray(kit.includes)?kit.includes:[];
   const thumbs=images.length>1?`<div class="product-thumbs" aria-label="Photos du produit">${images.map((img,index)=>`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" onclick="switchProductImage(this)" aria-label="Afficher la photo ${index+1}"><img src="${safeAttr(img)}" alt="${safeAttr(kit.name)} — photo ${index+1}"></button>`).join('')}</div>`:'';
@@ -1072,23 +1080,24 @@ function renderProductPage(id){
     <button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button>
     <div class="product-layout product-layout-pro">
       <section class="product-gallery product-gallery-pro">
-        <div class="product-main-media"><img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" alt="${safeAttr(kit.name)}"><span class="product-photo-count">${images.length} photo${images.length>1?'s':''}</span></div>
+        <div class="product-main-media"><img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" alt="${safeAttr(kit.name)}">${images.length>1?`<span class="product-photo-count">${images.length} photos</span>`:''}</div>
         ${thumbs}
       </section>
       <section class="product-info product-info-pro">
         <div class="product-title-row"><div><div class="product-cat">${safeText(cat?cat.name:'Kit ARTY')}</div><h1>${safeText(kit.name)}</h1></div>${kit.featured?'<span class="product-popular-mark">Populaire</span>':''}</div>
         <p class="product-desc">${safeText(kit.description||kit.shortDesc||'')}</p>
-        <div class="product-tags"><span class="product-tag">Niveau : ${safeText(kit.difficulty||'Accessible')}</span><span class="product-tag ${kit.isLowStock?'low-stock-tag':''}">${safeText(stockTagText(kit))}</span></div>
+        <div class="product-tags"><span class="product-tag">Niveau : ${safeText(kit.difficulty||'Accessible')}</span>${!inStock?'<span class="product-tag low-stock-tag">Épuisé</span>':''}</div>
         <div class="product-purchase-card">
           <div class="product-price-line"><div><span>Votre prix</span><div class="product-configured-price"><strong id="productConfiguredPrice">$${toMoney(price)}</strong><small id="productConfiguredCompare" style="${regular>price?'':'display:none'}">$${toMoney(regular)}</small></div>${kit.discountLabel?`<em>${safeText(kit.discountLabel)}</em>`:''}</div><div class="product-selection-total"><span>Sélection</span><strong id="productSelectionSummary">${sizes[0]?safeText(sizes[0].label):'Configuration standard'}</strong></div></div>
           ${sizeOptions}${addOnOptions}
           <div class="product-buy-row"><div class="product-qty-row"><label>Quantité</label><div class="qty-ctrl"><button class="qty-btn" onclick="chgQty(-1)" aria-label="Réduire la quantité">−</button><input class="qty-val" id="pQty" value="1" readonly aria-label="Quantité"><button class="qty-btn" onclick="chgQty(1)" aria-label="Augmenter la quantité">+</button></div></div><button class="btn btn-orange product-add-button" onclick="addToCart(${kit.id})" ${!inStock?'disabled':''}>${inStock?'Ajouter au panier':'Produit épuisé'}</button></div>
           <button class="btn btn-teal product-buy-now" onclick="buyNow(${kit.id})" ${!inStock?'disabled':''}>Acheter maintenant →</button>
+          <button class="btn btn-ghost product-bundle-button" onclick="startBundleWithKit(${kit.id})">Créer un forfait avec ce kit</button>
         </div>
-        <div class="product-service-strip"><div><span aria-hidden="true">🚚</span><strong>Livraison gratuite</strong><small>Dès 75 $</small></div><div><span aria-hidden="true">🔒</span><strong>Paiement protégé</strong><small>Traitement sécurisé</small></div><div><span aria-hidden="true">🎨</span><strong>Création guidée</strong><small>Pour peindre avec confiance</small></div></div>
+        <div class="product-service-strip"><div>${productServiceIcon('delivery')}<strong>Livraison gratuite</strong><small>Dès 75 $</small></div><div>${productServiceIcon('secure')}<strong>Paiement protégé</strong><small>Traitement sécurisé</small></div><div>${productServiceIcon('guide')}<strong>Création guidée</strong><small>Instructions incluses</small></div></div>
       </section>
     </div>
-    <div class="product-details-grid">${includedCard}<section class="product-detail-card product-about-card"><div class="product-detail-icon teal" aria-hidden="true">i</div><div><span class="product-detail-kicker">À propos</span><h2>Votre expérience ARTY</h2><p>${safeText(kit.description||kit.shortDesc||'Un kit pensé pour vous accompagner du premier trait jusqu’à la dernière touche de peinture.')}</p><div class="product-fact-row"><span><small>Catégorie</small><strong>${safeText(cat?cat.name:'ARTY')}</strong></span><span><small>Niveau</small><strong>${safeText(kit.difficulty||'Accessible')}</strong></span></div></div></section></div>`;
+    ${includedCard?`<div class="product-details-grid product-details-single">${includedCard}</div>`:''}`;
   updateProductPrice(kit.id);
 }
 function addToCart(kitId){
@@ -1139,7 +1148,7 @@ function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitCompare','aKitD
 let adminProductChoiceCounter=0;
 function newAdminProductChoiceId(prefix){adminProductChoiceCounter+=1;return `${prefix}-${Date.now()}-${adminProductChoiceCounter}`}
 function adminProductRowHTML(kind,item={}){
-  if(kind==='images')return `<div class="admin-repeat-row admin-repeat-simple" data-kind="images"><input class="aKitImageUrl" type="text" value="${safeAttr(item.url||item.value||'')}" placeholder="https://... ou /images/produit.jpg"><button type="button" onclick="removeAdminProductRow(this)">Retirer</button></div>`;
+  if(kind==='images'){const url=item.url||item.value||'';return `<div class="admin-repeat-row admin-image-row" data-kind="images"><div class="admin-image-row-preview">${url?`<img src="${safeAttr(url)}" alt="Aperçu">`:'<span>Photo</span>'}</div><input class="aKitImageUrl" type="text" value="${safeAttr(url)}" placeholder="Adresse de l’image" oninput="refreshAdminImagePreview(this)"><button type="button" onclick="removeAdminProductRow(this)">Retirer</button></div>`}
   if(kind==='includes')return `<div class="admin-repeat-row admin-repeat-simple" data-kind="includes"><input class="aKitIncludeItem" type="text" value="${safeAttr(item.label||item.value||'')}" placeholder="Ex: Toile pré-tracée 11 × 14"><button type="button" onclick="removeAdminProductRow(this)">Retirer</button></div>`;
   const id=item.id||newAdminProductChoiceId(kind==='sizes'?'size':'addon');
   if(kind==='sizes')return `<div class="admin-repeat-row admin-repeat-choice" data-kind="sizes" data-choice-id="${safeAttr(id)}"><input class="aKitSizeLabel" type="text" value="${safeAttr(item.label||'')}" placeholder="Format, ex: 11 × 14"><div class="admin-price-input"><span>+$</span><input class="aKitSizePrice" type="number" min="0" step="0.01" value="${Number(item.priceDelta)||0}" aria-label="Supplément du format"></div><button type="button" onclick="removeAdminProductRow(this)">Retirer</button></div>`;
@@ -1156,6 +1165,44 @@ function collectAdminProductRows(){
   const addOns=Array.from(document.querySelectorAll('#aKitAddonsList .admin-repeat-addon')).map(row=>({id:row.dataset.choiceId,label:row.querySelector('.aKitAddonLabel')?.value.trim()||'',description:row.querySelector('.aKitAddonDesc')?.value.trim()||'',priceDelta:Number(row.querySelector('.aKitAddonPrice')?.value)||0})).filter(option=>option.label);
   return {images,includes,sizeOptions,addOns};
 }
+function refreshAdminImagePreview(input){
+  const preview=input.closest('.admin-image-row')?.querySelector('.admin-image-row-preview');if(!preview)return;
+  const url=input.value.trim();preview.innerHTML=url?`<img src="${safeAttr(url)}" alt="Aperçu">`:'<span>Photo</span>';
+}
+function readAdminImageFile(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Lecture impossible'));reader.readAsDataURL(file)})}
+async function uploadAdminProductImages(input){
+  const files=Array.from(input.files||[]),status=document.getElementById('aKitUploadStatus');if(!files.length)return;
+  if(files.some(file=>file.size>10*1024*1024)){showToast('Chaque image doit faire moins de 10 Mo','error');input.value='';return}
+  input.disabled=true;if(status)status.textContent=`Téléversement de ${files.length} image${files.length>1?'s':''}...`;
+  try{
+    for(const file of files){
+      const dataUrl=await readAdminImageFile(file);
+      const r=await fetch('/api/admin/product-images',{method:'POST',headers:authH(),body:JSON.stringify({fileName:file.name,dataUrl})});
+      const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Téléversement impossible');
+      const empty=Array.from(document.querySelectorAll('.aKitImageUrl')).find(field=>!field.value.trim());
+      if(empty){empty.value=d.url;refreshAdminImagePreview(empty)}else addAdminProductRow('images',{url:d.url});
+    }
+    if(status)status.textContent='Images ajoutées à la galerie.';showToast('Images téléversées','success');
+  }catch(err){if(status)status.textContent='';showToast(err.message||'Erreur de téléversement','error')}
+  finally{input.disabled=false;input.value=''}
+}
+function productTemplateOptionsHTML(selected=''){return `<option value="">Choisir un modèle</option>${adminProductTemplates.map(template=>`<option value="${safeAttr(template.id)}" ${String(template.id)===String(selected)?'selected':''}>${safeText(template.name)}</option>`).join('')}`}
+function refreshProductTemplateSelect(selected=''){const select=document.getElementById('aKitTemplateSelect');if(select)select.innerHTML=productTemplateOptionsHTML(selected)}
+function applyProductTemplate(){
+  const id=document.getElementById('aKitTemplateSelect')?.value,template=adminProductTemplates.find(item=>String(item.id)===String(id));
+  if(!template)return showToast('Choisissez un modèle','error');
+  setAdminProductRows('includes',template.includes||[]);setAdminProductRows('sizes',template.sizeOptions||[]);setAdminProductRows('addons',template.addOns||[]);showToast('Modèle appliqué','success');
+}
+async function saveProductTemplate(){
+  const name=document.getElementById('aKitTemplateName')?.value.trim()||'',details=collectAdminProductRows();
+  if(!name)return showToast('Donnez un nom au modèle','error');
+  if(!details.includes.length&&!details.sizeOptions.length&&!details.addOns.length)return showToast('Ajoutez du contenu avant de créer le modèle','error');
+  try{const r=await fetch('/api/admin/product-templates',{method:'POST',headers:authH(),body:JSON.stringify({name,includes:details.includes,sizeOptions:details.sizeOptions,addOns:details.addOns})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');adminProductTemplates.push(d.template);adminProductTemplates.sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr'));refreshProductTemplateSelect(d.template.id);document.getElementById('aKitTemplateName').value='';showToast('Modèle créé','success')}catch{showToast('Erreur','error')}
+}
+async function deleteProductTemplate(){
+  const id=document.getElementById('aKitTemplateSelect')?.value,template=adminProductTemplates.find(item=>String(item.id)===String(id));if(!template)return showToast('Choisissez un modèle','error');if(!confirm(`Supprimer le modèle « ${template.name} »?`))return;
+  try{const r=await fetch(`/api/admin/product-templates/${encodeURIComponent(id)}`,{method:'DELETE',headers:authH()});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');adminProductTemplates=adminProductTemplates.filter(item=>String(item.id)!==String(id));refreshProductTemplateSelect();showToast('Modèle supprimé','success')}catch{showToast('Erreur','error')}
+}
 function renderAdminKits(){
   const panel=document.getElementById('adminKitsPanel');if(!panel)return;
   const rows=allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId)),images=productImageList(k),formatCount=(k.sizeOptions||[]).length,optionCount=(k.addOns||[]).length;return `<tr><td><div class="admin-product-cell"><img src="${safeAttr(images[0])}" alt=""><div><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${images.length} photo${images.length>1?'s':''} · ${formatCount} format${formatCount!==1?'s':''} · ${optionCount} option${optionCount!==1?'s':''}</span></div></div></td><td>${cat?safeText(cat.name):'-'}</td><td><span class="admin-status ${k.inStock!==false?'ok':'out'}">${safeText(stockTagText(k))}</span></td><td>${kitPriceHTML(k)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('');
@@ -1163,8 +1210,9 @@ function renderAdminKits(){
     <div class="admin-form-card admin-product-editor">
       <div class="admin-form-head"><div><h3 id="kitFormTitle">Ajouter un produit</h3><p>Créez une fiche produit complète avec galerie, contenu, formats et options payantes.</p></div><button class="btn btn-ghost btn-sm" onclick="resetKitForm()">Nouveau</button></div>
       <input type="hidden" id="editKitId">
+      <section class="admin-template-panel"><div class="admin-template-copy"><strong>Modèles réutilisables</strong><span>Appliquez en un clic le contenu, les formats et les options d’un autre kit.</span></div><div class="admin-template-controls"><select id="aKitTemplateSelect">${productTemplateOptionsHTML()}</select><button type="button" class="admin-template-apply" onclick="applyProductTemplate()">Appliquer</button><button type="button" class="admin-template-delete" onclick="deleteProductTemplate()">Supprimer</button></div><div class="admin-template-save"><input type="text" id="aKitTemplateName" placeholder="Nom du nouveau modèle"><button type="button" onclick="saveProductTemplate()">Créer avec la configuration actuelle</button></div></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>1</span><div><h4>Informations principales</h4><p>Nom, prix et présentation du produit.</p></div></div><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix régulier ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div><div class="form-group"><label>Prix barré optionnel ($)</label><input type="number" id="aKitCompare" step="0.01" placeholder="39.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Présentez l’expérience, le résultat et ce qui rend ce kit spécial"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div></section>
-      <section class="admin-product-section"><div class="admin-product-section-title"><span>2</span><div><h4>Galerie de photos</h4><p>La première photo devient l’image principale du produit.</p></div></div><div class="admin-repeat-list" id="aKitImagesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('images')">+ Ajouter une photo</button></section>
+      <section class="admin-product-section"><div class="admin-product-section-title"><span>2</span><div><h4>Galerie de photos</h4><p>Téléversez directement vos images. La première devient l’image principale.</p></div></div><label class="admin-image-upload"><input type="file" id="aKitImageUpload" accept="image/jpeg,image/png,image/webp,image/avif" multiple onchange="uploadAdminProductImages(this)"><span>Téléverser des images depuis l’ordinateur</span><small>JPG, PNG, WEBP ou AVIF · maximum 10 Mo par image</small></label><div class="admin-upload-status" id="aKitUploadStatus" aria-live="polite"></div><div class="admin-repeat-list admin-image-list" id="aKitImagesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('images')">Ajouter une image par lien</button></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>3</span><div><h4>Inclus dans ce kit</h4><p>Ajoutez chaque élément que le client recevra.</p></div></div><div class="admin-repeat-list" id="aKitIncludesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('includes')">+ Ajouter un élément</button></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>4</span><div><h4>Formats disponibles</h4><p>Le premier format sera sélectionné automatiquement. Laissez vide si le produit n’a qu’un format.</p></div></div><div class="admin-repeat-head admin-repeat-head-size"><span>Nom du format</span><span>Supplément</span><span></span></div><div class="admin-repeat-list" id="aKitSizesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('sizes')">+ Ajouter un format</button></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>5</span><div><h4>Options facultatives</h4><p>Exemple : ajouter un chevalet pour 5 $.</p></div></div><div class="admin-repeat-head admin-repeat-head-addon"><span>Nom</span><span>Description</span><span>Prix</span><span></span></div><div class="admin-repeat-list" id="aKitAddonsList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('addons')">+ Ajouter une option</button></section>
@@ -1187,13 +1235,13 @@ function editKit(id){
   document.getElementById('kitFormTitle').textContent='Modifier le produit';document.getElementById('cancelKit').style.display='inline-flex';document.querySelector('#adminKitsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
 function resetKitForm(){
-  ['editKitId','aKitName','aKitPrice','aKitCompare','aKitDesc','aKitShortDesc','aKitStockQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const low=document.getElementById('aKitLowStock');if(low)low.value=3;const st=document.getElementById('aKitStock');if(st)st.checked=true;const feat=document.getElementById('aKitFeatured');if(feat)feat.checked=false;setAdminProductRows('images');setAdminProductRows('includes');setAdminProductRows('sizes');setAdminProductRows('addons');const title=document.getElementById('kitFormTitle');if(title)title.textContent='Ajouter un produit';const cancel=document.getElementById('cancelKit');if(cancel)cancel.style.display='none';
+  ['editKitId','aKitName','aKitPrice','aKitCompare','aKitDesc','aKitShortDesc','aKitStockQty','aKitTemplateName'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const low=document.getElementById('aKitLowStock');if(low)low.value=3;const st=document.getElementById('aKitStock');if(st)st.checked=true;const feat=document.getElementById('aKitFeatured');if(feat)feat.checked=false;setAdminProductRows('images');setAdminProductRows('includes');setAdminProductRows('sizes');setAdminProductRows('addons');refreshProductTemplateSelect();const uploadStatus=document.getElementById('aKitUploadStatus');if(uploadStatus)uploadStatus.textContent='';const title=document.getElementById('kitFormTitle');if(title)title.textContent='Ajouter un produit';const cancel=document.getElementById('cancelKit');if(cancel)cancel.style.display='none';
 }
 
 function renderAdminInventory(){
   const panel=document.getElementById('adminInventoryPanel');if(!panel)return;
   const rows=allKits.map(k=>`<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.stockLabel||'')}</span></td><td><span class="inventory-num ${k.inStock===false?'out':k.isLowStock?'low':''}">${k.stockQty??'—'}</span></td><td>${k.lowStockThreshold??3}</td><td><span class="admin-status ${k.inStock!==false?'ok':'out'}">${safeText(stockTagText(k))}</span></td><td><div class="inventory-adjust"><input type="number" id="invQty${k.id}" value="1"><button onclick="adjustInventory(${k.id},'adjust',-1)">−</button><button onclick="adjustInventory(${k.id},'adjust',1)">+</button><button onclick="adjustInventory(${k.id},'set')">Fixer</button></div></td></tr>`).join('');
-  panel.innerHTML=`<div class="admin-form-card"><h3>Inventaire</h3><p class="admin-help">Le site indique automatiquement “Épuisé” à 0 et “Stock limité” quand le produit atteint le seuil bas.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Produit</th><th>Stock</th><th>Seuil bas</th><th>Statut client</th><th>Ajustement rapide</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Aucun produit.</td></tr>'}</tbody></table></div>`;
+  panel.innerHTML=`<div class="admin-form-card"><h3>Inventaire</h3><p class="admin-help">Les quantités exactes restent privées dans l’administration. Le public voit seulement lorsqu’un produit est épuisé.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Produit</th><th>Stock</th><th>Seuil bas</th><th>Statut client</th><th>Ajustement rapide</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Aucun produit.</td></tr>'}</tbody></table></div>`;
 }
 async function adjustInventory(id,mode,sign=1){const input=document.getElementById(`invQty${id}`);const raw=parseInt(input?.value||0);if(!Number.isFinite(raw))return showToast('Quantité invalide','error');const quantity=mode==='set'?raw:raw*sign;try{const r=await fetch(`/api/admin/kits/${id}/inventory`,{method:'POST',headers:authH(),body:JSON.stringify({mode,quantity,reason:'Ajustement admin'})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Inventaire mis à jour','success');await loadAdminData()}catch{showToast('Erreur','error')}}
 
@@ -1211,7 +1259,7 @@ async function deleteDiscount(id){if(!confirm('Supprimer ce rabais?'))return;awa
 
 function renderAdminAnnouncement(){
   const panel=document.getElementById('adminAnnouncementPanel');if(!panel)return;
-  panel.innerHTML=`<div class="admin-form-card announcement-admin-card"><div class="admin-form-head"><div><h3>Annonce du site</h3><p>Affichez un court message promotionnel en haut du site, ou désactivez-le quand vous n’en avez pas besoin.</p></div></div><div class="form-group"><label>Message</label><input type="text" id="aAnnouncementMessage" maxlength="180" value="${safeAttr(siteAnnouncement?.message||'')}" placeholder="Ex: Livraison gratuite pour toute commande de 75 $ et plus"></div><label class="catalog-check announcement-toggle"><input type="checkbox" id="aAnnouncementEnabled" ${siteAnnouncement?.enabled===true?'checked':''}> Afficher cette annonce sur le site</label><div class="announcement-admin-preview"><span aria-hidden="true">🚚</span><span id="announcementPreviewText">${safeText(siteAnnouncement?.message||'Votre annonce apparaîtra ici')}</span></div><button class="btn btn-orange" onclick="saveAnnouncement()">Sauvegarder l’annonce</button></div>`;
+  panel.innerHTML=`<div class="admin-form-card announcement-admin-card"><div class="admin-form-head"><div><h3>Annonce du site</h3><p>Affichez un court message promotionnel en haut du site, ou désactivez-le quand vous n’en avez pas besoin.</p></div></div><div class="form-group"><label>Message</label><input type="text" id="aAnnouncementMessage" maxlength="180" value="${safeAttr(siteAnnouncement?.message||'')}" placeholder="Ex: Livraison gratuite pour toute commande de 75 $ et plus"></div><label class="catalog-check announcement-toggle"><input type="checkbox" id="aAnnouncementEnabled" ${siteAnnouncement?.enabled===true?'checked':''}> Afficher cette annonce sur le site</label><div class="announcement-admin-preview">${productServiceIcon('delivery')}<span id="announcementPreviewText">${safeText(siteAnnouncement?.message||'Votre annonce apparaîtra ici')}</span></div><button class="btn btn-orange" onclick="saveAnnouncement()">Sauvegarder l’annonce</button></div>`;
   const input=document.getElementById('aAnnouncementMessage');
   if(input)input.addEventListener('input',()=>{const preview=document.getElementById('announcementPreviewText');if(preview)preview.textContent=input.value.trim()||'Votre annonce apparaîtra ici'});
 }
