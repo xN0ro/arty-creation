@@ -926,6 +926,37 @@ function parseStringList(raw) {
   if (Array.isArray(raw)) return raw.map(v => String(v).trim()).filter(Boolean);
   return String(raw || '').split(',').map(v => v.trim()).filter(Boolean);
 }
+function normalizeProductImages(raw, fallback = '') {
+  const values = Array.isArray(raw) ? raw : String(raw || '').split(/\r?\n/);
+  const cleaned = values.map(value => String(value || '').trim().slice(0, 1000)).filter(value => {
+    if (!value || /^javascript:/i.test(value)) return false;
+    return /^(https?:\/\/|\/|[a-z0-9_.-]+\/|[a-z0-9_.-]+$)/i.test(value);
+  });
+  const fallbackValue = String(fallback || '').trim();
+  if (!cleaned.length && fallbackValue && !/^javascript:/i.test(fallbackValue)) cleaned.push(fallbackValue.slice(0, 1000));
+  return [...new Set(cleaned)].slice(0, 10);
+}
+function normalizeProductIncludes(raw) {
+  const values = Array.isArray(raw) ? raw : String(raw || '').split(/\r?\n/);
+  return values.map(value => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 120)).filter(Boolean).slice(0, 24);
+}
+function normalizeProductChoices(raw, prefix) {
+  if (!Array.isArray(raw)) return [];
+  const used = new Set();
+  return raw.slice(0, 16).map((choice, index) => {
+    const label = String(choice?.label || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    if (!label) return null;
+    let id = String(choice?.id || `${prefix}-${index + 1}`).replace(/[^a-z0-9_-]/gi, '-').slice(0, 64) || `${prefix}-${index + 1}`;
+    while (used.has(id)) id = `${id}-${index + 1}`;
+    used.add(id);
+    return {
+      id,
+      label,
+      description: String(choice?.description || '').replace(/\s+/g, ' ').trim().slice(0, 180),
+      priceDelta: money(Math.max(0, Math.min(10000, Number(choice?.priceDelta) || 0)))
+    };
+  }).filter(Boolean);
+}
 function getStockQty(kit) {
   return isFiniteNumber(kit.stockQty) ? Number(kit.stockQty) : null;
 }
@@ -943,7 +974,11 @@ function normalizeKitPayload(body, existing = {}) {
   payload.featured = body.featured === undefined ? !!existing.featured : (body.featured === true || body.featured === 'true');
   payload.shortDesc = body.shortDesc || '';
   payload.description = body.description || '';
-  payload.image = body.image || '';
+  payload.images = normalizeProductImages(body.images ?? existing.images, body.image || existing.image || '');
+  payload.image = payload.images[0] || '';
+  payload.includes = normalizeProductIncludes(body.includes ?? existing.includes);
+  payload.sizeOptions = normalizeProductChoices(body.sizeOptions ?? existing.sizeOptions, 'size');
+  payload.addOns = normalizeProductChoices(body.addOns ?? existing.addOns, 'addon');
   payload.difficulty = body.difficulty || existing.difficulty || 'Débutant';
   payload.stockQty = isFiniteNumber(body.stockQty) ? Math.max(0, parseInt(body.stockQty)) : (isFiniteNumber(existing.stockQty) ? Math.max(0, parseInt(existing.stockQty)) : null);
   payload.lowStockThreshold = isFiniteNumber(body.lowStockThreshold) ? Math.max(0, parseInt(body.lowStockThreshold)) : (isFiniteNumber(existing.lowStockThreshold) ? Math.max(0, parseInt(existing.lowStockThreshold)) : 3);
@@ -1081,10 +1116,12 @@ function discountAmountForItem(discount, kitLike, item) {
   const qty = Number(item.qty) || 1;
   const unitPrice = Number(item.unitPrice) || Number(item.price) || 0;
   const line = unitPrice * qty;
+  const discountUnitPrice = Number(item.discountBaseUnitPrice ?? unitPrice) || 0;
+  const discountLine = discountUnitPrice * qty;
   if (!discountAppliesToKit(discount, kitLike)) return 0;
   if (qty < (discount.minQty || 1)) return 0;
-  if (discount.type === 'percent') return line * Math.min(100, Math.max(0, Number(discount.value) || 0)) / 100;
-  if (discount.type === 'fixed') return Math.min(line, Math.max(0, Number(discount.value) || 0) * qty);
+  if (discount.type === 'percent') return discountLine * Math.min(100, Math.max(0, Number(discount.value) || 0)) / 100;
+  if (discount.type === 'fixed') return Math.min(discountLine, Math.max(0, Number(discount.value) || 0) * qty);
   if (discount.type === 'bogo') {
     const buy = Math.max(1, parseInt(discount.buyQty) || 1);
     const free = Math.max(1, parseInt(discount.freeQty) || 1);
@@ -1515,6 +1552,35 @@ function calculateCustomPackageItem(db, raw, type) {
     }
   };
 }
+function resolveProductConfiguration(kit, raw) {
+  const input = raw.customData && typeof raw.customData === 'object' ? raw.customData : {};
+  const sizeOptions = Array.isArray(kit.sizeOptions) ? kit.sizeOptions : [];
+  const addOns = Array.isArray(kit.addOns) ? kit.addOns : [];
+  const requestedSizeId = String(input.sizeId || '').trim();
+  const requestedAddOnIds = [...new Set(Array.isArray(input.addOnIds) ? input.addOnIds.map(id => String(id).trim()).filter(Boolean) : [])];
+  let selectedSize = null;
+  if (sizeOptions.length) {
+    selectedSize = sizeOptions.find(option => String(option.id) === requestedSizeId);
+    if (!selectedSize) return { error: `Choisissez un format valide pour ${kit.name}` };
+  }
+  const selectedAddOns = requestedAddOnIds.map(id => addOns.find(option => String(option.id) === id));
+  if (selectedAddOns.some(option => !option)) return { error: `Une option choisie pour ${kit.name} n’est plus disponible` };
+  const sizePrice = Math.max(0, Number(selectedSize?.priceDelta) || 0);
+  const addOnPrice = selectedAddOns.reduce((sum, option) => sum + Math.max(0, Number(option.priceDelta) || 0), 0);
+  const configured = Boolean(selectedSize || selectedAddOns.length);
+  return {
+    extraPrice: money(sizePrice + addOnPrice),
+    customData: configured ? {
+      kind: 'configured-kit',
+      kitId: kit.id,
+      sizeId: selectedSize?.id || '',
+      sizeLabel: selectedSize?.label || '',
+      addOnIds: selectedAddOns.map(option => option.id),
+      addOnLabels: selectedAddOns.map(option => option.label),
+      selectionLabel: [selectedSize?.label, ...selectedAddOns.map(option => option.label)].filter(Boolean).join(' · ')
+    } : null
+  };
+}
 function buildOrderItems(db, rawItems = []) {
   const items = [];
   for (const raw of rawItems) {
@@ -1550,14 +1616,31 @@ function buildOrderItems(db, rawItems = []) {
       items.push({ id: rawId, bundleId, type: 'bundle', name: bundle.name, unitPrice: money(parseFloat(bundle.price) || 0), price: money(parseFloat(bundle.price) || 0), image: bundle.image || '', qty, kitIds: bundle.kitIds || [] });
       continue;
     }
-    const kitId = parseInt(rawId);
+    const configuredKitId = raw.customData && typeof raw.customData === 'object' ? raw.customData.kitId : null;
+    const prefixedKitId = /^kit-(\d+)/.exec(rawId)?.[1];
+    const kitId = parseInt(configuredKitId || prefixedKitId || rawId);
     const kit = (db.kits || []).find(k => Number(k.id) === Number(kitId));
     if (!kit) return { error: `Kit non trouvé: ${rawId}` };
     if (!isKitAvailable(kit)) return { error: `${kit.name} est épuisé` };
     const stock = getStockQty(kit);
     if (stock !== null && qty > stock) return { error: `Il reste seulement ${stock} ${kit.name}` };
-    const unitPrice = effectiveKitUnitPriceForPackage(db, kit);
-    items.push({ id: String(kit.id), kitId: kit.id, type: 'kit', categoryId: kit.categoryId, tags: kit.tags || [], name: kit.name, unitPrice, price: unitPrice, image: kit.image || '', qty });
+    const configured = resolveProductConfiguration(kit, raw);
+    if (configured.error) return configured;
+    const basePrice = money(Math.max(0, Number(kit.price) || 0));
+    const unitPrice = money(basePrice + configured.extraPrice);
+    items.push({
+      id: rawId,
+      kitId: kit.id,
+      type: 'kit',
+      categoryId: kit.categoryId,
+      name: kit.name,
+      unitPrice,
+      price: unitPrice,
+      discountBaseUnitPrice: basePrice,
+      image: (Array.isArray(kit.images) && kit.images[0]) || kit.image || '',
+      qty,
+      customData: configured.customData
+    });
   }
   return { items };
 }
