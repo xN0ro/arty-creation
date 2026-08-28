@@ -140,7 +140,7 @@ function normalizeDB(db = {}) {
     ...db,
     adminEmails: Array.isArray(db.adminEmails) ? db.adminEmails : [],
     categories: Array.isArray(db.categories) ? db.categories : [],
-    kits: Array.isArray(db.kits) ? db.kits.map(({ tags, badges, ...kit }) => kit) : [],
+    kits: Array.isArray(db.kits) ? db.kits.map(({ tags, badges, difficulty, ...kit }) => kit) : [],
     events: Array.isArray(db.events) ? db.events : [],
     teamActivities: Array.isArray(db.teamActivities) ? db.teamActivities : [],
     bundles: Array.isArray(db.bundles) ? db.bundles : [],
@@ -665,7 +665,7 @@ function normalizeKitPayload(body, existing = {}) {
   payload.shortDesc = body.shortDesc || '';
   payload.description = body.description || '';
   payload.image = body.image || '';
-  payload.difficulty = body.difficulty || existing.difficulty || 'Débutant';
+  delete payload.difficulty;
   return payload;
 }
 
@@ -1050,7 +1050,7 @@ function normalizeKitPayload(body, existing = {}) {
   payload.includes = normalizeProductIncludes(body.includes ?? existing.includes);
   payload.sizeOptions = normalizeProductChoices(body.sizeOptions ?? existing.sizeOptions, 'size');
   payload.addOns = normalizeProductChoices(body.addOns ?? existing.addOns, 'addon');
-  payload.difficulty = body.difficulty || existing.difficulty || 'Débutant';
+  delete payload.difficulty;
   payload.stockQty = isFiniteNumber(body.stockQty) ? Math.max(0, parseInt(body.stockQty)) : (isFiniteNumber(existing.stockQty) ? Math.max(0, parseInt(existing.stockQty)) : null);
   payload.lowStockThreshold = isFiniteNumber(body.lowStockThreshold) ? Math.max(0, parseInt(body.lowStockThreshold)) : (isFiniteNumber(existing.lowStockThreshold) ? Math.max(0, parseInt(existing.lowStockThreshold)) : 3);
   payload.trackInventory = body.trackInventory === undefined ? (existing.trackInventory !== false) : (body.trackInventory === true || body.trackInventory === 'true');

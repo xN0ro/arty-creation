@@ -2,7 +2,7 @@
 let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
 let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventType:'wedding',guests:20,date:'',location:'',customText:'',selected:{},hostName:'',notes:''};
-let catalogFilters={category:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 let siteAnnouncement={enabled:false,message:''};
 
 document.addEventListener('DOMContentLoaded',async()=>{
@@ -27,7 +27,6 @@ function navigate(h){window.location.hash=h}
 function safeText(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
 function safeAttr(v){return safeText(v).replace(/'/g,'&#39;')}
 function toMoney(v){return Number(v||0).toFixed(2)}
-function uniqueList(values){return [...new Set(values.map(v=>String(v).trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'fr'))}
 
 // ===== ROUTER =====
 function handleRoute(){
@@ -95,7 +94,7 @@ function renderHomePopularKits(){
     return `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
       <div class="kit-card-img"><img src="${k.image}" alt="${k.name}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}</div>
       <div class="kit-card-body"><div class="kit-card-category">${cat?cat.name:''}</div><h3 class="kit-card-title">${k.name}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p>
-      <div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span><span class="kit-card-meta">${k.difficulty}</span></div></div></div>`;
+      <div class="kit-card-footer"><span class="kit-card-price">$${k.price.toFixed(2)}</span></div></div></div>`;
   }).join('');
 }
 
@@ -206,7 +205,7 @@ function initScrollEffects(){
 // ===== PAINTINGS PAGE =====
 function renderPaintingsPage(){
   const params=new URLSearchParams((window.location.hash.split('?')[1]||''));
-  catalogFilters={category:params.get('cat')||'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+  catalogFilters={category:params.get('cat')||'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
   renderCatalogFilterOptions();
   syncCatalogInputs();
   renderKitsGrid();
@@ -222,13 +221,6 @@ function renderCatalogFilterOptions(){
         return `<button class="catalog-pill" data-category="${safeAttr(c.id)}" onclick="setCatalogFilter('category','${safeAttr(c.id)}')">${safeText(c.name)} <span>${count}</span></button>`;
       }));
     cats.innerHTML=buttons.join('');
-  }
-
-  const diffWrap=document.getElementById('difficultyFilterList');
-  if(diffWrap){
-    const diffs=uniqueList(allKits.map(k=>k.difficulty||''));
-    diffWrap.innerHTML=`<button class="catalog-chip active" data-difficulty="all" onclick="setCatalogFilter('difficulty','all')">Tous</button>`+
-      diffs.map(d=>`<button class="catalog-chip" data-difficulty="${safeAttr(d)}" onclick="setCatalogFilter('difficulty','${safeAttr(d)}')">${safeText(d)}</button>`).join('');
   }
 }
 
@@ -251,11 +243,10 @@ function syncCatalogInputs(){
   const max=document.getElementById('priceMaxInput'); if(max) max.value=catalogFilters.priceMax||'';
   const stock=document.getElementById('stockOnlyInput'); if(stock) stock.checked=catalogFilters.stock==='in';
   document.querySelectorAll('[data-category]').forEach(b=>b.classList.toggle('active',String(b.dataset.category)===String(catalogFilters.category)));
-  document.querySelectorAll('[data-difficulty]').forEach(b=>b.classList.toggle('active',String(b.dataset.difficulty)===String(catalogFilters.difficulty)));
 }
 
 function resetCatalogFilters(){
-  catalogFilters={category:'all',difficulty:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
+  catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
   currentFilter='all';
   syncCatalogInputs();
   renderKitsGrid();
@@ -282,9 +273,8 @@ function getFilteredKits(){
   const max=catalogFilters.priceMax!==''?parseFloat(catalogFilters.priceMax):null;
   let kits=allKits.filter(k=>{
     const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
-    const hay=[k.name,k.shortDesc,k.description,k.difficulty,cat?.name].join(' ').toLowerCase();
+    const hay=[k.name,k.shortDesc,k.description,cat?.name].join(' ').toLowerCase();
     if(catalogFilters.category!=='all' && String(k.categoryId)!==String(catalogFilters.category)) return false;
-    if(catalogFilters.difficulty!=='all' && String(k.difficulty)!==String(catalogFilters.difficulty)) return false;
     if(catalogFilters.stock==='in' && k.inStock===false) return false;
     if(q && !hay.includes(q)) return false;
     if(min!==null && Number(k.price||0)<min) return false;
@@ -312,7 +302,6 @@ function renderActiveFilters(filtered){
     const cat=allCategories.find(c=>String(c.id)===String(catalogFilters.category));
     chips.push(`<button onclick="removeCatalogFilter('category')">Catégorie: ${safeText(cat?.name||catalogFilters.category)} ×</button>`);
   }
-  if(catalogFilters.difficulty!=='all') chips.push(`<button onclick="removeCatalogFilter('difficulty')">Niveau: ${safeText(catalogFilters.difficulty)} ×</button>`);
   if(catalogFilters.stock==='in') chips.push(`<button onclick="removeCatalogFilter('stock')">En stock seulement ×</button>`);
   if(catalogFilters.search) chips.push(`<button onclick="removeCatalogFilter('search')">Recherche: ${safeText(catalogFilters.search)} ×</button>`);
   if(catalogFilters.priceMin) chips.push(`<button onclick="removeCatalogFilter('priceMin')">Min: $${safeText(catalogFilters.priceMin)} ×</button>`);
@@ -329,14 +318,13 @@ function renderKitsGrid(){
     const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
     const img=k.image||'logoarty.png';
     const isInStock=k.inStock!==false;
-    const stockLabel=isInStock?'En stock':'Épuisé';
     return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')">
       <div class="kit-card-img"><img src="${safeAttr(img)}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${!isInStock?'<span class="kit-stock-badge">Épuisé</span>':''}</div>
       <div class="kit-card-body">
         <div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div>
         <h3 class="kit-card-title">${safeText(k.name)}</h3>
         <p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p>
-        <div class="kit-card-footer"><span class="kit-card-price">$${toMoney(k.price)}</span><span class="kit-card-meta">${safeText(k.difficulty||stockLabel)}</span></div>
+        <div class="kit-card-footer"><span class="kit-card-price">$${toMoney(k.price)}</span></div>
       </div>
     </div>`;
   }).join('');
@@ -478,7 +466,6 @@ function renderTutorialsPage(){
     <div class="tutorial-body">
       <div class="tutorial-kit-name">Kit: ${k.name}</div>
       <h3 class="tutorial-title">${k.videoTitle||'Tutoriel '+k.name}</h3>
-      <p class="tutorial-diff">${k.difficulty}</p>
     </div>
   </div>`).join('');
   initScrollEffects();
@@ -1002,14 +989,13 @@ function switchAdminTab(t,btn){
 function renderHomePopularKits(){
   const featured=allKits.filter(k=>k.featured).slice(0,5);const kits=featured.length>=5?featured:allKits.slice(0,5);
   const el=document.getElementById('homePopularKits');if(!el)return;
-  el.innerHTML=kits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div><span class="kit-card-meta">${safeText(k.difficulty||'')}</span></div></div></div>`}).join('');
+  el.innerHTML=kits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div></div></div></div>`}).join('');
 }
 function getFilteredKits(){
   let kits=[...allKits];
   const q=(catalogFilters.search||'').toLowerCase().trim();
   if(q)kits=kits.filter(k=>`${k.name||''} ${k.description||''} ${k.shortDesc||''}`.toLowerCase().includes(q));
   if(catalogFilters.category!=='all')kits=kits.filter(k=>String(k.categoryId)===String(catalogFilters.category));
-  if(catalogFilters.difficulty!=='all')kits=kits.filter(k=>String(k.difficulty||'')===String(catalogFilters.difficulty));
   if(catalogFilters.stock==='in')kits=kits.filter(k=>k.inStock!==false);
   const min=parseFloat(catalogFilters.priceMin),max=parseFloat(catalogFilters.priceMax);
   if(!Number.isNaN(min))kits=kits.filter(k=>getKitDisplayPrice(k)>=min);
@@ -1020,7 +1006,7 @@ function getFilteredKits(){
 }
 function renderKitsGrid(){
   const g=document.getElementById('kitsGrid');if(!g)return;const filtered=getFilteredKits();renderActiveFilters(filtered);g.classList.remove('visible');
-  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div><span class="kit-card-meta">${safeText(k.difficulty||'')}</span></div></div></div>`}).join('');
+  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?'<span class="kit-card-badge">Populaire</span>':''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'Sans catégorie')}</div><h3 class="kit-card-title">${safeText(k.name)}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div></div></div></div>`}).join('');
   if(!filtered.length)g.innerHTML='<div class="empty-state catalog-empty"><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>';
   setTimeout(()=>g.classList.add('visible'),50);
 }
@@ -1055,8 +1041,11 @@ function updateProductPrice(kitId){
   if(summary){const labels=[selection.size?.label,...selection.addOns.map(option=>option.label)].filter(Boolean);summary.textContent=labels.length?labels.join(' · '):'Configuration standard'}
 }
 function switchProductImage(button){
-  const main=document.getElementById('pMainImg');if(main)main.src=button.dataset.image||main.src;
-  document.querySelectorAll('.product-thumb').forEach(thumb=>thumb.classList.remove('active'));button.classList.add('active');
+  const main=document.getElementById('pMainImg'),thumbs=Array.from(document.querySelectorAll('.product-thumb'));
+  if(main){main.src=button.dataset.image||main.src;main.alt=button.dataset.alt||main.alt}
+  thumbs.forEach(thumb=>{const active=thumb===button;thumb.classList.toggle('active',active);thumb.setAttribute('aria-pressed',String(active))});
+  const counter=document.getElementById('productPhotoCount'),index=Math.max(0,thumbs.indexOf(button));
+  if(counter)counter.textContent=`Photo ${index+1} sur ${thumbs.length}`;
 }
 function productServiceIcon(type){
   const paths={
@@ -1071,7 +1060,7 @@ function renderProductPage(id){
   if(!kit){c.innerHTML='<div class="empty-state" style="padding:60px 0"><p>Kit non trouvé</p></div>';return}
   const cat=allCategories.find(ct=>String(ct.id)===String(kit.categoryId));
   const images=productImageList(kit),sizes=Array.isArray(kit.sizeOptions)?kit.sizeOptions:[],addOns=Array.isArray(kit.addOns)?kit.addOns:[],included=Array.isArray(kit.includes)?kit.includes:[];
-  const thumbs=images.length>1?`<div class="product-thumbs" aria-label="Photos du produit">${images.map((img,index)=>`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" onclick="switchProductImage(this)" aria-label="Afficher la photo ${index+1}"><img src="${safeAttr(img)}" alt="${safeAttr(kit.name)} — photo ${index+1}"></button>`).join('')}</div>`:'';
+  const thumbs=images.length>1?`<div class="product-thumbs" aria-label="Photos du produit">${images.map((img,index)=>`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" data-alt="${safeAttr(kit.name)} — photo ${index+1}" onclick="switchProductImage(this)" aria-label="Afficher la photo ${index+1}" aria-pressed="${index===0?'true':'false'}"><img src="${safeAttr(img)}" alt=""></button>`).join('')}</div>`:'';
   const sizeOptions=sizes.length?`<div class="product-option-group"><div class="product-option-heading"><div><span>Choisissez votre format</span><small>Sélection obligatoire</small></div></div><div class="product-size-grid">${sizes.map((option,index)=>`<label class="product-size-option"><input type="radio" name="productSize" value="${safeAttr(option.id)}" ${index===0?'checked':''} onchange="updateProductPrice(${kit.id})"><span><strong>${safeText(option.label)}</strong><small>${productChoicePrice(option.priceDelta)}</small></span></label>`).join('')}</div></div>`:'';
   const addOnOptions=addOns.length?`<div class="product-option-group"><div class="product-option-heading"><div><span>Personnalisez votre kit</span><small>Options facultatives</small></div></div><div class="product-addon-list">${addOns.map(option=>`<label class="product-addon-option"><input class="product-addon-input" type="checkbox" value="${safeAttr(option.id)}" onchange="updateProductPrice(${kit.id})"><span class="product-addon-check" aria-hidden="true">✓</span><span class="product-addon-copy"><strong>${safeText(option.label)}</strong>${option.description?`<small>${safeText(option.description)}</small>`:''}</span><b>${productChoicePrice(option.priceDelta)}</b></label>`).join('')}</div></div>`:'';
   const regular=Number(kit.originalPrice??kit.price)||0,price=getKitDisplayPrice(kit),inStock=kit.inStock!==false;
@@ -1080,13 +1069,13 @@ function renderProductPage(id){
     <button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button>
     <div class="product-layout product-layout-pro">
       <section class="product-gallery product-gallery-pro">
-        <div class="product-main-media"><img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" alt="${safeAttr(kit.name)}">${images.length>1?`<span class="product-photo-count">${images.length} photos</span>`:''}</div>
+        <div class="product-main-media"><img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" alt="${safeAttr(kit.name)} — photo 1">${images.length>1?`<span class="product-photo-count" id="productPhotoCount">Photo 1 sur ${images.length}</span>`:''}</div>
         ${thumbs}
       </section>
       <section class="product-info product-info-pro">
         <div class="product-title-row"><div><div class="product-cat">${safeText(cat?cat.name:'Kit ARTY')}</div><h1>${safeText(kit.name)}</h1></div>${kit.featured?'<span class="product-popular-mark">Populaire</span>':''}</div>
         <p class="product-desc">${safeText(kit.description||kit.shortDesc||'')}</p>
-        <div class="product-tags"><span class="product-tag">Niveau : ${safeText(kit.difficulty||'Accessible')}</span>${!inStock?'<span class="product-tag low-stock-tag">Épuisé</span>':''}</div>
+        ${!inStock?'<div class="product-tags"><span class="product-tag low-stock-tag">Épuisé</span></div>':''}
         <div class="product-purchase-card">
           <div class="product-price-line"><div><span>Votre prix</span><div class="product-configured-price"><strong id="productConfiguredPrice">$${toMoney(price)}</strong><small id="productConfiguredCompare" style="${regular>price?'':'display:none'}">$${toMoney(regular)}</small></div>${kit.discountLabel?`<em>${safeText(kit.discountLabel)}</em>`:''}</div><div class="product-selection-total"><span>Sélection</span><strong id="productSelectionSummary">${sizes[0]?safeText(sizes[0].label):'Configuration standard'}</strong></div></div>
           ${sizeOptions}${addOnOptions}
@@ -1135,15 +1124,6 @@ function renderAdminDashboard(){
   const latest=(a.latestOrders||[]).map(o=>`<div class="admin-order-mini"><strong>${safeText(o.id)}</strong><span>$${toMoney(o.total)} · ${safeText(o.status||'')}</span></div>`).join('')||'<p class="admin-muted">Aucune commande.</p>';
   panel.innerHTML=`<div class="admin-dashboard-grid"><div class="admin-pro-card big"><div class="admin-card-head"><h3>Ventes des 14 derniers jours</h3><span>$${toMoney(a.revenue||0)} total</span></div><div class="admin-sales-chart">${bars}</div></div><div class="admin-pro-card"><h3>Résumé</h3><div class="admin-kpi-list"><div><span>Aujourd’hui</span><strong>$${toMoney(a.todayRevenue||0)}</strong></div><div><span>Ce mois</span><strong>$${toMoney(a.monthRevenue||0)}</strong></div><div><span>Panier moyen</span><strong>$${toMoney(a.averageOrder||0)}</strong></div><div><span>Rabais donnés</span><strong>$${toMoney(a.discountTotal||0)}</strong></div><div><span>Remboursements</span><strong>$${toMoney(a.refundTotal||0)}</strong></div><div><span>Rabais actifs</span><strong>${a.activeDiscounts||0}</strong></div></div></div><div class="admin-pro-card"><h3>Alertes inventaire</h3>${low}</div><div class="admin-pro-card"><h3>Commandes récentes</h3>${latest}</div><div class="admin-pro-card big"><h3>Meilleurs produits</h3><div class="admin-table-wrap compact"><table class="admin-table"><thead><tr><th>Produit</th><th>Qté</th><th>Ventes</th></tr></thead><tbody>${top||'<tr><td colspan="3" class="admin-muted">Aucune vente.</td></tr>'}</tbody></table></div></div></div>`;
 }
-
-function renderAdminKits(){
-  const panel=document.getElementById('adminKitsPanel');if(!panel)return;
-  const rows=allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<tr><td><strong>${safeText(k.name)}</strong><br><span class="admin-muted">${safeText(k.difficulty||'')}</span></td><td>${cat?safeText(cat.name):'-'}</td><td><span class="admin-status ${k.inStock!==false?'ok':'out'}">${safeText(stockTagText(k))}</span></td><td>${kitPriceHTML(k)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('');
-  panel.innerHTML=`<div class="admin-form-card"><div class="admin-form-head"><div><h3 id="kitFormTitle">Ajouter un produit</h3><p>Gérez le prix, l’image, l’inventaire et le seuil de stock bas.</p></div><button class="btn btn-ghost btn-sm" onclick="resetKitForm()">Nouveau</button></div><input type="hidden" id="editKitId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix régulier ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div><div class="form-group"><label>Prix barré optionnel ($)</label><input type="number" id="aKitCompare" step="0.01" placeholder="39.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Description visible sur la page produit"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aKitImg" placeholder="/images/kit.jpg ou URL"></div><div class="form-row"><div class="form-group"><label>Inventaire actuel</label><input type="number" id="aKitStockQty" min="0" placeholder="ex: 12"></div><div class="form-group"><label>Seuil stock bas</label><input type="number" id="aKitLowStock" min="0" value="3"></div></div><div class="admin-check-row"><label><input type="checkbox" id="aKitStock" checked> Visible / vendable</label><label><input type="checkbox" id="aKitFeatured"> Produit populaire</label></div><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveKit()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetKitForm()" style="display:none" id="cancelKit">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Produit</th><th>Catégorie</th><th>Stock</th><th>Prix</th><th>Actions</th></tr></thead><tbody>${rows||'<tr><td colspan="5">Aucun produit.</td></tr>'}</tbody></table></div>`;
-}
-async function saveKit(){const eid=document.getElementById('editKitId').value;const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,compareAtPrice:document.getElementById('aKitCompare').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,image:document.getElementById('aKitImg').value,stockQty:document.getElementById('aKitStockQty').value,lowStockThreshold:document.getElementById('aKitLowStock').value,inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};if(!p.name||!p.price)return showToast('Nom et prix requis','error');try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Produit modifié!':'Produit ajouté!','success');await loadAdminData()}catch{showToast('Erreur','error')}}
-function editKit(id){const k=allKits.find(x=>String(x.id)===String(id));if(!k)return;document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.originalPrice||k.price||'';document.getElementById('aKitCompare').value=k.compareAtPrice||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitDiff').value=k.difficulty||'Débutant';document.getElementById('aKitImg').value=k.image||'';document.getElementById('aKitStockQty').value=k.stockQty??'';document.getElementById('aKitLowStock').value=k.lowStockThreshold??3;document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;document.getElementById('kitFormTitle').textContent='Modifier le produit';document.getElementById('cancelKit').style.display='inline-flex';document.querySelector('#adminKitsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'})}
-function resetKitForm(){['editKitId','aKitName','aKitPrice','aKitCompare','aKitDesc','aKitShortDesc','aKitImg','aKitStockQty'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const low=document.getElementById('aKitLowStock');if(low)low.value=3;const st=document.getElementById('aKitStock');if(st)st.checked=true;const feat=document.getElementById('aKitFeatured');if(feat)feat.checked=false;const title=document.getElementById('kitFormTitle');if(title)title.textContent='Ajouter un produit';const cancel=document.getElementById('cancelKit');if(cancel)cancel.style.display='none'}
 
 let adminProductChoiceCounter=0;
 function newAdminProductChoiceId(prefix){adminProductChoiceCounter+=1;return `${prefix}-${Date.now()}-${adminProductChoiceCounter}`}
@@ -1211,7 +1191,7 @@ function renderAdminKits(){
       <div class="admin-form-head"><div><h3 id="kitFormTitle">Ajouter un produit</h3><p>Créez une fiche produit complète avec galerie, contenu, formats et options payantes.</p></div><button class="btn btn-ghost btn-sm" onclick="resetKitForm()">Nouveau</button></div>
       <input type="hidden" id="editKitId">
       <section class="admin-template-panel"><div class="admin-template-copy"><strong>Modèles réutilisables</strong><span>Appliquez en un clic le contenu, les formats et les options d’un autre kit.</span></div><div class="admin-template-controls"><select id="aKitTemplateSelect">${productTemplateOptionsHTML()}</select><button type="button" class="admin-template-apply" onclick="applyProductTemplate()">Appliquer</button><button type="button" class="admin-template-delete" onclick="deleteProductTemplate()">Supprimer</button></div><div class="admin-template-save"><input type="text" id="aKitTemplateName" placeholder="Nom du nouveau modèle"><button type="button" onclick="saveProductTemplate()">Créer avec la configuration actuelle</button></div></section>
-      <section class="admin-product-section"><div class="admin-product-section-title"><span>1</span><div><h4>Informations principales</h4><p>Nom, prix et présentation du produit.</p></div></div><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix régulier ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div><div class="form-group"><label>Prix barré optionnel ($)</label><input type="number" id="aKitCompare" step="0.01" placeholder="39.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Présentez l’expérience, le résultat et ce qui rend ce kit spécial"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-row"><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div><div class="form-group"><label>Difficulté</label><select id="aKitDiff"><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option><option>Enfants</option></select></div></div></section>
+      <section class="admin-product-section"><div class="admin-product-section-title"><span>1</span><div><h4>Informations principales</h4><p>Nom, prix et présentation du produit.</p></div></div><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aKitName" placeholder="Nom du kit"></div><div class="form-group"><label>Prix régulier ($)</label><input type="number" id="aKitPrice" step="0.01" placeholder="29.99"></div><div class="form-group"><label>Prix barré optionnel ($)</label><input type="number" id="aKitCompare" step="0.01" placeholder="39.99"></div></div><div class="form-group"><label>Description complète</label><textarea id="aKitDesc" placeholder="Présentez l’expérience, le résultat et ce qui rend ce kit spécial"></textarea></div><div class="form-group"><label>Courte description</label><input type="text" id="aKitShortDesc" placeholder="Petit résumé pour les cartes produit"></div><div class="form-group"><label>Catégorie</label><select id="aKitCat">${allCategories.map(c=>`<option value="${c.id}">${safeText(c.name)}</option>`).join('')}</select></div></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>2</span><div><h4>Galerie de photos</h4><p>Téléversez directement vos images. La première devient l’image principale.</p></div></div><label class="admin-image-upload"><input type="file" id="aKitImageUpload" accept="image/jpeg,image/png,image/webp,image/avif" multiple onchange="uploadAdminProductImages(this)"><span>Téléverser des images depuis l’ordinateur</span><small>JPG, PNG, WEBP ou AVIF · maximum 10 Mo par image</small></label><div class="admin-upload-status" id="aKitUploadStatus" aria-live="polite"></div><div class="admin-repeat-list admin-image-list" id="aKitImagesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('images')">Ajouter une image par lien</button></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>3</span><div><h4>Inclus dans ce kit</h4><p>Ajoutez chaque élément que le client recevra.</p></div></div><div class="admin-repeat-list" id="aKitIncludesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('includes')">+ Ajouter un élément</button></section>
       <section class="admin-product-section"><div class="admin-product-section-title"><span>4</span><div><h4>Formats disponibles</h4><p>Le premier format sera sélectionné automatiquement. Laissez vide si le produit n’a qu’un format.</p></div></div><div class="admin-repeat-head admin-repeat-head-size"><span>Nom du format</span><span>Supplément</span><span></span></div><div class="admin-repeat-list" id="aKitSizesList"></div><button type="button" class="admin-add-row" onclick="addAdminProductRow('sizes')">+ Ajouter un format</button></section>
@@ -1224,13 +1204,13 @@ function renderAdminKits(){
 }
 async function saveKit(){
   const eid=document.getElementById('editKitId').value,details=collectAdminProductRows();
-  const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,compareAtPrice:document.getElementById('aKitCompare').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),difficulty:document.getElementById('aKitDiff').value,images:details.images,includes:details.includes,sizeOptions:details.sizeOptions,addOns:details.addOns,stockQty:document.getElementById('aKitStockQty').value,lowStockThreshold:document.getElementById('aKitLowStock').value,inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};
+  const p={name:document.getElementById('aKitName').value.trim(),price:document.getElementById('aKitPrice').value,compareAtPrice:document.getElementById('aKitCompare').value,description:document.getElementById('aKitDesc').value,shortDesc:document.getElementById('aKitShortDesc').value,categoryId:parseInt(document.getElementById('aKitCat').value),images:details.images,includes:details.includes,sizeOptions:details.sizeOptions,addOns:details.addOns,stockQty:document.getElementById('aKitStockQty').value,lowStockThreshold:document.getElementById('aKitLowStock').value,inStock:document.getElementById('aKitStock').checked,featured:document.getElementById('aKitFeatured').checked};
   if(!p.name||!p.price)return showToast('Nom et prix requis','error');
   try{const r=await fetch(eid?`/api/admin/kits/${eid}`:'/api/admin/kits',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast(eid?'Produit modifié!':'Produit ajouté!','success');await loadAdminData()}catch{showToast('Erreur','error')}
 }
 function editKit(id){
   const k=allKits.find(x=>String(x.id)===String(id));if(!k)return;
-  document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.originalPrice||k.price||'';document.getElementById('aKitCompare').value=k.compareAtPrice||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitDiff').value=k.difficulty||'Débutant';document.getElementById('aKitStockQty').value=k.stockQty??'';document.getElementById('aKitLowStock').value=k.lowStockThreshold??3;document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;
+  document.getElementById('editKitId').value=k.id;document.getElementById('aKitName').value=k.name||'';document.getElementById('aKitPrice').value=k.originalPrice||k.price||'';document.getElementById('aKitCompare').value=k.compareAtPrice||'';document.getElementById('aKitDesc').value=k.description||'';document.getElementById('aKitShortDesc').value=k.shortDesc||'';document.getElementById('aKitCat').value=k.categoryId||'';document.getElementById('aKitStockQty').value=k.stockQty??'';document.getElementById('aKitLowStock').value=k.lowStockThreshold??3;document.getElementById('aKitStock').checked=k.inStock!==false;document.getElementById('aKitFeatured').checked=!!k.featured;
   setAdminProductRows('images',productImageList(k));setAdminProductRows('includes',Array.isArray(k.includes)?k.includes:[]);setAdminProductRows('sizes',Array.isArray(k.sizeOptions)?k.sizeOptions:[]);setAdminProductRows('addons',Array.isArray(k.addOns)?k.addOns:[]);
   document.getElementById('kitFormTitle').textContent='Modifier le produit';document.getElementById('cancelKit').style.display='inline-flex';document.querySelector('#adminKitsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
