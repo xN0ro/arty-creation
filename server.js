@@ -35,6 +35,7 @@ const DEFAULT_DB = {
   sessions: [],
   discounts: [],
   refunds: [],
+  supportRequests: [],
   inventoryMovements: [],
   bundleDealRules: [],
   productTemplates: [],
@@ -125,6 +126,7 @@ function getCollectionCountsSafe() {
       sessions: db.sessions.length,
       discounts: db.discounts.length,
       refunds: db.refunds.length,
+      supportRequests: (db.supportRequests||[]).length,
       inventoryMovements: db.inventoryMovements.length,
       bundleDealRules: (db.bundleDealRules||[]).length,
       productTemplates: (db.productTemplates||[]).length
@@ -151,6 +153,7 @@ function normalizeDB(db = {}) {
     sessions: Array.isArray(db.sessions) ? db.sessions : [],
     discounts: Array.isArray(db.discounts) ? db.discounts : [],
     refunds: Array.isArray(db.refunds) ? db.refunds : [],
+    supportRequests: Array.isArray(db.supportRequests) ? db.supportRequests : [],
     inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : [],
     bundleDealRules: Array.isArray(db.bundleDealRules) ? db.bundleDealRules : [],
     productTemplates: Array.isArray(db.productTemplates) ? db.productTemplates : [],
@@ -358,6 +361,30 @@ app.get('/api/bundles', (req, res) => res.json(readDB().bundles || []));
 app.get('/api/bundles/:id', (req, res) => { const b = (readDB().bundles||[]).find(b=>b.id===parseInt(req.params.id)); b ? res.json(b) : res.status(404).json({error:'Non trouvé'}); });
 
 // ========== AUTH ==========
+function normalizeAccountAddress(raw = {}, existing = {}) {
+  const value = raw && typeof raw === 'object' ? raw : {};
+  return {
+    line1: String(value.line1 ?? existing.line1 ?? '').replace(/\s+/g, ' ').trim().slice(0, 140),
+    city: String(value.city ?? existing.city ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    province: String(value.province ?? existing.province ?? '').replace(/\s+/g, ' ').trim().slice(0, 60),
+    postal: String(value.postal ?? existing.postal ?? '').replace(/\s+/g, ' ').trim().slice(0, 20),
+    country: String(value.country ?? existing.country ?? 'Canada').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Canada'
+  };
+}
+function publicUserAccount(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    picture: user.picture || '',
+    provider: user.provider || 'local',
+    linkedProviders: Array.isArray(user.linkedProviders) ? user.linkedProviders : [user.provider || 'local'],
+    phone: String(user.phone || ''),
+    defaultAddress: normalizeAccountAddress(user.defaultAddress),
+    createdAt: user.createdAt || ''
+  };
+}
 app.post('/api/users/register', async (req, res) => {
   try {
     const db = readDB();
@@ -373,10 +400,10 @@ app.post('/api/users/register', async (req, res) => {
     if (db.users.find(u => String(u.email || '').toLowerCase() === email)) return res.status(400).json({ error: 'Courriel déjà utilisé' });
     const hashed = await bcrypt.hash(password, 10);
     const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(email);
-    const user = { id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', linkedProviders:['local'], picture: '', createdAt: new Date().toISOString() };
+    const user = { id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', linkedProviders:['local'], picture: '', phone: '', defaultAddress: normalizeAccountAddress(), createdAt: new Date().toISOString() };
     db.users.push(user); writeDB(db);
     const token = createToken(user);
-    res.json({ success: true, token, user: { id:user.id, name:user.name, email:user.email, role:user.role, picture:user.picture, provider:user.provider } });
+    res.json({ success: true, token, user: publicUserAccount(user) });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
@@ -389,7 +416,7 @@ app.post('/api/users/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Courriel ou mot de passe invalide' });
     if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: 'Courriel ou mot de passe invalide' });
     const token = createToken(user);
-    res.json({ success: true, token, user: { id:user.id, name:user.name, email:user.email, role:user.role, picture:user.picture, provider:user.provider } });
+    res.json({ success: true, token, user: publicUserAccount(user) });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
@@ -401,7 +428,7 @@ app.post('/api/users/google', async (req, res) => {
     let user = db.users.find(u => String(u.email || '').toLowerCase() === g.email);
     const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(g.email);
     if (!user) {
-      user = { id: Date.now(), name:g.name, email:g.email, password:'', role:isAdmin?'admin':'user', provider:'google', linkedProviders:['google'], picture:g.picture||'', createdAt:new Date().toISOString(), googleLinkedAt:new Date().toISOString() };
+      user = { id: Date.now(), name:g.name, email:g.email, password:'', role:isAdmin?'admin':'user', provider:'google', linkedProviders:['google'], picture:g.picture||'', phone:'', defaultAddress:normalizeAccountAddress(), createdAt:new Date().toISOString(), googleLinkedAt:new Date().toISOString() };
       db.users.push(user);
     } else {
       user.role = isAdmin ? 'admin' : (user.role || 'user');
@@ -412,7 +439,7 @@ app.post('/api/users/google', async (req, res) => {
     }
     writeDB(db);
     const token = createToken(user);
-    res.json({ success: true, token, user: { id:user.id, name:user.name, email:user.email, role:user.role, picture:user.picture, provider:user.provider } });
+    res.json({ success: true, token, user: publicUserAccount(user) });
   } catch (err) { res.status(401).json({ error: 'Échec Google: ' + err.message }); }
 });
 
@@ -426,18 +453,23 @@ app.post('/api/users/logout', (req, res) => {
   }
   res.json({success:true});
 });
-app.get('/api/users/me', auth, (req, res) => { const u = readDB().users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:'Non trouvé'}); res.json({id:u.id,name:u.name,email:u.email,role:u.role,picture:u.picture,provider:u.provider,createdAt:u.createdAt}); });
+app.get('/api/users/me', auth, (req, res) => { const u = readDB().users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:'Non trouvé'}); res.json(publicUserAccount(u)); });
 app.put('/api/users/me', auth, async (req, res) => {
   const db = readDB(); const idx = db.users.findIndex(u=>u.id===req.session.userId); if(idx===-1) return res.status(404).json({error:'Non trouvé'});
-  const {name,currentPassword,newPassword} = req.body;
-  if(name) db.users[idx].name = name;
+  const {name,currentPassword,newPassword,phone,defaultAddress} = req.body;
+  const cleanName = String(name || '').replace(/\s+/g, ' ').trim();
+  if(cleanName.length < 2 || cleanName.length > 80) return res.status(400).json({error:'Entrez un nom valide'});
+  db.users[idx].name = cleanName;
+  db.users[idx].phone = String(phone || '').replace(/\s+/g, ' ').trim().slice(0, 30);
+  db.users[idx].defaultAddress = normalizeAccountAddress(defaultAddress, db.users[idx].defaultAddress);
   if(newPassword && db.users[idx].provider==='local') {
     if(!currentPassword) return res.status(400).json({error:'Mot de passe actuel requis'});
     if(!(await bcrypt.compare(currentPassword,db.users[idx].password))) return res.status(400).json({error:'Mot de passe actuel incorrect'});
+    if(String(newPassword).length < 6) return res.status(400).json({error:'Le nouveau mot de passe doit contenir au moins 6 caractères'});
     db.users[idx].password = await bcrypt.hash(newPassword,10);
   }
   writeDB(db); const u=db.users[idx];
-  res.json({success:true,user:{id:u.id,name:u.name,email:u.email,role:u.role,picture:u.picture,provider:u.provider}});
+  res.json({success:true,user:publicUserAccount(u)});
 });
 
 
@@ -493,6 +525,7 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
   const inventoryResult = reserveInventoryForItems(db, pricing.items, orderId);
   if (inventoryResult.error) return res.status(400).json({ error: inventoryResult.error });
 
+  const createdAt = new Date().toISOString();
   const order = {
     id: orderId,
     userId: user?.id || null,
@@ -513,6 +546,8 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     discountsApplied: pricing.discountsApplied,
     total: pricing.total,
     status: 'en attente de paiement',
+    statusHistory: [{ from: '', to: 'en attente de paiement', at: createdAt, by: 'client' }],
+    tracking: { carrier: '', number: '', url: '', estimatedDelivery: '', updatedAt: '' },
     paymentStatus: 'pending',
     paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
     paymentReference: '',
@@ -520,8 +555,8 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     inventoryRestocked: false,
     refundStatus: 'none',
     refundedTotal: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    createdAt,
+    updatedAt: createdAt
   };
 
   const stripeEnabled = isStripeEnabled();
@@ -566,7 +601,70 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
 
   res.json({ success: true, order, payment });
 });
-app.get('/api/orders/mine', auth, (req, res) => { const db=readDB(); res.json((db.orders||[]).filter(o=>o.userId===req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))); });
+function customerOrderView(order) {
+  const { paymentReference, stripe, inventoryReserved, inventoryRestocked, userId, ...safeOrder } = order;
+  return {
+    ...safeOrder,
+    statusHistory: (order.statusHistory || []).map(entry => ({ from: entry.from || '', to: entry.to || '', at: entry.at || '' }))
+  };
+}
+app.get('/api/orders/mine', auth, (req, res) => {
+  const db=readDB();
+  res.json((db.orders||[]).filter(o=>o.userId===req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(customerOrderView));
+});
+
+const SUPPORT_TOPICS = ['commande', 'livraison', 'produit', 'paiement', 'événement', 'autre'];
+const SUPPORT_STATUSES = ['nouvelle', 'en cours', 'répondue', 'fermée'];
+function customerSupportView(request) {
+  return {
+    id: request.id,
+    orderId: request.orderId || '',
+    topic: request.topic,
+    subject: request.subject,
+    message: request.message,
+    status: request.status,
+    adminReply: request.adminReply || '',
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt || request.createdAt,
+    repliedAt: request.repliedAt || ''
+  };
+}
+app.get('/api/support-requests/mine', auth, (req, res) => {
+  const db = readDB();
+  res.json((db.supportRequests || []).filter(request => request.userId === req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(customerSupportView));
+});
+app.post('/api/support-requests', auth, (req, res) => {
+  const db = readDB();
+  const user = (db.users || []).find(item => item.id === req.session.userId);
+  if (!user) return res.status(404).json({ error: 'Compte non trouvé' });
+  const topic = String(req.body.topic || 'autre').trim().toLowerCase();
+  const subject = String(req.body.subject || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  const message = String(req.body.message || '').trim().slice(0, 2400);
+  const orderId = String(req.body.orderId || '').trim().slice(0, 80);
+  if (!SUPPORT_TOPICS.includes(topic)) return res.status(400).json({ error: 'Sujet de demande invalide' });
+  if (subject.length < 4) return res.status(400).json({ error: 'Ajoutez un objet clair à votre demande' });
+  if (message.length < 10) return res.status(400).json({ error: 'Ajoutez quelques détails à votre message' });
+  if (orderId && !(db.orders || []).some(order => String(order.id) === orderId && order.userId === user.id)) return res.status(400).json({ error: 'Commande invalide' });
+  const now = new Date().toISOString();
+  const request = {
+    id: `SUP-${Date.now().toString(36).toUpperCase()}`,
+    userId: user.id,
+    customer: { name: user.name, email: user.email },
+    orderId,
+    topic,
+    subject,
+    message,
+    status: 'nouvelle',
+    adminReply: '',
+    createdAt: now,
+    updatedAt: now,
+    repliedAt: ''
+  };
+  db.supportRequests = db.supportRequests || [];
+  db.supportRequests.push(request);
+  writeDB(db);
+  res.json({ success: true, request: customerSupportView(request) });
+});
 
 app.post('/api/stripe/confirm-order', optionalAuth, async (req, res) => {
   try {
@@ -698,18 +796,48 @@ app.get('/api/admin/orders', adminOnly, (req, res) => {
   const db = readDB();
   res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
+app.get('/api/admin/support-requests', adminOnly, (req, res) => {
+  const db = readDB();
+  res.json((db.supportRequests || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+});
+app.patch('/api/admin/support-requests/:id', adminOnly, (req, res) => {
+  const db = readDB();
+  const request = (db.supportRequests || []).find(item => String(item.id) === String(req.params.id));
+  if (!request) return res.status(404).json({ error: 'Demande non trouvée' });
+  const previousReply = String(request.adminReply || '');
+  const status = String(req.body.status || request.status || 'nouvelle').trim().toLowerCase();
+  const adminReply = String(req.body.adminReply ?? request.adminReply ?? '').trim().slice(0, 2400);
+  if (!SUPPORT_STATUSES.includes(status)) return res.status(400).json({ error: 'Statut invalide' });
+  request.status = status;
+  request.adminReply = adminReply;
+  request.updatedAt = new Date().toISOString();
+  if (adminReply && adminReply !== previousReply) request.repliedAt = request.updatedAt;
+  writeDB(db);
+  res.json({ success: true, request });
+});
 app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
   const db = readDB();
   const id = String(req.params.id || '');
   const i = (db.orders || []).findIndex(o => String(o.id) === id);
   if (i === -1) return res.status(404).json({ error: 'Commande non trouvée' });
-  const allowed = ['en attente de paiement', 'payée', 'préparation', 'expédiée', 'annulée', 'remboursée'];
+  const allowed = ['en attente de paiement', 'payée', 'préparation', 'expédiée', 'livrée', 'annulée', 'remboursée'];
   const status = String(req.body.status || '').trim();
   if (!allowed.includes(status)) return res.status(400).json({ error: 'Statut invalide' });
 
   const order = db.orders[i];
   const oldStatus = order.status;
   order.status = status;
+  const trackingInput = req.body.tracking && typeof req.body.tracking === 'object' ? req.body.tracking : {};
+  const currentTracking = order.tracking && typeof order.tracking === 'object' ? order.tracking : {};
+  const trackingUrl = String(trackingInput.url ?? currentTracking.url ?? '').trim().slice(0, 500);
+  if (trackingUrl && !/^https?:\/\//i.test(trackingUrl)) return res.status(400).json({ error: 'Le lien de suivi doit commencer par http:// ou https://' });
+  order.tracking = {
+    carrier: String(trackingInput.carrier ?? currentTracking.carrier ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
+    number: String(trackingInput.number ?? currentTracking.number ?? '').replace(/\s+/g, ' ').trim().slice(0, 100),
+    url: trackingUrl,
+    estimatedDelivery: String(trackingInput.estimatedDelivery ?? currentTracking.estimatedDelivery ?? '').trim().slice(0, 20),
+    updatedAt: new Date().toISOString()
+  };
   if (status === 'payée') order.paymentStatus = 'paid';
   if (status === 'annulée') {
     order.paymentStatus = order.paymentStatus === 'paid' ? 'refund_needed' : 'cancelled';
@@ -720,7 +848,9 @@ app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
   }
   if (status === 'remboursée') order.refundStatus = 'refunded';
   order.statusHistory = order.statusHistory || [];
-  order.statusHistory.push({ from: oldStatus || '', to: status, at: new Date().toISOString(), by: req.session.email || 'admin' });
+  if (oldStatus !== status) order.statusHistory.push({ from: oldStatus || '', to: status, at: new Date().toISOString(), by: req.session.email || 'admin' });
+  if (status === 'expédiée' && !order.shippedAt) order.shippedAt = new Date().toISOString();
+  if (status === 'livrée' && !order.deliveredAt) order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();
   writeDB(db);
   res.json({ success: true, order });
