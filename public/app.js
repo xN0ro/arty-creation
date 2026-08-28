@@ -3,7 +3,7 @@ let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],tea
 let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventType:'wedding',guests:20,date:'',location:'',customText:'',selected:{},hostName:'',notes:''};
 let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
-let siteAnnouncement={enabled:false,message:''};
+let siteAnnouncement={enabled:false,message:''},ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
 
 document.addEventListener('DOMContentLoaded',async()=>{
   document.addEventListener('mousedown',e=>{
@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
+  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;ticketEmailConfigured=!!cfg.ticketEmailConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
   await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles(),loadBundleDealRules()]);
   initNavbar();updateAuthUI();updateCartUI();renderSiteAnnouncement();initGoogleSignIn();initAuthValidation();
@@ -41,6 +41,7 @@ function handleRoute(){
 
   if(h.startsWith('#/product/')){show('page-product');renderProductPage(parseInt(h.split('/')[2]));window.scrollTo(0,0)}
   else if(h.startsWith('#/event/')){show('page-event');renderEventPage(parseInt(h.split('/')[2]));window.scrollTo(0,0)}
+  else if(h.startsWith('#/ticket/')){show('page-ticket');renderPublicTicket(decodeURIComponent(h.split('/').slice(2).join('/')));window.scrollTo(0,0)}
   else if(h==='#/profile'){if(!currentUser){navigate('#/');openModal('auth');return}show('page-profile');renderProfilePage();window.scrollTo(0,0)}
   else if(h==='#/admin'){if(!currentUser||currentUser.role!=='admin'){navigate('#/');showToast('Accès admin requis','error');return}show('page-admin');document.getElementById('mainFooter').style.display='none';loadAdminData();window.scrollTo(0,0)}
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
@@ -377,7 +378,7 @@ function renderEventPage(id){
         </div>
         ${ev.hostNote?`<p class="event-host-note">${safeText(ev.hostNote)}</p>`:''}
         <div class="event-detail-actions">
-          <button class="btn btn-orange" onclick="openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>${left<=0?'Complet':'Réserver ma place →'}</button>
+          <button class="btn btn-orange" onclick="openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>${left<=0?'Complet':'Réserver mes billets →'}</button>
           <button class="btn btn-ghost" onclick="navigate('#/party');setTimeout(scrollToEventRequest,250)">Demander un événement privé</button>
         </div>
       </div>
@@ -413,7 +414,7 @@ function renderPartyEvents(){
           <span class="event-card-price">$${toMoney(ev.price)}</span>
           <span class="event-card-spots ${left<=0?'is-full':''}">${left<=0?'Complet':left+' place'+(left>1?'s':'')}</span>
         </div>
-        <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver</button>
+        <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver des billets</button>
       </div>
     </article>`;
   }).join('');
@@ -786,8 +787,11 @@ function openBooking(eventId){
   if(summary)summary.textContent=`${formatEventDate(ev,true)} à ${ev.time||'18:00'} · ${left} place${left>1?'s':''} disponible${left>1?'s':''}`;
   document.getElementById('bookingModal').classList.add('active');
   document.getElementById('bookingModal').dataset.eid=eventId;
+  updateBookingTotal();
   document.body.style.overflow='hidden';
 }
+function updateBookingTotal(){const modal=document.getElementById('bookingModal'),eventId=parseInt(modal?.dataset.eid),event=allEvents.find(item=>item.id===eventId),guests=Math.max(1,parseInt(document.getElementById('bookingGuests')?.value)||1),total=document.getElementById('bookingTotal');if(total)total.textContent=toMoney((Number(event?.price)||0)*guests);renderBookingGuestNames(guests)}
+function renderBookingGuestNames(guests){const wrap=document.getElementById('bookingGuestNames');if(!wrap)return;const previous=Array.from(wrap.querySelectorAll('input')).map(input=>input.value);wrap.innerHTML=guests>1?`<div class="booking-guest-heading"><strong>Noms des autres participants</strong><span>Optionnel</span></div>${Array.from({length:guests-1},(_,index)=>`<div class="form-group"><label>Participant ${index+2}</label><input class="booking-guest-name" maxlength="120" value="${safeAttr(previous[index]||'')}" placeholder="Nom à afficher sur le billet"></div>`).join('')}`:''}
 async function confirmBooking(){
   const modal=document.getElementById('bookingModal');
   const eid=modal.dataset.eid;
@@ -796,16 +800,21 @@ async function confirmBooking(){
   const p=document.getElementById('bookingPhone')?.value.trim()||'';
   const g=document.getElementById('bookingGuests').value;
   const notes=document.getElementById('bookingNotes')?.value.trim()||'';
+  const guestNames=[n,...Array.from(document.querySelectorAll('.booking-guest-name')).map(input=>input.value.trim())];
+  const button=document.getElementById('bookingSubmitButton');
   if(!n||!e)return showToast('Remplissez nom et courriel','error');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))return showToast('Entrez un courriel valide','error');
+  if(button){button.disabled=true;button.textContent='Création des billets...'}
   try{
-    const r=await fetch('/api/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:currentUser?.id,eventId:eid,name:n,email:e,phone:p,guests:g,notes})});
+    const r=await fetch('/api/bookings',{method:'POST',headers:authH(),body:JSON.stringify({eventId:eid,name:n,email:e,phone:p,guests:g,guestNames,notes})});
     const d=await r.json();
     if(!r.ok)return showToast(d.error,'error');
     closeModal('booking');
-    showToast('Réservation confirmée! 🎉','success');
+    lastTicketEmailStatus=d.emailStatus||'';
     await loadEvents();
-    handleRoute();
-  }catch{showToast('Erreur de connexion','error')}
+    const firstTicket=d.booking?.tickets?.[0];
+    if(firstTicket)navigate(`#/ticket/${encodeURIComponent(firstTicket.code)}`);else showToast('Réservation confirmée','success');
+  }catch{showToast('Erreur de connexion','error')}finally{if(button){button.disabled=false;button.textContent='Confirmer et recevoir mes billets'}}
 }
 async function submitPrivateEventRequest(){
   const payload={
@@ -2179,3 +2188,107 @@ async function saveAdminOrderDetail(id,domId){const button=document.getElementBy
 async function updateOrderStatus(id,status){try{const r=await fetch(`/api/admin/orders/${encodeURIComponent(id)}/status`,{method:'PUT',headers:authH(),body:JSON.stringify({status})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Statut mis à jour','success');await loadAdminOrders();renderAdminOrders()}catch{showToast('Erreur','error')}}
 async function saveOrderTracking(id,domId){const order=adminOrders.find(item=>String(item.id)===String(id));if(!order)return;const tracking={carrier:document.getElementById(`trackCarrier-${domId}`)?.value.trim()||'',number:document.getElementById(`trackNumber-${domId}`)?.value.trim()||'',estimatedDelivery:document.getElementById(`trackDate-${domId}`)?.value||'',url:document.getElementById(`trackUrl-${domId}`)?.value.trim()||''};try{const r=await fetch(`/api/admin/orders/${encodeURIComponent(id)}/status`,{method:'PUT',headers:authH(),body:JSON.stringify({status:order.status,tracking})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Erreur','error');showToast('Suivi enregistré','success');await loadAdminOrders();renderAdminOrders()}catch{showToast('Erreur','error')}}
 document.addEventListener('keydown',event=>{const modal=document.getElementById('adminOrderDetailModal');if(event.key==='Escape'&&modal&&!modal.hidden)closeAdminOrderDetail()});
+
+/* =========================================================
+   EVENT TICKETS — customer tickets, guest list and check-in
+   ========================================================= */
+function ticketStatusMeta(status){
+  return String(status||'valid')==='checked_in'
+    ? {label:'Entrée confirmée',className:'checked'}
+    : {label:'Billet valide',className:'valid'};
+}
+
+async function renderPublicTicket(code){
+  const container=document.getElementById('ticketPageContent');if(!container)return;
+  container.innerHTML='<div class="ticket-loading"><span></span><p>Chargement du billet...</p></div>';
+  try{
+    const response=await fetch(`/api/tickets/${encodeURIComponent(code)}`),data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||'Billet non trouvé');
+    const ticket=data.ticket||{},event=data.event||{},booking=data.booking||{},eventCancelled=event.status==='cancelled',meta=eventCancelled?{label:'Événement annulé',className:'cancelled'}:ticketStatusMeta(ticket.status);
+    const eventDate=event.date?new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Date à confirmer';
+    const emailNotice=lastTicketEmailStatus==='sent'
+      ? '<div class="ticket-delivery-note success"><strong>Billets envoyés par courriel</strong><span>Une copie a été envoyée à l’adresse utilisée pour la réservation.</span></div>'
+      : lastTicketEmailStatus
+        ? '<div class="ticket-delivery-note warning"><strong>Votre billet est prêt</strong><span>Gardez cette page accessible. L’envoi par courriel n’a pas pu être complété.</span></div>'
+        : '';
+    container.innerHTML=`<button type="button" class="product-back ticket-back" onclick="navigate('#/party')">← Retour aux événements</button>
+      ${eventCancelled?'<div class="ticket-delivery-note cancelled"><strong>Événement annulé</strong><span>Communiquez avec l’équipe ARTY pour les prochaines étapes.</span></div>':emailNotice}
+      <div class="public-ticket-layout">
+        <section class="public-ticket-card ${meta.className}">
+          <header class="public-ticket-brand"><div><span>ARTY</span><small>Billet d’entrée</small></div><b class="ticket-status ${meta.className}">${safeText(meta.label)}</b></header>
+          <div class="public-ticket-event"><span>${safeText(eventDate)} · ${safeText(event.time||'Heure à confirmer')}</span><h1>${safeText(event.title||'Événement ARTY')}</h1><p>${safeText(event.location||'Lieu à confirmer')}</p></div>
+          <div class="public-ticket-holder"><span>Participant</span><strong>${safeText(ticket.holderName||booking.name||'Invité ARTY')}</strong><small>Billet ${Number(ticket.guestNumber)||1} sur ${Number(booking.guests)||1}</small></div>
+          <div class="public-ticket-tear" aria-hidden="true"><span></span></div>
+          <div class="public-ticket-code"><img src="/api/tickets/${encodeURIComponent(ticket.code)}/barcode.svg" alt="Code-barres du billet"><strong>${safeText(ticket.code)}</strong><span>Présentez ce code à l’entrée. Chaque billet ne peut être validé qu’une fois.</span></div>
+          ${ticket.checkedInAt?`<footer class="public-ticket-checkin">Entrée confirmée le ${profileDate(ticket.checkedInAt,true)}</footer>`:''}
+        </section>
+        <aside class="public-ticket-info"><span>Votre arrivée</span><h2>Tout est prêt pour l’événement</h2><div><strong>Date et heure</strong><p>${safeText(eventDate)}<br>${safeText(event.time||'Heure à confirmer')}</p></div><div><strong>Lieu</strong><p>${safeText(event.location||'Lieu à confirmer')}</p></div>${event.hostNote?`<div><strong>Information importante</strong><p>${safeText(event.hostNote)}</p></div>`:''}<p class="public-ticket-help">Vous pouvez aussi retrouver tous vos billets dans votre profil si vous avez réservé en étant connecté.</p><button class="btn btn-ghost" type="button" onclick="window.print()">Imprimer le billet</button></aside>
+      </div>`;
+    lastTicketEmailStatus='';
+  }catch(error){
+    container.innerHTML=`<div class="ticket-not-found"><span>Billet</span><h1>Ce billet est introuvable</h1><p>${safeText(error.message||'Vérifiez le lien reçu par courriel.')}</p><button class="btn btn-orange" onclick="navigate('#/party')">Voir les événements</button></div>`;
+  }
+}
+
+function renderProfileBookings(){
+  const wrap=document.getElementById('bookingsWrap');if(!wrap)return;
+  if(!profileBookings.length){wrap.innerHTML=`<div class="account-empty">${profileIcon('calendar')}<h3>Aucune réservation</h3><p>Réservez une activité ARTY et retrouvez vos billets ici.</p><button class="btn btn-orange" onclick="navigate('#/party')">Voir les événements</button></div>`;return}
+  wrap.innerHTML=profileBookings.map(booking=>{
+    const event=booking.event||{},tickets=Array.isArray(booking.tickets)?booking.tickets:[],checked=tickets.filter(ticket=>ticket.status==='checked_in').length,emailSent=booking.emailDelivery?.status==='sent';
+    const day=event.date?new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{day:'2-digit'}):'—',month=event.date?new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{month:'short'}):'';
+    return `<article class="account-booking-card account-ticket-booking"><div class="account-booking-date"><strong>${safeText(day)}</strong><span>${safeText(month)}</span></div><div class="account-booking-copy"><span class="account-booking-label">${tickets.length} billet${tickets.length>1?'s':''} · ${emailSent?'Courriel envoyé':'Disponible dans votre compte'}</span><h3>${safeText(event.title||'Événement ARTY')}</h3><p>${safeText(event.time||'Heure à confirmer')} · ${safeText(event.location||'Lieu à confirmer')}</p><div class="account-ticket-progress"><span style="width:${tickets.length?Math.round((checked/tickets.length)*100):0}%"></span></div><small>${checked?`${checked} entrée${checked>1?'s':''} confirmée${checked>1?'s':''}`:'Billets prêts à être présentés'}</small></div><button type="button" onclick="openProfileTickets('${safeAttr(booking.id)}')">Voir les billets</button></article>`;
+  }).join('');
+}
+
+function openProfileTickets(bookingId){
+  const booking=profileBookings.find(item=>String(item.id)===String(bookingId));if(!booking)return;
+  closeProfileTickets();
+  const event=booking.event||{},modal=document.createElement('div');modal.id='profileTicketModal';modal.className='profile-ticket-modal';
+  const tickets=(booking.tickets||[]).map((ticket,index)=>{const meta=ticketStatusMeta(ticket.status);return `<article class="profile-ticket-mini"><div><span>Billet ${index+1} sur ${booking.tickets.length}</span><b class="ticket-status ${meta.className}">${safeText(meta.label)}</b></div><h3>${safeText(ticket.holderName)}</h3><img src="/api/tickets/${encodeURIComponent(ticket.code)}/barcode.svg" alt="Code-barres du billet"><code>${safeText(ticket.code)}</code><button type="button" onclick="closeProfileTickets();navigate('#/ticket/${encodeURIComponent(ticket.code)}')">Ouvrir ce billet</button></article>`}).join('');
+  modal.innerHTML=`<button class="account-modal-backdrop" type="button" onclick="closeProfileTickets()" aria-label="Fermer"></button><section class="profile-ticket-sheet" role="dialog" aria-modal="true" aria-labelledby="profileTicketTitle"><button class="account-sheet-close" type="button" onclick="closeProfileTickets()" aria-label="Fermer">×</button><header><span>Réservation ${safeText(booking.id)}</span><h2 id="profileTicketTitle">${safeText(event.title||'Vos billets ARTY')}</h2><p>${event.date?safeText(formatEventDate(event,true)):'Date à confirmer'} · ${safeText(event.time||'Heure à confirmer')} · ${safeText(event.location||'Lieu à confirmer')}</p></header><div class="profile-ticket-grid">${tickets}</div></section>`;
+  document.body.appendChild(modal);document.body.style.overflow='hidden';setTimeout(()=>modal.classList.add('active'),20);
+}
+function closeProfileTickets(){const modal=document.getElementById('profileTicketModal');if(!modal)return;modal.remove();document.body.style.overflow=''}
+
+function adminEventBookings(eventId){return (adminBookings||[]).filter(booking=>String(booking.eventId)===String(eventId))}
+function adminEventTicketCounts(eventId){const tickets=adminEventBookings(eventId).flatMap(booking=>booking.tickets||[]);return{total:tickets.length,checked:tickets.filter(ticket=>ticket.status==='checked_in').length}}
+function openAdminEventEditor(id){const editor=document.getElementById('adminEventEditor');if(editor)editor.open=true;setTimeout(()=>editEv(id),20)}
+function selectAdminGuestEvent(id){adminGuestEventId=String(id||'');renderAdminEvents();setTimeout(()=>document.getElementById('adminGuestManager')?.scrollIntoView({behavior:'smooth',block:'start'}),30)}
+function filterAdminGuestList(value){const needle=String(value||'').trim().toLowerCase();document.querySelectorAll('[data-guest-search]').forEach(row=>{row.hidden=needle&&!row.dataset.guestSearch.includes(needle)})}
+
+async function checkInAdminTicket(ticketId,checkedIn){
+  try{const response=await fetch(`/api/admin/tickets/${encodeURIComponent(ticketId)}`,{method:'PATCH',headers:authH(),body:JSON.stringify({checkedIn})}),data=await response.json().catch(()=>({}));if(!response.ok)return showToast(data.error||'Validation impossible','error');await loadAdminBookings();renderAdminEvents();showToast(checkedIn?'Entrée confirmée':'Validation annulée','success')}catch{showToast('Erreur de connexion','error')}
+}
+async function submitTicketScan(event){
+  event?.preventDefault();const input=document.getElementById('adminTicketScan'),code=input?.value.trim();if(!code)return showToast('Scannez ou entrez un code de billet','error');
+  try{const response=await fetch('/api/admin/tickets/check-in',{method:'POST',headers:authH(),body:JSON.stringify({code})}),data=await response.json().catch(()=>({}));if(!response.ok)return showToast(data.error||'Billet invalide','error');adminGuestEventId=String(data.record?.event?.id||adminGuestEventId);await loadAdminBookings();renderAdminEvents();showToast(`${data.record?.ticket?.holderName||'Billet'} : entrée confirmée`,'success');setTimeout(()=>document.getElementById('adminTicketScan')?.focus(),30)}catch{showToast('Erreur de connexion','error')}
+}
+async function resendAdminTickets(bookingId){
+  const button=Array.from(document.querySelectorAll('[data-resend-booking]')).find(element=>element.dataset.resendBooking===String(bookingId));if(button){button.disabled=true;button.textContent='Envoi...'}
+  try{const response=await fetch(`/api/admin/bookings/${encodeURIComponent(bookingId)}/resend-ticket`,{method:'POST',headers:authH()}),data=await response.json().catch(()=>({}));if(!response.ok)return showToast(data.error||'Courriel non envoyé','error');await loadAdminBookings();renderAdminEvents();showToast('Billets renvoyés par courriel','success')}catch{showToast('Erreur de connexion','error')}finally{if(button){button.disabled=false;button.textContent='Renvoyer le courriel'}}
+}
+
+function renderAdminEvents(){
+  const panel=document.getElementById('adminEventsPanel');if(!panel)return;
+  if(!adminGuestEventId||!adminEvents.some(event=>String(event.id)===String(adminGuestEventId)))adminGuestEventId=adminEvents.length?String(adminEvents[0].id):'';
+  const selectedEvent=adminEvents.find(event=>String(event.id)===String(adminGuestEventId)),selectedBookings=selectedEvent?adminEventBookings(selectedEvent.id):[];
+  const totalTickets=(adminBookings||[]).flatMap(booking=>booking.tickets||[]),checkedTickets=totalTickets.filter(ticket=>ticket.status==='checked_in');
+  const eventCards=(adminEvents||[]).map(event=>{const counts=adminEventTicketCounts(event.id),capacity=Number(event.maxSpots)||0,pct=capacity?Math.min(100,Math.round((counts.total/capacity)*100)):0;return `<article class="admin-managed-event ${String(event.id)===String(adminGuestEventId)?'selected':''}"><img src="${safeAttr(event.image||'photoacceuil.jpg')}" alt=""><div><span>${safeText(event.date?formatEventDate(event,true):'Date à confirmer')} · ${safeText(event.time||'')}</span><h4>${safeText(event.title)}</h4><p>${safeText(event.location||'Lieu à confirmer')}</p><div class="admin-event-capacity"><span style="width:${pct}%"></span></div><small>${counts.total} billet${counts.total>1?'s':''} · ${counts.checked} présence${counts.checked>1?'s':''} · ${safeText(event.status||'published')}</small></div><div class="admin-managed-actions"><button type="button" onclick="selectAdminGuestEvent('${safeAttr(event.id)}')">Liste d’invités</button><button type="button" onclick="openAdminEventEditor(${Number(event.id)})">Modifier</button><button type="button" class="danger" onclick="deleteEv(${Number(event.id)})">Supprimer</button></div></article>`}).join('');
+  const guestRows=selectedBookings.flatMap(booking=>(booking.tickets||[]).map(ticket=>{const checked=ticket.status==='checked_in',search=[ticket.holderName,booking.name,booking.email,booking.phone,ticket.code].join(' ').toLowerCase();return `<tr data-guest-search="${safeAttr(search)}"><td><strong>${safeText(ticket.holderName)}</strong><span>${safeText(ticket.code)}</span></td><td><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span></td><td><span class="admin-ticket-state ${checked?'checked':'valid'}">${checked?'Présent':'À venir'}</span>${checked&&ticket.checkedInAt?`<small>${profileDate(ticket.checkedInAt,true)}</small>`:''}</td><td><button class="admin-checkin-button ${checked?'undo':''}" type="button" onclick="checkInAdminTicket('${safeAttr(ticket.id)}',${checked?'false':'true'})">${checked?'Annuler':'Confirmer l’entrée'}</button></td></tr>`})).join('');
+  const selectedCounts=selectedEvent?adminEventTicketCounts(selectedEvent.id):{total:0,checked:0};
+  const bookingContacts=selectedBookings.map(booking=>`<article class="admin-booking-contact"><div><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span><small>${booking.guests} billet${booking.guests>1?'s':''} · Total $${toMoney(booking.total)}</small></div><div><span class="admin-email-state ${booking.emailDelivery?.status==='sent'?'sent':'attention'}">${booking.emailDelivery?.status==='sent'?'Courriel envoyé':'Courriel à vérifier'}</span><button type="button" data-resend-booking="${safeAttr(booking.id)}" onclick="resendAdminTickets('${safeAttr(booking.id)}')">Renvoyer le courriel</button></div></article>`).join('');
+  const requestRows=(eventRequests||[]).map(request=>`<tr><td><strong>${safeText(request.name)}</strong><br><small>${safeText(request.email)}${request.phone?` · ${safeText(request.phone)}`:''}</small></td><td>${safeText(request.eventType)}<br><small>${request.preferredDate?safeText(request.preferredDate):'Date flexible'} · ${Number(request.guests)||'?'} pers.</small></td><td>${safeText(request.location||'À confirmer')}</td><td><span class="admin-status-badge">${safeText(request.status||'nouvelle')}</span></td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="updateEventRequestStatus(${Number(request.id)},'contactée')">Contactée</button><button class="admin-btn admin-btn-delete" onclick="deleteEventRequest(${Number(request.id)})">Supprimer</button></div></td></tr>`).join('');
+  panel.innerHTML=`<div class="admin-events-heading"><div><span>Billetterie et événements</span><h3>Gestion des invités</h3><p>Gérez les événements, retrouvez chaque participant et confirmez les entrées à partir de la même section.</p></div><button class="btn btn-orange" type="button" onclick="document.getElementById('adminEventEditor').open=true;document.getElementById('adminEventEditor').scrollIntoView({behavior:'smooth'})">Créer un événement</button></div>
+    ${!ticketEmailConfigured?'<div class="admin-ticket-config"><strong>Envoi automatique des billets à configurer</strong><p>Ajoutez RESEND_API_KEY, TICKET_EMAIL_FROM et ARTY_PUBLIC_URL dans Render pour activer les courriels.</p></div>':''}
+    <div class="admin-event-dashboard admin-ticket-dashboard"><div class="admin-event-card"><span>${adminEvents.filter(event=>(event.status||'published')==='published').length}</span><p>Événements publiés</p></div><div class="admin-event-card"><span>${totalTickets.length}</span><p>Billets émis</p></div><div class="admin-event-card"><span>${checkedTickets.length}</span><p>Entrées confirmées</p></div><div class="admin-event-card"><span>${eventRequests.filter(request=>(request.status||'nouvelle')==='nouvelle').length}</span><p>Demandes privées</p></div></div>
+    <section class="admin-event-list"><div class="admin-section-title"><h3>Événements</h3><p>Sélectionnez un événement pour ouvrir sa liste d’invités.</p></div><div class="admin-managed-events">${eventCards||'<div class="admin-empty-panel">Aucun événement créé.</div>'}</div></section>
+    <section class="admin-guest-manager" id="adminGuestManager"><div class="admin-guest-head"><div><span>Contrôle des entrées</span><h3>${safeText(selectedEvent?.title||'Liste d’invités')}</h3><p>${selectedEvent?`${safeText(formatEventDate(selectedEvent,true))} · ${safeText(selectedEvent.time||'')} · ${safeText(selectedEvent.location||'Lieu à confirmer')}`:'Créez un événement pour commencer.'}</p></div><div class="admin-guest-totals"><strong>${selectedCounts.checked}<small>/ ${selectedCounts.total}</small></strong><span>présences</span></div></div>
+      <div class="admin-guest-tools"><select aria-label="Événement" onchange="selectAdminGuestEvent(this.value)">${adminEvents.map(event=>`<option value="${safeAttr(event.id)}" ${String(event.id)===String(adminGuestEventId)?'selected':''}>${safeText(event.title)} · ${safeText(event.date||'')}</option>`).join('')}</select><input type="search" placeholder="Rechercher un nom, courriel ou billet" oninput="filterAdminGuestList(this.value)"><form onsubmit="submitTicketScan(event)"><input id="adminTicketScan" autocomplete="off" placeholder="Scanner ou entrer le code"><button type="submit">Valider</button></form></div>
+      <div class="admin-table-wrap admin-guest-table"><table class="admin-table"><thead><tr><th>Participant et billet</th><th>Acheteur</th><th>Présence</th><th>Action</th></tr></thead><tbody>${guestRows||'<tr><td colspan="4" class="admin-muted">Aucun billet pour cet événement.</td></tr>'}</tbody></table></div>
+      ${selectedBookings.length?`<details class="admin-booking-contacts"><summary>Coordonnées et envoi des billets (${selectedBookings.length})</summary><div>${bookingContacts}</div></details>`:''}
+    </section>
+    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option>Atelier public</option><option>Famille</option><option>Couple</option><option>Enfants</option><option>Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
+    <div class="admin-section-title"><h3>Demandes d’événements privés</h3><p>Demandes sur mesure à traiter par votre équipe.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Client</th><th>Projet</th><th>Lieu</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${requestRows||'<tr><td colspan="5" class="admin-muted">Aucune demande privée.</td></tr>'}</tbody></table></div>`;
+}
+
+document.addEventListener('keydown',event=>{if(event.key==='Escape')closeProfileTickets()});

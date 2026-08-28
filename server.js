@@ -340,6 +340,7 @@ app.get('/api/config', (req, res) => {
     stripeMode: process.env.STRIPE_MODE || (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') ? 'live' : 'test'),
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
     stripeConfigured: Boolean(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY),
+    ticketEmailConfigured: ticketEmailIsConfigured(),
     announcement: db.announcement || DEFAULT_DB.announcement
   });
 });
@@ -687,11 +688,142 @@ app.post('/api/stripe/confirm-order', optionalAuth, async (req, res) => {
     res.status(500).json({ error: 'Impossible de confirmer le paiement: ' + err.message });
   }
 });
-app.post('/api/bookings', (req, res) => {
+
+// ========== EVENT TICKETS & EMAIL DELIVERY ==========
+const CODE39_PATTERNS = {
+  '0':'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw','5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
+  'A':'wnnnnwnnw','B':'nnwnnwnnw','C':'wnwnnwnnn','D':'nnnnwwnnw','E':'wnnnwwnnn','F':'nnwnwwnnn','G':'nnnnnwwnw','H':'wnnnnwwnn','I':'nnwnnwwnn','J':'nnnnwwwnn',
+  'K':'wnnnnnnww','L':'nnwnnnnww','M':'wnwnnnnwn','N':'nnnnwnnww','O':'wnnnwnnwn','P':'nnwnwnnwn','Q':'nnnnnnwww','R':'wnnnnnwwn','S':'nnwnnnwwn','T':'nnnnwnwwn',
+  'U':'wwnnnnnnw','V':'nwwnnnnnw','W':'wwwnnnnnn','X':'nwnnwnnnw','Y':'wwnnwnnnn','Z':'nwwnwnnnn','-':'nwnnnnwnw','.':'wwnnnnwnn',' ':'nwwnnnwnn','$':'nwnwnwnnn','/':'nwnwnnnwn','+':'nwnnnwnwn','%':'nnnwnwnwn','*':'nwnnwnwnn'
+};
+function escapeEmailHTML(value) { return String(value ?? '').replace(/[&<>\"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[char])); }
+function normalizePublicUrl() {
+  const value = String(process.env.ARTY_PUBLIC_URL || process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '');
+  return /^https?:\/\//i.test(value) ? value : '';
+}
+function ticketEmailIsConfigured() { return Boolean(process.env.RESEND_API_KEY && process.env.TICKET_EMAIL_FROM && normalizePublicUrl()); }
+function createTicketCode(db, eventId) {
+  const used = new Set((db.bookings || []).flatMap(booking => (booking.tickets || []).map(ticket => ticket.code)));
+  let code = '';
+  do { code = `ARTY-${eventId}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`; } while (used.has(code));
+  return code;
+}
+function ensureBookingTickets(db, booking) {
+  const total = Math.max(1, parseInt(booking.guests) || 1);
+  const guestNames = Array.isArray(booking.guestNames) ? booking.guestNames : [];
+  if (!Array.isArray(booking.tickets)) booking.tickets = [];
+  let changed = false;
+  while (booking.tickets.length < total) {
+    const position = booking.tickets.length + 1;
+    booking.tickets.push({
+      id: `TKT-${crypto.randomBytes(8).toString('hex').toUpperCase()}`,
+      code: createTicketCode(db, booking.eventId),
+      guestNumber: position,
+      holderName: String(guestNames[position - 1] || (position === 1 ? booking.name : `Invité ${position} de ${booking.name}`)).trim().slice(0, 120),
+      status: 'valid',
+      createdAt: booking.bookedAt || new Date().toISOString(),
+      checkedInAt: '',
+      checkedInBy: ''
+    });
+    changed = true;
+  }
+  return changed;
+}
+function ensureAllBookingTickets(db) {
+  let changed = false;
+  for (const booking of (db.bookings || [])) if (ensureBookingTickets(db, booking)) changed = true;
+  return changed;
+}
+function findTicketRecord(db, value) {
+  const needle = String(value || '').trim().toUpperCase();
+  for (const booking of (db.bookings || [])) {
+    ensureBookingTickets(db, booking);
+    const ticket = (booking.tickets || []).find(item => String(item.id).toUpperCase() === needle || String(item.code).toUpperCase() === needle);
+    if (ticket) return { booking, ticket, event: (db.events || []).find(event => event.id === booking.eventId) || null };
+  }
+  return null;
+}
+function ticketBarcodeSVG(rawCode) {
+  const code = String(rawCode || '').toUpperCase().replace(/[^0-9A-Z. $/+%-]/g, '').slice(0, 80);
+  const encoded = `*${code}*`, narrow = 2, wide = 5, quiet = 18, barHeight = 82;
+  let x = quiet, bars = '';
+  for (const char of encoded) {
+    const pattern = CODE39_PATTERNS[char] || CODE39_PATTERNS['-'];
+    for (let index = 0; index < pattern.length; index += 1) {
+      const width = pattern[index] === 'w' ? wide : narrow;
+      if (index % 2 === 0) bars += `<rect x="${x}" y="10" width="${width}" height="${barHeight}" fill="#17130f"/>`;
+      x += width;
+    }
+    x += narrow;
+  }
+  const width = x + quiet;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="122" viewBox="0 0 ${width} 122" role="img" aria-label="Billet ${escapeEmailHTML(code)}"><rect width="100%" height="100%" rx="8" fill="#fff"/>${bars}<text x="${width/2}" y="111" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" letter-spacing="1.2" fill="#17130f">${escapeEmailHTML(code)}</text></svg>`;
+}
+function publicTicketRecord(record) {
+  if (!record) return null;
+  const { booking, ticket, event } = record;
+  return {
+    ticket: { id: ticket.id, code: ticket.code, guestNumber: ticket.guestNumber, holderName: ticket.holderName, status: ticket.status, checkedInAt: ticket.checkedInAt || '' },
+    booking: { id: booking.id, name: booking.name, guests: booking.guests, status: booking.status, bookedAt: booking.bookedAt },
+    event: event ? { id: event.id, title: event.title, date: event.date, time: event.time, duration: event.duration, location: event.location, image: event.image, hostNote: event.hostNote, status: event.status } : null
+  };
+}
+function publicBookingView(booking, event) {
+  return {
+    ...booking,
+    emailDelivery: { status: booking.emailDelivery?.status || 'not_sent', sentAt: booking.emailDelivery?.sentAt || '', attempts: booking.emailDelivery?.attempts || 0 },
+    tickets: (booking.tickets || []).map(ticket => ({ id: ticket.id, code: ticket.code, guestNumber: ticket.guestNumber, holderName: ticket.holderName, status: ticket.status, createdAt: ticket.createdAt, checkedInAt: ticket.checkedInAt || '' })),
+    event: event || null
+  };
+}
+function buildTicketEmailHTML(booking, event) {
+  const publicUrl = normalizePublicUrl();
+  const ticketBlocks = (booking.tickets || []).map((ticket, index) => {
+    const barcodeUrl = `${publicUrl}/api/tickets/${encodeURIComponent(ticket.code)}/barcode.svg`;
+    const ticketUrl = `${publicUrl}/#/ticket/${encodeURIComponent(ticket.code)}`;
+    return `<div style="margin:18px 0;padding:22px;border:1px solid #e8e2d9;border-radius:18px;background:#fff"><div style="font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:#1695a7">Billet ${index + 1} sur ${booking.tickets.length}</div><div style="margin:5px 0 12px;font-size:18px;font-weight:800;color:#332b22">${escapeEmailHTML(ticket.holderName)}</div><a href="${ticketUrl}" style="display:block;text-align:center"><img src="${barcodeUrl}" width="430" style="display:block;max-width:100%;height:auto;margin:auto" alt="Code-barres du billet ${escapeEmailHTML(ticket.code)}"></a><div style="margin-top:9px;text-align:center;font-family:monospace;font-size:13px;color:#6f6255">${escapeEmailHTML(ticket.code)}</div></div>`;
+  }).join('');
+  const eventDate = event?.date ? new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : 'Date à confirmer';
+  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY</div><h1 style="margin:12px 0 4px;font-size:28px">Vos billets sont prêts</h1><p style="margin:0;opacity:.92">Présentez le code-barres à votre arrivée.</p></div><div style="padding:26px;background:#fffdf9;border-radius:0 0 22px 22px"><p style="margin-top:0">Bonjour ${escapeEmailHTML(booking.name)},</p><h2 style="margin-bottom:8px;font-size:22px">${escapeEmailHTML(event?.title || 'Événement ARTY')}</h2><div style="padding:15px;border-radius:14px;background:#eefafa;line-height:1.7;color:#4f463d"><strong>${escapeEmailHTML(eventDate)}</strong><br>${escapeEmailHTML(event?.time || 'Heure à confirmer')}${event?.location?`<br>${escapeEmailHTML(event.location)}`:''}<br>${booking.guests} place${booking.guests > 1 ? 's' : ''}</div>${ticketBlocks}<p style="margin:22px 0 5px;font-size:13px;line-height:1.6;color:#75695c">Conservez ce courriel et présentez chaque billet à l’entrée. Chaque code est unique et ne peut être validé qu’une seule fois.</p></div></div></body></html>`;
+}
+function sendResendEmail(payload, idempotencyKey) {
+  if (process.env.ARTY_EMAIL_MODE === 'log') return Promise.resolve({ status: 'sent', id: `log-${Date.now()}` });
+  if (!ticketEmailIsConfigured()) return Promise.resolve({ status: 'not_configured', error: 'Configuration courriel incomplète' });
+  const body = JSON.stringify(payload);
+  return new Promise(resolve => {
+    const request = https.request({ hostname:'api.resend.com', path:'/emails', method:'POST', headers:{ Authorization:`Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body), 'Idempotency-Key':idempotencyKey } }, response => {
+      let data = '';
+      response.on('data', chunk => { data += chunk; });
+      response.on('end', () => {
+        let parsed = {}; try { parsed = JSON.parse(data || '{}'); } catch {}
+        if (response.statusCode >= 200 && response.statusCode < 300) resolve({ status:'sent', id:parsed.id || '' });
+        else resolve({ status:'failed', error:String(parsed.message || parsed.error || `Erreur courriel ${response.statusCode}`).slice(0,300) });
+      });
+    });
+    request.setTimeout(12000, () => request.destroy(new Error('Délai de livraison dépassé')));
+    request.on('error', error => resolve({ status:'failed', error:String(error.message || 'Erreur courriel').slice(0,300) }));
+    request.write(body); request.end();
+  });
+}
+async function deliverBookingTickets(booking, event, reason = 'confirmation') {
+  const attempt = Number(booking.emailDelivery?.attempts || 0) + 1;
+  const result = await sendResendEmail({
+    from: process.env.TICKET_EMAIL_FROM,
+    to: [booking.email],
+    subject: `Vos billets ARTY — ${event?.title || 'Événement'}`,
+    html: buildTicketEmailHTML(booking, event),
+    ...(process.env.TICKET_EMAIL_REPLY_TO ? { reply_to: process.env.TICKET_EMAIL_REPLY_TO } : {})
+  }, `ticket-${reason}-${booking.id}-${attempt}`);
+  booking.emailDelivery = { status:result.status, provider:'resend', providerId:result.id || '', error:result.error || '', attempts:attempt, lastAttemptAt:new Date().toISOString(), sentAt:result.status === 'sent' ? new Date().toISOString() : (booking.emailDelivery?.sentAt || '') };
+  return result;
+}
+
+app.post('/api/bookings', optionalAuth, async (req, res) => {
   const db = readDB();
-  const { userId, eventId, name, email, phone, guests, notes } = req.body;
+  const { eventId, name, email, phone, guests, notes } = req.body;
   const guestCount = Math.max(1, parseInt(guests) || 1);
   if (!eventId || !name || !email) return res.status(400).json({ error: 'Nom, courriel et événement requis' });
+  if (!validEmail(email)) return res.status(400).json({ error: 'Courriel invalide' });
   const ev = (db.events || []).find(e => e.id === parseInt(eventId));
   if (!ev) return res.status(404).json({ error: 'Événement non trouvé' });
   if ((ev.status || 'published') !== 'published') return res.status(400).json({ error: 'Cet événement n’est pas disponible à la réservation' });
@@ -700,27 +832,51 @@ app.post('/api/bookings', (req, res) => {
   const spotsLeft = Math.max(0, max - booked);
   if (spotsLeft <= 0) return res.status(400).json({ error: 'Complet' });
   if (guestCount > spotsLeft) return res.status(400).json({ error: `Il reste seulement ${spotsLeft} place${spotsLeft > 1 ? 's' : ''}` });
+  const bookedAt = new Date().toISOString();
+  const submittedGuestNames = Array.isArray(req.body.guestNames) ? req.body.guestNames : [];
+  const guestNames = Array.from({ length:guestCount }, (_,index) => String(index === 0 ? name : (submittedGuestNames[index] || '')).replace(/\s+/g,' ').trim().slice(0,120));
   const b = {
-    id: Date.now(),
-    userId: userId || null,
+    id: `BKG-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+    userId: req.session?.userId || null,
     eventId: parseInt(eventId),
     name: String(name).trim(),
-    email: String(email).trim(),
+    email: String(email).trim().toLowerCase(),
     phone: String(phone || '').trim(),
     guests: guestCount,
     notes: String(notes || '').trim(),
-    bookedAt: new Date().toISOString(),
-    status: 'confirmée'
+    guestNames,
+    total: Number(((Number(ev.price) || 0) * guestCount).toFixed(2)),
+    bookedAt,
+    status: 'confirmée',
+    emailDelivery: { status:'pending', attempts:0, sentAt:'', lastAttemptAt:'' },
+    tickets: []
   };
   if (!db.bookings) db.bookings = [];
-  ev.bookedSpots = booked + guestCount;
   db.bookings.push(b);
+  ensureBookingTickets(db, b);
+  ev.bookedSpots = booked + guestCount;
   writeDB(db);
-  res.json({ success: true, booking: b });
+  await deliverBookingTickets(b, ev);
+  const latestDB = readDB();
+  const savedBooking = (latestDB.bookings || []).find(item => String(item.id) === String(b.id));
+  if (savedBooking) { savedBooking.emailDelivery = b.emailDelivery; writeDB(latestDB); }
+  res.json({ success: true, booking: publicBookingView(b, ev), emailStatus: b.emailDelivery.status });
 });
 app.get('/api/bookings/mine', auth, (req, res) => {
   const db = readDB();
-  res.json((db.bookings || []).filter(b => b.userId === req.session.userId).map(b => ({ ...b, event: (db.events || []).find(e => e.id === b.eventId) })).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+  const changed = ensureAllBookingTickets(db); if (changed) writeDB(db);
+  res.json((db.bookings || []).filter(b => b.userId === req.session.userId).map(b => publicBookingView(b, (db.events || []).find(e => e.id === b.eventId))).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+});
+app.get('/api/tickets/:code', (req, res) => {
+  const db = readDB(); const record = findTicketRecord(db, req.params.code);
+  if (!record) return res.status(404).json({ error:'Billet non trouvé' });
+  res.json(publicTicketRecord(record));
+});
+app.get('/api/tickets/:code/barcode.svg', (req, res) => {
+  const db = readDB(); const record = findTicketRecord(db, req.params.code);
+  if (!record) return res.status(404).type('text/plain').send('Billet non trouvé');
+  res.set('Cache-Control','private, no-store');
+  res.type('image/svg+xml').send(ticketBarcodeSVG(record.ticket.code));
 });
 app.post('/api/event-requests', (req, res) => {
   const db = readDB();
@@ -1081,7 +1237,47 @@ app.put('/api/admin/events/:id', adminOnly, (req, res) => {
 app.delete('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB(); db.events=(db.events||[]).filter(e=>e.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 app.get('/api/admin/bookings', adminOnly, (req, res) => {
   const db = readDB();
+  const changed = ensureAllBookingTickets(db); if (changed) writeDB(db);
   res.json((db.bookings || []).map(b => ({ ...b, event: (db.events || []).find(e => e.id === b.eventId) || null })).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+});
+function updateBookingAttendanceStatus(booking) {
+  const checked = (booking.tickets || []).filter(ticket => ticket.status === 'checked_in').length;
+  booking.checkedInCount = checked;
+  booking.status = checked === 0 ? 'confirmée' : (checked >= (booking.tickets || []).length ? 'présente' : 'arrivée partielle');
+  booking.updatedAt = new Date().toISOString();
+}
+app.post('/api/admin/tickets/check-in', adminOnly, (req, res) => {
+  const db = readDB(); const record = findTicketRecord(db, req.body.code);
+  if (!record) return res.status(404).json({ error:'Billet introuvable' });
+  if (!record.event || record.event.status === 'cancelled') return res.status(400).json({ error:'Cet événement est annulé ou indisponible' });
+  if (record.ticket.status === 'checked_in') return res.status(409).json({ error:'Ce billet a déjà été validé', record:publicTicketRecord(record) });
+  record.ticket.status = 'checked_in'; record.ticket.checkedInAt = new Date().toISOString(); record.ticket.checkedInBy = req.session.email || 'admin';
+  updateBookingAttendanceStatus(record.booking); writeDB(db);
+  res.json({ success:true, record:publicTicketRecord(record) });
+});
+app.patch('/api/admin/tickets/:ticketId', adminOnly, (req, res) => {
+  const db = readDB(); const record = findTicketRecord(db, req.params.ticketId);
+  if (!record) return res.status(404).json({ error:'Billet introuvable' });
+  const checkedIn = req.body.checkedIn === true || req.body.checkedIn === 'true';
+  if (checkedIn && (!record.event || record.event.status === 'cancelled')) return res.status(400).json({ error:'Cet événement est annulé ou indisponible' });
+  record.ticket.status = checkedIn ? 'checked_in' : 'valid';
+  record.ticket.checkedInAt = checkedIn ? new Date().toISOString() : '';
+  record.ticket.checkedInBy = checkedIn ? (req.session.email || 'admin') : '';
+  updateBookingAttendanceStatus(record.booking); writeDB(db);
+  res.json({ success:true, record:publicTicketRecord(record) });
+});
+app.post('/api/admin/bookings/:id/resend-ticket', adminOnly, async (req, res) => {
+  const db = readDB(); const booking = (db.bookings || []).find(item => String(item.id) === String(req.params.id));
+  if (!booking) return res.status(404).json({ error:'Réservation introuvable' });
+  const event = (db.events || []).find(item => item.id === booking.eventId);
+  if (!event) return res.status(404).json({ error:'Événement introuvable' });
+  ensureBookingTickets(db, booking);
+  writeDB(db);
+  const result = await deliverBookingTickets(booking, event, 'resend');
+  const latestDB = readDB(); const savedBooking = (latestDB.bookings || []).find(item => String(item.id) === String(booking.id));
+  if (savedBooking) { savedBooking.emailDelivery = booking.emailDelivery; writeDB(latestDB); }
+  if (result.status !== 'sent') return res.status(503).json({ error:result.error || 'Courriel non envoyé', emailStatus:result.status });
+  res.json({ success:true, emailStatus:result.status, booking });
 });
 app.get('/api/admin/event-requests', adminOnly, (req, res) => {
   const db = readDB();
