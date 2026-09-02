@@ -1756,8 +1756,8 @@ function traceImageToLineArt(dataUrl,targetW,targetH,opts={}){
           const idx=yy*targetW+xx;
           const gx=-gray[idx-targetW-1]-2*gray[idx-1]-gray[idx+targetW-1]+gray[idx-targetW+1]+2*gray[idx+1]+gray[idx+targetW+1];
           const gy=-gray[idx-targetW-1]-2*gray[idx-targetW]-gray[idx-targetW+1]+gray[idx+targetW-1]+2*gray[idx+targetW]+gray[idx+targetW+1];
-          const mag=Math.sqrt(gx*gx+gy*gy)*detail;
-          const oi=idx*4, edge=mag>threshold;
+          const magnitudeSquared=(gx*gx+gy*gy)*detail*detail;
+          const oi=idx*4, edge=magnitudeSquared>threshold*threshold;
           if(opts.transparent){
             od[oi]=0;od[oi+1]=0;od[oi+2]=0;od[oi+3]=edge?245:0;
           }else{
