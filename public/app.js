@@ -37,6 +37,7 @@ function handleRoute(){
   if(document.activeElement && typeof document.activeElement.blur==='function') document.activeElement.blur();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('mainFooter').style.display='';
+  document.body.classList.remove('design-studio-open');
   document.getElementById('navLinks').classList.remove('open');
   document.getElementById('navAuth').classList.remove('open');
 
@@ -46,8 +47,8 @@ function handleRoute(){
   else if(h==='#/profile'){if(!currentUser){navigate('#/');openModal('auth');return}show('page-profile');renderProfilePage();window.scrollTo(0,0)}
   else if(h==='#/admin'){if(!currentUser||currentUser.role!=='admin'){navigate('#/');showToast('Accès admin requis','error');return}show('page-admin');document.getElementById('mainFooter').style.display='none';loadAdminData();window.scrollTo(0,0)}
   else if(h.startsWith('#/paintings')){show('page-paintings');renderPaintingsPage();window.scrollTo(0,0)}
-  else if(h==='#/custom-photo'){show('page-custom-photo');renderCustomPhotoPage();window.scrollTo(0,0)}
-  else if(h==='#/custom-bag'){show('page-custom-bag');renderCustomBagPage();window.scrollTo(0,0)}
+  else if(h==='#/custom-photo'||h==='#/custom-bag'){navigate('#/studio');return}
+  else if(h==='#/studio'){show('page-design-studio');document.getElementById('mainFooter').style.display='none';document.body.classList.add('design-studio-open');renderDesignStudioPage();window.scrollTo(0,0)}
   else if(h==='#/bundle-builder'){show('page-bundle-builder');renderBundleBuilderPage();window.scrollTo(0,0)}
   else if(h==='#/event-builder'){show('page-event-builder');renderEventBuilderPage();window.scrollTo(0,0)}
   else if(h.startsWith('#/event-quote/')){show('page-event-quote');renderEventQuotePaymentPage(decodeURIComponent(h.split('/')[2]?.split('?')[0]||''));window.scrollTo(0,0)}
@@ -1146,6 +1147,7 @@ function configuredKitDetailsHTML(item,className=''){
     const admissions=Number(item.qty)||1;
     return `<div class="configured-kit-details event-ticket-details ${safeAttr(className)}"><span>${safeText(date)} · ${safeText(data.eventTime||'Heure à confirmer')}</span><span>Accès pour ${admissions} personne${admissions>1?'s':''}</span></div>`;
   }
+  if(data?.kind==='design-studio')return `<div class="configured-kit-details ${safeAttr(className)}"><span>${safeText(data.productLabel||'Création Studio ARTY')}</span><span>${safeText(data.orientation||'')}</span></div>`;
   if(data?.kind!=='configured-kit')return '';
   const parts=[data.sizeLabel,...(Array.isArray(data.addOnLabels)?data.addOnLabels:[])].filter(Boolean);
   return parts.length?`<div class="configured-kit-details ${safeAttr(className)}">${parts.map(part=>`<span>${safeText(part)}</span>`).join('')}</div>`:'';
@@ -2196,9 +2198,18 @@ function adminOrderItemDetails(item){
     if(custom.customText)details.push(`Texte personnalisé : ${custom.customText}`);
   }
   if(custom.kind==='bag-trace-design'&&custom.imageCount)details.push(`${custom.imageCount} image${Number(custom.imageCount)>1?'s':''} personnalisée${Number(custom.imageCount)>1?'s':''}`);
+  if(custom.kind==='design-studio'){
+    details.push(`Création Studio ARTY · ${custom.productLabel||'Produit personnalisé'}`);
+    if(custom.orientation)details.push(`Orientation : ${custom.orientation}`);
+    if(custom.elementCount)details.push(`${custom.elementCount} élément${Number(custom.elementCount)>1?'s':''} · ${Number(custom.imageCount)||0} image${Number(custom.imageCount)>1?'s':''} · ${Number(custom.textCount)||0} texte${Number(custom.textCount)>1?'s':''}`);
+  }
   if(custom.notes)details.push(`Note : ${custom.notes}`);
   if(item.discountLabel)details.push(`Rabais : ${item.discountLabel}`);
   return details;
+}
+function adminDesignStudioAssets(item){
+  const custom=item?.customData||{};if(custom.kind!=='design-studio')return'';
+  return `<div class="admin-order-design-previews">${custom.paintedPreview?`<a href="${safeAttr(custom.paintedPreview)}" download="apercu-peint-arty.jpg"><img src="${safeAttr(custom.paintedPreview)}" alt="Aperçu peint"><span>Télécharger l’aperçu peint</span></a>`:''}${custom.tracePreview?`<a href="${safeAttr(custom.tracePreview)}" download="trace-production-arty.png"><img src="${safeAttr(custom.tracePreview)}" alt="Tracé de production"><span>Télécharger le tracé de production</span></a>`:''}${custom.colorArtwork?`<a href="${safeAttr(custom.colorArtwork)}" download="reference-couleur-arty.jpg"><img src="${safeAttr(custom.colorArtwork)}" alt="Référence couleur"><span>Télécharger la référence couleur</span></a>`:''}</div>`;
 }
 function renderAdminOrders(){
   const panel=document.getElementById('adminOrdersPanel');if(!panel)return;
@@ -2214,7 +2225,7 @@ function renderAdminOrders(){
 function openAdminOrderDetail(orderId){
   const order=(adminOrders||[]).find(item=>String(item.id)===String(orderId)),modal=document.getElementById('adminOrderDetailModal'),content=document.getElementById('adminOrderDetailContent');if(!order||!modal||!content)return;
   const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],ticketOnly=items.length>0&&items.every(item=>item.type==='event-ticket'),tracking=order.tracking||{},statusMeta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),domId=adminOrderDomId(order.id),email=customer.email||order.guestEmail||'',phone=customer.phone||'',phoneHref=String(phone).replace(/[^\d+]/g,''),remaining=Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0));
-  const itemRows=items.map(item=>{const qty=Number(item.qty)||1,details=adminOrderItemDetails(item),unit=Number(item.originalUnitPrice??item.price??0),line=Number(item.lineTotal??(unit*qty)),eventTicket=item.type==='event-ticket',typeLabel=eventTicket?'Billet':item.type==='bundle'?'Forfait':'Produit';return `<article class="admin-order-detail-item"><img src="${safeAttr(item.image||'logoarty.png')}" alt=""><div><span>${safeText(typeLabel)}</span><h4>${safeText(item.name||'Produit ARTY')}</h4><p>${eventTicket?`Accès pour ${qty} personne${qty>1?'s':''} · Prix par personne : $${toMoney(unit)}`:`Quantité : ${qty} · Prix unitaire : $${toMoney(unit)}`}</p>${details.length?`<ul>${details.map(detail=>`<li>${safeText(detail)}</li>`).join('')}</ul>`:''}</div><strong>$${toMoney(line)}</strong></article>`}).join('');
+  const itemRows=items.map(item=>{const qty=Number(item.qty)||1,details=adminOrderItemDetails(item),unit=Number(item.originalUnitPrice??item.price??0),line=Number(item.lineTotal??(unit*qty)),eventTicket=item.type==='event-ticket',studioItem=item.customData?.kind==='design-studio',typeLabel=eventTicket?'Billet':studioItem?'Création personnalisée':item.type==='bundle'?'Forfait':'Produit';return `<article class="admin-order-detail-item ${studioItem?'admin-order-detail-studio-item':''}"><img src="${safeAttr(item.image||'logoarty.png')}" alt=""><div><span>${safeText(typeLabel)}</span><h4>${safeText(item.name||'Produit ARTY')}</h4><p>${eventTicket?`Accès pour ${qty} personne${qty>1?'s':''} · Prix par personne : $${toMoney(unit)}`:`Quantité : ${qty} · Prix unitaire : $${toMoney(unit)}`}</p>${details.length?`<ul>${details.map(detail=>`<li>${safeText(detail)}</li>`).join('')}</ul>`:''}${adminDesignStudioAssets(item)}</div><strong>$${toMoney(line)}</strong></article>`}).join('');
   const quantityLabel=ticketOnly?'Personnes admises':'Nombre d’articles';
   const history=(order.statusHistory||[]).slice().reverse().map(entry=>`<div class="admin-order-history-entry"><span></span><div><strong>${safeText(profileStatusMeta(entry.to).label)}</strong><small>${profileDate(entry.at,true)}</small></div></div>`).join('');
   const paymentProviderLabel=order.paymentProvider==='stripe'?'Stripe':order.paymentProvider&&order.paymentProvider!=='not_connected'?order.paymentProvider:'À confirmer';
@@ -2491,3 +2502,293 @@ async function saveAdminEventRequest(id,createPaymentLink){
 }
 function copyEventQuotePaymentLink(id){const request=(eventRequests||[]).find(item=>String(item.id)===String(id));if(!request?.paymentLinkUrl)return;navigator.clipboard?.writeText(request.paymentLinkUrl).then(()=>showToast('Lien copié','success')).catch(()=>showToast('Impossible de copier le lien','error'))}
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeAdminEventRequest()});
+
+/* ===== ARTY DESIGN STUDIO — unified custom canvas and bag editor ===== */
+const designStudioProducts={
+  canvas:{label:'Toile rectangulaire',shortLabel:'Toile',description:'Un canevas personnalisé à tracer et à peindre.'},
+  bag:{label:'Sac en toile',shortLabel:'Sac',description:'Un sac réutilisable avec votre création à peindre.'}
+};
+const designStudioSizes={
+  petit:{label:'11 x 14',price:49.99},
+  moyen:{label:'16 x 20',price:69.99},
+  grand:{label:'18 x 24',price:89.99}
+};
+function designStudioInitialState(){return{product:'canvas',size:'moyen',orientation:'portrait',view:'edit',activePanel:'templates',elements:[],selectedId:null,quantity:1,notes:'',zoom:.72,history:[],future:[]}}
+let designStudioState=designStudioInitialState();
+let designStudioRuntime={canvas:null,ctx:null,dragMode:'',pointerId:null,startPoint:null,startElement:null,images:new Map(),busy:false};
+
+function designStudioIcon(name){
+  const paths={
+    back:'<path d="m15 18-6-6 6-6"></path><path d="M9 12h10"></path>',
+    template:'<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M4 9h16M9 9v11"></path>',
+    image:'<rect x="3" y="4" width="18" height="16" rx="3"></rect><circle cx="9" cy="10" r="2"></circle><path d="m5 18 5-5 3 3 2-2 4 4"></path>',
+    text:'<path d="M5 6h14M12 6v13M8 19h8"></path>',
+    shape:'<circle cx="9" cy="9" r="5"></circle><rect x="11" y="11" width="9" height="9" rx="2"></rect>',
+    layers:'<path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 12 9 5 9-5M3 16l9 5 9-5"></path>',
+    undo:'<path d="M9 7 5 11l4 4"></path><path d="M5 11h8a6 6 0 0 1 6 6"></path>',
+    redo:'<path d="m15 7 4 4-4 4"></path><path d="M19 11h-8a6 6 0 0 0-6 6"></path>',
+    cart:'<circle cx="9" cy="20" r="1"></circle><circle cx="18" cy="20" r="1"></circle><path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.8a2 2 0 0 0 2-1.6L21 8H7"></path>',
+    upload:'<path d="M12 16V4M7 9l5-5 5 5"></path><path d="M5 15v4h14v-4"></path>',
+    canvas:'<rect x="5" y="3" width="14" height="16" rx="2"></rect><path d="M9 22l3-3 3 3M12 19v3"></path>',
+    bag:'<path d="M5 8h14l-1 13H6L5 8z"></path><path d="M9 8V6a3 3 0 0 1 6 0v2"></path>',
+    plus:'<path d="M12 5v14M5 12h14"></path>',
+    copy:'<rect x="8" y="8" width="11" height="11" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path>',
+    trash:'<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"></path>',
+    forward:'<path d="m12 4 5 5h-3v6H7V9H4l5-5"></path>',
+    backward:'<path d="m12 20-5-5h3V9h7v6h3l-5 5"></path>',
+    center:'<path d="M4 7h16M7 12h10M4 17h16"></path>',
+    check:'<path d="m5 12 4 4L19 6"></path>',
+    zoom:'<circle cx="10" cy="10" r="6"></circle><path d="m15 15 5 5M8 10h4M10 8v4"></path>'
+  };
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${paths[name]||paths.shape}</svg>`;
+}
+function designStudioPrice(){
+  if(designStudioState.product==='canvas')return designStudioSizes[designStudioState.size]?.price||69.99;
+  const images=designStudioState.elements.filter(item=>item.type==='image').length;
+  return 34.99+Math.max(0,images-1)*6;
+}
+function designStudioProductLabel(){
+  if(designStudioState.product==='bag')return designStudioProducts.bag.label;
+  return `${designStudioProducts.canvas.label} ${designStudioSizes[designStudioState.size]?.label||''}`.trim();
+}
+function renderDesignStudioPage(){
+  const container=document.getElementById('designStudioPageContent');if(!container)return;
+  container.innerHTML=`<div class="design-studio-app">
+    <header class="design-studio-topbar">
+      <div class="design-studio-brand"><button type="button" onclick="navigate('#/paintings')" aria-label="Retour aux produits">${designStudioIcon('back')}</button><img src="logoarty.png" alt="ARTY"><span><strong>Studio ARTY</strong><small>Créez votre kit personnalisé</small></span></div>
+      <div class="design-studio-history"><button type="button" onclick="designStudioUndo()" aria-label="Annuler" ${designStudioState.history.length?'':'disabled'}>${designStudioIcon('undo')}</button><button type="button" onclick="designStudioRedo()" aria-label="Rétablir" ${designStudioState.future.length?'':'disabled'}>${designStudioIcon('redo')}</button></div>
+      <div class="design-studio-view-tabs" role="tablist" aria-label="Type d’aperçu"><button type="button" data-studio-view="edit" class="${designStudioState.view==='edit'?'active':''}" onclick="setDesignStudioView('edit')">Création</button><button type="button" data-studio-view="trace" class="${designStudioState.view==='trace'?'active':''}" onclick="setDesignStudioView('trace')">Tracé du kit</button><button type="button" data-studio-view="painted" class="${designStudioState.view==='painted'?'active':''}" onclick="setDesignStudioView('painted')">Aperçu peint</button></div>
+      <div class="design-studio-order"><span><small id="designStudioProductTop">${safeText(designStudioProductLabel())}</small><strong id="designStudioPriceTop">$${toMoney(designStudioPrice())}</strong></span><button type="button" id="designStudioCartButton" onclick="addDesignStudioToCart()">${designStudioIcon('cart')}<b>Ajouter au panier</b></button></div>
+    </header>
+    <div class="design-studio-body">
+      <nav class="design-studio-tools" aria-label="Outils de création">
+        ${designStudioToolButton('templates','template','Modèles')}
+        ${designStudioToolButton('images','image','Images')}
+        ${designStudioToolButton('text','text','Texte')}
+        ${designStudioToolButton('shapes','shape','Formes')}
+        ${designStudioToolButton('layers','layers','Calques')}
+      </nav>
+      <aside class="design-studio-library" id="designStudioLibrary"></aside>
+      <main class="design-studio-workspace">
+        <div class="design-studio-workspace-head"><span id="designStudioViewLabel">${designStudioViewLabel()}</span><small id="designStudioHint">${designStudioViewHint()}</small></div>
+        <div class="design-studio-canvas-scroll" id="designStudioCanvasScroll"><canvas id="designStudioCanvas" width="1200" height="900" style="width:${Math.round(1200*designStudioState.zoom)}px" aria-label="Zone de création personnalisée"></canvas></div>
+        <div class="design-studio-zoom">${designStudioIcon('zoom')}<input type="range" min="45" max="105" value="${Math.round(designStudioState.zoom*100)}" oninput="setDesignStudioZoom(this.value)"><span id="designStudioZoomValue">${Math.round(designStudioState.zoom*100)}%</span></div>
+      </main>
+      <aside class="design-studio-inspector" id="designStudioInspector"></aside>
+    </div>
+    <div class="design-studio-busy" id="designStudioBusy" hidden><span></span><strong id="designStudioBusyText">Préparation de votre image...</strong></div>
+  </div>`;
+  renderDesignStudioLibrary();renderDesignStudioInspector();initDesignStudioCanvas();
+}
+function designStudioToolButton(panel,icon,label){return `<button type="button" class="${designStudioState.activePanel===panel?'active':''}" data-studio-panel="${panel}" onclick="setDesignStudioPanel('${panel}')">${designStudioIcon(icon)}<span>${label}</span></button>`}
+function designStudioViewLabel(){return{edit:'Mode création',trace:'Tracé livré dans le kit',painted:'Simulation du résultat peint'}[designStudioState.view]||'Mode création'}
+function designStudioViewHint(){return{edit:'Sélectionnez et déplacez les éléments directement sur le produit.',trace:'Aperçu des lignes qui serviront à tracer et à peindre.',painted:'Simulation colorée basée sur vos images et vos réglages.'}[designStudioState.view]||''}
+function setDesignStudioPanel(panel){designStudioState.activePanel=panel;document.querySelectorAll('[data-studio-panel]').forEach(button=>button.classList.toggle('active',button.dataset.studioPanel===panel));renderDesignStudioLibrary()}
+function renderDesignStudioLibrary(){
+  const panel=document.getElementById('designStudioLibrary');if(!panel)return;
+  const imageItems=designStudioState.elements.filter(item=>item.type==='image');
+  if(designStudioState.activePanel==='templates')panel.innerHTML=`<div class="studio-panel-head"><span>Produit</span><h2>Choisissez votre modèle</h2><p>Votre création s’adapte automatiquement à la zone imprimable.</p></div><div class="studio-template-list"><button type="button" class="studio-template-card ${designStudioState.product==='canvas'?'active':''}" onclick="selectDesignStudioProduct('canvas')"><span>${designStudioIcon('canvas')}</span><div><strong>Toile rectangulaire</strong><small>Kit avec tracé à peindre</small></div>${designStudioState.product==='canvas'?designStudioIcon('check'):''}</button><button type="button" class="studio-template-card ${designStudioState.product==='bag'?'active':''}" onclick="selectDesignStudioProduct('bag')"><span>${designStudioIcon('bag')}</span><div><strong>Sac en toile</strong><small>Création à peindre sur tissu</small></div>${designStudioState.product==='bag'?designStudioIcon('check'):''}</button></div>${designStudioState.product==='canvas'?`<div class="studio-panel-section"><label>Format de la toile</label><div class="studio-size-list">${Object.entries(designStudioSizes).map(([key,value])=>`<button type="button" class="${designStudioState.size===key?'active':''}" onclick="setDesignStudioSize('${key}')"><strong>${value.label}</strong><span>$${toMoney(value.price)}</span></button>`).join('')}</div></div><div class="studio-panel-section"><label>Orientation</label><div class="studio-segmented"><button type="button" class="${designStudioState.orientation==='portrait'?'active':''}" onclick="setDesignStudioOrientation('portrait')">Verticale</button><button type="button" class="${designStudioState.orientation==='landscape'?'active':''}" onclick="setDesignStudioOrientation('landscape')">Horizontale</button></div></div>`:`<div class="studio-info-card"><strong>Sac en toile naturel</strong><p>La zone centrale recevra votre tracé personnalisé. Une image est comprise; chaque image additionnelle ajoute 6 $.</p></div>`}`;
+  if(designStudioState.activePanel==='images')panel.innerHTML=`<div class="studio-panel-head"><span>Images</span><h2>Ajoutez vos photos</h2><p>Ajoutez jusqu’à six images, puis placez-les librement.</p></div><label class="studio-upload-zone" id="designStudioDropZone" for="designStudioUploadInput">${designStudioIcon('upload')}<strong>Téléverser des images</strong><small>JPG, PNG ou WEBP · 10 Mo maximum</small></label><input type="file" id="designStudioUploadInput" class="visually-hidden-file" accept="image/png,image/jpeg,image/webp" multiple onchange="handleDesignStudioUpload(event)"><div class="studio-media-grid">${imageItems.map(item=>`<button type="button" class="${designStudioState.selectedId===item.id?'active':''}" onclick="selectDesignStudioElement('${safeAttr(item.id)}')"><img src="${safeAttr(item.source)}" alt=""><span>${safeText(item.name||'Image')}</span></button>`).join('')||'<div class="studio-panel-empty">Vos images apparaîtront ici.</div>'}</div>`;
+  if(designStudioState.activePanel==='text')panel.innerHTML=`<div class="studio-panel-head"><span>Texte</span><h2>Ajoutez un message</h2><p>Écrivez un nom, une date ou une courte phrase.</p></div><div class="studio-add-text"><textarea id="designStudioNewText" maxlength="120" placeholder="Écrivez votre texte...">Votre texte</textarea><button type="button" onclick="addDesignStudioText()">${designStudioIcon('plus')}Ajouter le texte</button></div><div class="studio-panel-section"><label>Styles rapides</label><div class="studio-text-presets"><button type="button" onclick="addDesignStudioText('Notre journée', 'title')"><strong>Grand titre</strong><span>Notre journée</span></button><button type="button" onclick="addDesignStudioText('12 juillet 2026', 'script')"><strong>Écriture créative</strong><span>12 juillet 2026</span></button><button type="button" onclick="addDesignStudioText('Créé avec ARTY', 'small')"><strong>Petit texte</strong><span>Créé avec ARTY</span></button></div></div>`;
+  if(designStudioState.activePanel==='shapes')panel.innerHTML=`<div class="studio-panel-head"><span>Formes</span><h2>Ajoutez une décoration</h2><p>Utilisez des formes simples pour compléter votre composition.</p></div><div class="studio-shape-grid"><button type="button" onclick="addDesignStudioShape('circle')"><span class="shape-circle"></span><strong>Cercle</strong></button><button type="button" onclick="addDesignStudioShape('rectangle')"><span class="shape-rectangle"></span><strong>Rectangle</strong></button><button type="button" onclick="addDesignStudioShape('star')"><span class="shape-star">☆</span><strong>Étoile</strong></button><button type="button" onclick="addDesignStudioShape('heart')"><span class="shape-heart">♡</span><strong>Cœur</strong></button></div>`;
+  if(designStudioState.activePanel==='layers')panel.innerHTML=`<div class="studio-panel-head"><span>Calques</span><h2>Organisez le design</h2><p>Les éléments du haut apparaissent devant les autres.</p></div><div class="studio-layer-list">${[...designStudioState.elements].reverse().map(item=>`<button type="button" class="${designStudioState.selectedId===item.id?'active':''}" onclick="selectDesignStudioElement('${safeAttr(item.id)}')"><span class="studio-layer-thumb">${item.type==='image'?`<img src="${safeAttr(item.source)}" alt="">`:item.type==='text'?designStudioIcon('text'):designStudioIcon('shape')}</span><span><strong>${safeText(designStudioElementName(item))}</strong><small>${item.type==='image'?'Image':item.type==='text'?'Texte':'Forme'}</small></span></button>`).join('')||'<div class="studio-panel-empty">Ajoutez une image, un texte ou une forme.</div>'}</div>`;
+  setupDesignStudioDropZone();
+}
+function designStudioElementName(item){if(item.type==='text')return item.text||'Texte';if(item.type==='shape')return{circle:'Cercle',rectangle:'Rectangle',star:'Étoile',heart:'Cœur'}[item.shape]||'Forme';return item.name||'Image'}
+function designStudioOrderCard(){return `<div class="studio-order-card"><div><span>Votre produit</span><strong>${safeText(designStudioProductLabel())}</strong></div><label>Quantité<input type="number" min="1" max="50" value="${designStudioState.quantity}" onchange="setDesignStudioQuantity(this.value)"></label><label>Note pour la production<textarea maxlength="400" placeholder="Une précision pour notre équipe..." oninput="designStudioState.notes=this.value">${safeText(designStudioState.notes||'')}</textarea></label><div class="studio-order-total"><span>Prix unitaire</span><strong>$${toMoney(designStudioPrice())}</strong></div><button type="button" onclick="addDesignStudioToCart()">${designStudioIcon('cart')}Ajouter au panier</button></div>`}
+function designStudioRange(label,key,value,min,max,step=1){return `<label class="studio-property-range"><span>${label}<output data-studio-value="${key}">${Math.round(Number(value)||0)}${key==='rotation'?'°':'%'}</output></span><input type="range" min="${min}" max="${max}" step="${step}" value="${Number(value)||0}" onpointerdown="designStudioPushHistory()" oninput="updateDesignStudioElement('${key}',this.value)"></label>`}
+function renderDesignStudioInspector(){
+  const panel=document.getElementById('designStudioInspector');if(!panel)return;
+  const item=designStudioSelected();
+  if(!item){panel.innerHTML=`<div class="studio-inspector-head"><span>Propriétés</span><h2>Votre création</h2><p>Sélectionnez un élément sur le produit pour le modifier.</p></div><div class="studio-inspector-empty">${designStudioIcon('center')}<strong>Tout est prêt</strong><span>Ajoutez une image, un texte ou une forme depuis les outils à gauche.</span></div>${designStudioOrderCard()}`;return}
+  const imageControls=item.type==='image'?`<div class="studio-property-group"><label>Remplissage</label><div class="studio-segmented"><button type="button" class="${item.fit==='contain'?'active':''}" onclick="updateDesignStudioElement('fit','contain',true)">Image entière</button><button type="button" class="${item.fit==='cover'?'active':''}" onclick="updateDesignStudioElement('fit','cover',true)">Remplir</button></div></div><div class="studio-property-group"><label>Réglages de l’image</label>${designStudioRange('Contraste','contrast',item.contrast,50,170)}${designStudioRange('Luminosité','brightness',item.brightness,50,150)}${designStudioRange('Couleurs','saturation',item.saturation,0,190)}${designStudioRange('Détail du tracé','traceDetail',item.traceDetail||48,20,90)}<div class="studio-preset-row"><button type="button" onclick="applyDesignStudioImagePreset('natural')">Naturel</button><button type="button" onclick="applyDesignStudioImagePreset('vivid')">Vif</button><button type="button" onclick="applyDesignStudioImagePreset('soft')">Doux</button></div></div>`:'';
+  const textControls=item.type==='text'?`<div class="studio-property-group"><label>Contenu du texte</label><textarea maxlength="120" onfocus="designStudioPushHistory()" oninput="updateDesignStudioElement('text',this.value)">${safeText(item.text||'')}</textarea></div><div class="studio-property-grid"><label>Police<select onchange="updateDesignStudioElement('fontFamily',this.value,true)"><option value="Outfit" ${item.fontFamily==='Outfit'?'selected':''}>Moderne</option><option value="Caveat" ${item.fontFamily==='Caveat'?'selected':''}>Créative</option><option value="Georgia" ${item.fontFamily==='Georgia'?'selected':''}>Classique</option></select></label><label>Couleur<input type="color" value="${safeAttr(item.color||'#1f6d78')}" onchange="updateDesignStudioElement('color',this.value,true)"></label></div>${designStudioRange('Taille du texte','fontSize',item.fontSize,4,24)}`:'';
+  const shapeControls=item.type==='shape'?`<div class="studio-property-grid"><label>Couleur<input type="color" value="${safeAttr(item.color||'#e8863a')}" onchange="updateDesignStudioElement('color',this.value,true)"></label><label>Style<select onchange="updateDesignStudioElement('filled',this.value==='true',true)"><option value="true" ${item.filled!==false?'selected':''}>Plein</option><option value="false" ${item.filled===false?'selected':''}>Contour</option></select></label></div>`:'';
+  panel.innerHTML=`<div class="studio-inspector-head"><span>Élément sélectionné</span><h2>${safeText(designStudioElementName(item))}</h2><p>${item.type==='image'?'Ajustez le cadrage et le rendu de cette image.':item.type==='text'?'Personnalisez le texte et sa présentation.':'Modifiez cette forme décorative.'}</p></div>${imageControls}${textControls}${shapeControls}<div class="studio-property-group"><label>Position et taille</label>${designStudioRange('Largeur','scale',Math.round(item.w*100),8,100)}${designStudioRange('Rotation','rotation',item.rotation||0,-180,180)}${designStudioRange('Opacité','opacity',item.opacity??100,10,100)}<div class="studio-align-row"><button type="button" onclick="alignDesignStudioElement('horizontal')">Centrer horizontalement</button><button type="button" onclick="alignDesignStudioElement('vertical')">Centrer verticalement</button></div></div><div class="studio-element-actions"><button type="button" onclick="moveDesignStudioElement(-1)">${designStudioIcon('backward')}Derrière</button><button type="button" onclick="moveDesignStudioElement(1)">${designStudioIcon('forward')}Devant</button><button type="button" onclick="duplicateDesignStudioElement()">${designStudioIcon('copy')}Dupliquer</button><button type="button" class="danger" onclick="removeDesignStudioElement()">${designStudioIcon('trash')}Supprimer</button></div>${designStudioOrderCard()}`;
+}
+function designStudioGeometry(){
+  if(designStudioState.product==='bag')return{product:{x:290,y:155,w:620,h:675},print:{x:405,y:315,w:390,h:410}};
+  const product=designStudioState.orientation==='landscape'?{x:250,y:170,w:700,h:560}:{x:320,y:100,w:560,h:700};
+  return{product,print:{x:product.x+18,y:product.y+18,w:product.w-36,h:product.h-36}};
+}
+function initDesignStudioCanvas(){
+  const canvas=document.getElementById('designStudioCanvas');if(!canvas)return;
+  designStudioRuntime.canvas=canvas;designStudioRuntime.ctx=canvas.getContext('2d');
+  canvas.onpointerdown=designStudioPointerDown;canvas.onpointermove=designStudioPointerMove;canvas.onpointerup=designStudioPointerUp;canvas.onpointercancel=designStudioPointerUp;canvas.onpointerleave=designStudioPointerUp;
+  designStudioState.elements.forEach(designStudioHydrateElement);drawDesignStudio();
+}
+function designStudioImageKey(item,variant){return `${item.id}:${variant}`}
+function designStudioHydrateElement(item){
+  if(item.type!=='image')return;
+  [['source',item.source],['trace',item.trace]].forEach(([variant,src])=>{if(!src)return;const key=designStudioImageKey(item,variant),existing=designStudioRuntime.images.get(key);if(existing?.src===src)return;const image=new Image();image.onload=drawDesignStudio;image.src=src;designStudioRuntime.images.set(key,image)});
+}
+function drawDesignStudio(){const ctx=designStudioRuntime.ctx;if(!ctx)return;renderDesignStudioScene(ctx,designStudioState.view,true)}
+function renderDesignStudioScene(ctx,view,showSelection=false){
+  const canvas=ctx.canvas,geometry=designStudioGeometry(),product=geometry.product,print=geometry.print;
+  ctx.save();ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle=view==='edit'?'#eef0f2':'#f3f0eb';ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(view==='edit'){ctx.fillStyle='rgba(73,88,94,.12)';for(let x=24;x<canvas.width;x+=24)for(let y=24;y<canvas.height;y+=24){ctx.beginPath();ctx.arc(x,y,1.2,0,Math.PI*2);ctx.fill()}}
+  ctx.shadowColor='rgba(38,34,28,.22)';ctx.shadowBlur=34;ctx.shadowOffsetY=20;
+  if(designStudioState.product==='canvas'){
+    ctx.fillStyle='#d7b68d';drawRoundedRect(ctx,product.x-13,product.y-13,product.w+26,product.h+26,12);ctx.fill();ctx.shadowColor='transparent';
+    ctx.fillStyle='#fffdfa';drawRoundedRect(ctx,product.x,product.y,product.w,product.h,5);ctx.fill();
+    ctx.strokeStyle='#e9e0d5';ctx.lineWidth=3;ctx.stroke();
+  }else{
+    ctx.shadowColor='transparent';ctx.strokeStyle='#c99d69';ctx.lineWidth=28;ctx.lineCap='round';ctx.beginPath();ctx.arc(600,250,155,Math.PI,0);ctx.stroke();
+    ctx.strokeStyle='#ead4b7';ctx.lineWidth=16;ctx.beginPath();ctx.arc(600,250,112,Math.PI,0);ctx.stroke();
+    ctx.shadowColor='rgba(38,34,28,.2)';ctx.shadowBlur=28;ctx.shadowOffsetY=18;ctx.fillStyle='#e8d2b3';drawRoundedRect(ctx,product.x,product.y,product.w,product.h,30);ctx.fill();ctx.shadowColor='transparent';ctx.strokeStyle='#caa47a';ctx.lineWidth=5;ctx.stroke();
+    ctx.fillStyle='#fffaf2';drawRoundedRect(ctx,print.x,print.y,print.w,print.h,12);ctx.fill();
+  }
+  ctx.save();drawRoundedRect(ctx,print.x,print.y,print.w,print.h,designStudioState.product==='bag'?12:2);ctx.clip();
+  if(view!=='edit'){ctx.fillStyle='#fffdf9';ctx.fillRect(print.x,print.y,print.w,print.h)}
+  designStudioState.elements.forEach(item=>drawDesignStudioElement(ctx,item,print,view));
+  if(view==='painted')drawDesignStudioPaintTexture(ctx,print);
+  ctx.restore();
+  if(designStudioState.product==='bag'){
+    ctx.strokeStyle=view==='edit'?'rgba(27,154,170,.45)':'rgba(158,121,79,.35)';ctx.lineWidth=3;ctx.setLineDash(view==='edit'?[12,9]:[]);drawRoundedRect(ctx,print.x,print.y,print.w,print.h,12);ctx.stroke();ctx.setLineDash([]);
+    ctx.strokeStyle='rgba(139,99,58,.28)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(product.x+38,product.y+40);ctx.lineTo(product.x+38,product.y+product.h-35);ctx.moveTo(product.x+product.w-38,product.y+40);ctx.lineTo(product.x+product.w-38,product.y+product.h-35);ctx.stroke();
+  }
+  if(showSelection&&view==='edit'){
+    const selected=designStudioSelected();if(selected)drawDesignStudioSelection(ctx,selected,print);
+  }
+  ctx.restore();
+}
+function designStudioElementRect(item,print){return{cx:print.x+item.x*print.w,cy:print.y+item.y*print.h,w:item.w*print.w,h:item.h*print.h}}
+function drawDesignStudioElement(ctx,item,print,view){
+  const rect=designStudioElementRect(item,print),rotation=(Number(item.rotation)||0)*Math.PI/180;
+  ctx.save();ctx.translate(rect.cx,rect.cy);ctx.rotate(rotation);ctx.globalAlpha=Math.max(.1,Math.min(1,Number(item.opacity??100)/100));
+  if(item.type==='image'){
+    const variant=view==='trace'?'trace':'source',image=designStudioRuntime.images.get(designStudioImageKey(item,variant));
+    if(image?.complete){
+      if(view!=='trace')ctx.filter=`brightness(${Number(item.brightness)||100}%) contrast(${Number(item.contrast)||100}%) saturate(${Number(item.saturation)||100}%)`;
+      drawDesignStudioImageFit(ctx,image,-rect.w/2,-rect.h/2,rect.w,rect.h,item.fit||'contain');ctx.filter='none';
+      if(view==='painted'){ctx.save();ctx.globalCompositeOperation='soft-light';ctx.fillStyle='rgba(255,244,222,.18)';ctx.fillRect(-rect.w/2,-rect.h/2,rect.w,rect.h);ctx.restore()}
+    }else{ctx.fillStyle='rgba(27,154,170,.08)';ctx.fillRect(-rect.w/2,-rect.h/2,rect.w,rect.h)}
+  }else if(item.type==='text')drawDesignStudioText(ctx,item,rect,view);
+  else drawDesignStudioShape(ctx,item,rect,view);
+  ctx.restore();
+}
+function drawDesignStudioImageFit(ctx,image,x,y,w,h,fit){
+  const iw=image.naturalWidth||image.width,ih=image.naturalHeight||image.height;if(!iw||!ih)return;
+  const scale=fit==='cover'?Math.max(w/iw,h/ih):Math.min(w/iw,h/ih),dw=iw*scale,dh=ih*scale;
+  ctx.save();ctx.beginPath();ctx.rect(x,y,w,h);ctx.clip();ctx.drawImage(image,x+(w-dw)/2,y+(h-dh)/2,dw,dh);ctx.restore();
+}
+function designStudioTextLines(ctx,text,maxWidth){
+  const paragraphs=String(text||'').split(/\n/),lines=[];paragraphs.forEach(paragraph=>{const words=paragraph.split(/\s+/).filter(Boolean);if(!words.length){lines.push('');return}let line='';words.forEach(word=>{const test=line?`${line} ${word}`:word;if(line&&ctx.measureText(test).width>maxWidth){lines.push(line);line=word}else line=test});if(line)lines.push(line)});return lines.slice(0,8);
+}
+function drawDesignStudioText(ctx,item,rect,view){
+  const fontSize=Math.max(22,(Number(item.fontSize)||10)/100*designStudioGeometry().print.w),family=item.fontFamily||'Outfit';ctx.font=`${item.bold===false?500:700} ${fontSize}px ${family}, sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  const lines=designStudioTextLines(ctx,item.text,rect.w),lineHeight=fontSize*1.12,start=-(lines.length-1)*lineHeight/2;
+  lines.forEach((line,index)=>{if(view==='trace'){ctx.lineWidth=Math.max(1.5,fontSize*.035);ctx.strokeStyle='#171717';ctx.fillStyle='#fff';ctx.strokeText(line,0,start+index*lineHeight);ctx.fillText(line,0,start+index*lineHeight)}else{ctx.fillStyle=item.color||'#1f6d78';ctx.fillText(line,0,start+index*lineHeight)}});
+}
+function designStudioShapePath(ctx,shape,w,h){
+  ctx.beginPath();
+  if(shape==='circle')ctx.ellipse(0,0,w/2,h/2,0,0,Math.PI*2);
+  else if(shape==='rectangle')ctx.rect(-w/2,-h/2,w,h);
+  else if(shape==='star'){for(let i=0;i<10;i++){const angle=-Math.PI/2+i*Math.PI/5,r=i%2===0?Math.min(w,h)/2:Math.min(w,h)/4.4,x=Math.cos(angle)*r,y=Math.sin(angle)*r;i?ctx.lineTo(x,y):ctx.moveTo(x,y)}ctx.closePath()}
+  else{ctx.moveTo(0,h*.42);ctx.bezierCurveTo(-w*.56,h*.05,-w*.42,-h*.45,0,-h*.16);ctx.bezierCurveTo(w*.42,-h*.45,w*.56,h*.05,0,h*.42);ctx.closePath()}
+}
+function drawDesignStudioShape(ctx,item,rect,view){designStudioShapePath(ctx,item.shape,rect.w,rect.h);ctx.lineJoin='round';ctx.lineWidth=Math.max(3,Math.min(rect.w,rect.h)*.045);ctx.strokeStyle=view==='trace'?'#171717':item.color||'#e8863a';ctx.fillStyle=view==='trace'?'transparent':item.color||'#e8863a';if(view==='trace'||item.filled===false)ctx.stroke();else ctx.fill()}
+function drawDesignStudioPaintTexture(ctx,print){
+  ctx.save();ctx.globalCompositeOperation='soft-light';ctx.lineCap='round';for(let y=print.y+7;y<print.y+print.h;y+=12){ctx.strokeStyle=y%24<12?'rgba(255,255,255,.12)':'rgba(68,48,28,.045)';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(print.x-20,y);ctx.bezierCurveTo(print.x+print.w*.3,y-5,print.x+print.w*.7,y+5,print.x+print.w+20,y-2);ctx.stroke()}ctx.restore();
+}
+function drawDesignStudioSelection(ctx,item,print){
+  const rect=designStudioElementRect(item,print);ctx.save();ctx.translate(rect.cx,rect.cy);ctx.rotate((Number(item.rotation)||0)*Math.PI/180);ctx.strokeStyle='#1698aa';ctx.lineWidth=3;ctx.setLineDash([9,7]);ctx.strokeRect(-rect.w/2,-rect.h/2,rect.w,rect.h);ctx.setLineDash([]);[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx,sy])=>{ctx.fillStyle='#fff';ctx.strokeStyle='#1698aa';ctx.lineWidth=3;ctx.beginPath();ctx.arc(sx*rect.w/2,sy*rect.h/2,9,0,Math.PI*2);ctx.fill();ctx.stroke()});ctx.restore();
+}
+function designStudioSelected(){return designStudioState.elements.find(item=>item.id===designStudioState.selectedId)||null}
+function designStudioCanvasPoint(event){const canvas=designStudioRuntime.canvas,rect=canvas.getBoundingClientRect();return{x:(event.clientX-rect.left)*canvas.width/rect.width,y:(event.clientY-rect.top)*canvas.height/rect.height}}
+function designStudioHitTest(point){
+  const print=designStudioGeometry().print;
+  for(let index=designStudioState.elements.length-1;index>=0;index--){const item=designStudioState.elements[index],rect=designStudioElementRect(item,print),angle=-(Number(item.rotation)||0)*Math.PI/180,dx=point.x-rect.cx,dy=point.y-rect.cy,lx=dx*Math.cos(angle)-dy*Math.sin(angle),ly=dx*Math.sin(angle)+dy*Math.cos(angle);if(Math.abs(lx)<=rect.w/2+10&&Math.abs(ly)<=rect.h/2+10)return{item,rect,lx,ly}}
+  return null;
+}
+function designStudioPointerDown(event){
+  if(designStudioState.view!=='edit')return;const point=designStudioCanvasPoint(event),hit=designStudioHitTest(point);
+  if(!hit){designStudioState.selectedId=null;renderDesignStudioInspector();renderDesignStudioLibrary();drawDesignStudio();return}
+  designStudioState.selectedId=hit.item.id;designStudioPushHistory();designStudioRuntime.pointerId=event.pointerId;designStudioRuntime.startPoint=point;designStudioRuntime.startElement={...hit.item};
+  const cornerDistance=Math.hypot(hit.lx-hit.rect.w/2,hit.ly-hit.rect.h/2);designStudioRuntime.dragMode=cornerDistance<34?'resize':'move';designStudioRuntime.canvas.setPointerCapture?.(event.pointerId);renderDesignStudioInspector();renderDesignStudioLibrary();drawDesignStudio();
+}
+function designStudioPointerMove(event){
+  if(!designStudioRuntime.dragMode)return;event.preventDefault();const item=designStudioSelected(),start=designStudioRuntime.startElement,point=designStudioCanvasPoint(event),print=designStudioGeometry().print;if(!item||!start)return;
+  const dx=(point.x-designStudioRuntime.startPoint.x)/print.w,dy=(point.y-designStudioRuntime.startPoint.y)/print.h;
+  if(designStudioRuntime.dragMode==='move'){item.x=Math.max(0,Math.min(1,start.x+dx));item.y=Math.max(0,Math.min(1,start.y+dy))}
+  else{const startDistance=Math.max(20,Math.hypot(designStudioRuntime.startPoint.x-(print.x+start.x*print.w),designStudioRuntime.startPoint.y-(print.y+start.y*print.h))),distance=Math.max(20,Math.hypot(point.x-(print.x+start.x*print.w),point.y-(print.y+start.y*print.h))),factor=distance/startDistance;item.w=Math.max(.08,Math.min(1.3,start.w*factor));item.h=Math.max(.06,Math.min(1.3,start.h*factor))}
+  drawDesignStudio();
+}
+function designStudioPointerUp(){designStudioRuntime.dragMode='';designStudioRuntime.pointerId=null;designStudioRuntime.startPoint=null;designStudioRuntime.startElement=null}
+function designStudioSnapshot(){return{product:designStudioState.product,size:designStudioState.size,orientation:designStudioState.orientation,elements:designStudioState.elements.map(item=>({...item})),selectedId:designStudioState.selectedId,quantity:designStudioState.quantity,notes:designStudioState.notes}}
+function restoreDesignStudioSnapshot(snapshot){Object.assign(designStudioState,{product:snapshot.product,size:snapshot.size,orientation:snapshot.orientation,elements:snapshot.elements.map(item=>({...item})),selectedId:snapshot.selectedId,quantity:snapshot.quantity,notes:snapshot.notes});designStudioState.elements.forEach(designStudioHydrateElement);renderDesignStudioPage()}
+function designStudioPushHistory(){designStudioState.history.push(designStudioSnapshot());if(designStudioState.history.length>20)designStudioState.history.shift();designStudioState.future=[];syncDesignStudioHistoryButtons()}
+function syncDesignStudioHistoryButtons(){const undo=document.querySelector('.design-studio-history button[aria-label="Annuler"]'),redo=document.querySelector('.design-studio-history button[aria-label="Rétablir"]');if(undo)undo.disabled=!designStudioState.history.length;if(redo)redo.disabled=!designStudioState.future.length}
+function designStudioUndo(){if(!designStudioState.history.length)return;designStudioState.future.push(designStudioSnapshot());restoreDesignStudioSnapshot(designStudioState.history.pop())}
+function designStudioRedo(){if(!designStudioState.future.length)return;designStudioState.history.push(designStudioSnapshot());restoreDesignStudioSnapshot(designStudioState.future.pop())}
+function setDesignStudioView(view){designStudioState.view=view;document.querySelectorAll('[data-studio-view]').forEach(button=>button.classList.toggle('active',button.dataset.studioView===view));const label=document.getElementById('designStudioViewLabel'),hint=document.getElementById('designStudioHint');if(label)label.textContent=designStudioViewLabel();if(hint)hint.textContent=designStudioViewHint();drawDesignStudio()}
+function setDesignStudioZoom(value){designStudioState.zoom=Math.max(.45,Math.min(1.05,(Number(value)||72)/100));const canvas=document.getElementById('designStudioCanvas'),label=document.getElementById('designStudioZoomValue');if(canvas)canvas.style.width=`${Math.round(1200*designStudioState.zoom)}px`;if(label)label.textContent=`${Math.round(designStudioState.zoom*100)}%`}
+function refreshDesignStudioProductUI(){const product=document.getElementById('designStudioProductTop'),price=document.getElementById('designStudioPriceTop');if(product)product.textContent=designStudioProductLabel();if(price)price.textContent='$'+toMoney(designStudioPrice());renderDesignStudioLibrary();renderDesignStudioInspector();drawDesignStudio()}
+function selectDesignStudioProduct(product){if(!designStudioProducts[product]||designStudioState.product===product)return;designStudioPushHistory();designStudioState.product=product;designStudioState.selectedId=null;refreshDesignStudioProductUI()}
+function setDesignStudioSize(size){if(!designStudioSizes[size]||designStudioState.size===size)return;designStudioPushHistory();designStudioState.size=size;refreshDesignStudioProductUI()}
+function setDesignStudioOrientation(orientation){if(!['portrait','landscape'].includes(orientation)||designStudioState.orientation===orientation)return;designStudioPushHistory();designStudioState.orientation=orientation;refreshDesignStudioProductUI()}
+function setDesignStudioQuantity(value){designStudioState.quantity=Math.max(1,Math.min(50,parseInt(value)||1))}
+function setupDesignStudioDropZone(){
+  const zone=document.getElementById('designStudioDropZone');if(!zone)return;
+  zone.ondragover=event=>{event.preventDefault();zone.classList.add('dragging')};zone.ondragleave=()=>zone.classList.remove('dragging');zone.ondrop=event=>{event.preventDefault();zone.classList.remove('dragging');processDesignStudioFiles(Array.from(event.dataTransfer?.files||[]))};
+}
+function handleDesignStudioUpload(event){processDesignStudioFiles(Array.from(event.target.files||[]));event.target.value=''}
+function setDesignStudioBusy(busy,message='Préparation de votre image...'){designStudioRuntime.busy=busy;const overlay=document.getElementById('designStudioBusy'),label=document.getElementById('designStudioBusyText');if(overlay)overlay.hidden=!busy;if(label)label.textContent=message}
+function compressDesignStudioImage(file){
+  return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=reject;reader.onload=()=>{const image=new Image();image.onerror=reject;image.onload=()=>{const max=1400,scale=Math.min(1,max/Math.max(image.width,image.height)),width=Math.max(1,Math.round(image.width*scale)),height=Math.max(1,Math.round(image.height*scale)),canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;const context=canvas.getContext('2d');context.fillStyle='#fff';context.fillRect(0,0,width,height);context.drawImage(image,0,0,width,height);resolve({data:canvas.toDataURL('image/jpeg',.86),ratio:width/height})};image.src=String(reader.result||'')};reader.readAsDataURL(file)});
+}
+async function processDesignStudioFiles(files){
+  const accepted=files.filter(file=>/^image\/(png|jpe?g|webp)$/i.test(file.type)&&file.size<=10*1024*1024),current=designStudioState.elements.filter(item=>item.type==='image').length,remaining=Math.max(0,6-current);
+  if(!accepted.length)return showToast('Choisissez une image JPG, PNG ou WEBP de moins de 10 Mo','error');if(!remaining)return showToast('Vous pouvez utiliser un maximum de six images','error');
+  const selected=accepted.slice(0,remaining);designStudioPushHistory();setDesignStudioBusy(true,selected.length>1?'Préparation de vos images...':'Préparation de votre image...');
+  try{
+    for(const file of selected){const compressed=await compressDesignStudioImage(file),traceWidth=compressed.ratio>=1?900:Math.max(220,Math.round(900*compressed.ratio)),traceHeight=compressed.ratio>=1?Math.max(220,Math.round(900/compressed.ratio)):900,trace=await traceImageToLineArt(compressed.data,traceWidth,traceHeight,{threshold:48,detail:1.08,transparent:true}),print=designStudioGeometry().print,w=.64,h=Math.max(.16,Math.min(.78,w*(print.w/print.h)/Math.max(.2,compressed.ratio))),item={id:`studio-image-${Date.now()}-${Math.floor(Math.random()*999999)}`,type:'image',name:file.name.replace(/\.[^.]+$/,''),source:compressed.data,sourceRatio:compressed.ratio,trace,x:.5,y:.5,w,h,rotation:0,opacity:100,contrast:100,brightness:100,saturation:100,traceDetail:48,fit:'contain'};designStudioState.elements.push(item);designStudioState.selectedId=item.id;designStudioHydrateElement(item)}
+    designStudioState.activePanel='images';renderDesignStudioLibrary();renderDesignStudioInspector();refreshDesignStudioProductUI();showToast(`${selected.length} image${selected.length>1?'s':''} ajoutée${selected.length>1?'s':''}`,'success');
+    if(accepted.length>remaining)showToast('Le studio accepte un maximum de six images','error');
+  }catch(error){console.error(error);showToast('Impossible de préparer cette image','error')}finally{setDesignStudioBusy(false)}
+}
+function addDesignStudioText(value='',preset='title'){
+  const input=document.getElementById('designStudioNewText'),text=String(value||input?.value||'Votre texte').trim();if(!text)return showToast('Écrivez un texte à ajouter','error');
+  designStudioPushHistory();const settings={title:{fontSize:13,fontFamily:'Outfit',w:.72,h:.18},script:{fontSize:15,fontFamily:'Caveat',w:.76,h:.2},small:{fontSize:7,fontFamily:'Outfit',w:.58,h:.12}}[preset]||{fontSize:12,fontFamily:'Outfit',w:.7,h:.18};
+  const item={id:`studio-text-${Date.now()}-${Math.floor(Math.random()*99999)}`,type:'text',text:text.slice(0,120),x:.5,y:.5,w:settings.w,h:settings.h,rotation:0,opacity:100,fontSize:settings.fontSize,fontFamily:settings.fontFamily,bold:true,color:'#1f6d78'};designStudioState.elements.push(item);designStudioState.selectedId=item.id;renderDesignStudioLibrary();renderDesignStudioInspector();drawDesignStudio();
+}
+function addDesignStudioShape(shape){
+  if(!['circle','rectangle','star','heart'].includes(shape))return;designStudioPushHistory();const item={id:`studio-shape-${Date.now()}-${Math.floor(Math.random()*99999)}`,type:'shape',shape,x:.5,y:.5,w:.28,h:shape==='rectangle'?.18:.28,rotation:0,opacity:100,color:'#e8863a',filled:true};designStudioState.elements.push(item);designStudioState.selectedId=item.id;renderDesignStudioLibrary();renderDesignStudioInspector();drawDesignStudio();
+}
+function selectDesignStudioElement(id){designStudioState.selectedId=id;designStudioState.view='edit';document.querySelectorAll('[data-studio-view]').forEach(button=>button.classList.toggle('active',button.dataset.studioView==='edit'));const label=document.getElementById('designStudioViewLabel'),hint=document.getElementById('designStudioHint');if(label)label.textContent=designStudioViewLabel();if(hint)hint.textContent=designStudioViewHint();renderDesignStudioLibrary();renderDesignStudioInspector();drawDesignStudio()}
+function updateDesignStudioElement(key,value,record=false){
+  const item=designStudioSelected();if(!item)return;if(record)designStudioPushHistory();
+  if(key==='scale'){const next=Math.max(.08,Math.min(1.3,Number(value)/100)),ratio=next/Math.max(.01,item.w);item.w=next;item.h=Math.max(.05,Math.min(1.3,item.h*ratio))}
+  else if(['rotation','opacity','contrast','brightness','saturation','traceDetail','fontSize'].includes(key))item[key]=Number(value);
+  else item[key]=value;
+  document.querySelectorAll(`[data-studio-value="${key}"]`).forEach(output=>output.textContent=`${Math.round(Number(key==='scale'?item.w*100:item[key])||0)}${key==='rotation'?'°':'%'}`);
+  if(key==='traceDetail')scheduleDesignStudioTrace(item);drawDesignStudio();
+}
+function scheduleDesignStudioTrace(item){
+  if(item.type!=='image'||!item.source)return;designStudioRuntime.traceTimers=designStudioRuntime.traceTimers||new Map();clearTimeout(designStudioRuntime.traceTimers.get(item.id));designStudioRuntime.traceTimers.set(item.id,setTimeout(async()=>{try{const ratio=Math.max(.2,Number(item.sourceRatio)||1),width=ratio>=1?900:Math.max(220,Math.round(900*ratio)),height=ratio>=1?Math.max(220,Math.round(900/ratio)):900;item.trace=await traceImageToLineArt(item.source,width,height,{threshold:Number(item.traceDetail)||48,detail:1.08,transparent:true});designStudioHydrateElement(item);drawDesignStudio()}catch{}},260));
+}
+function applyDesignStudioImagePreset(preset){const item=designStudioSelected();if(item?.type!=='image')return;designStudioPushHistory();const values={natural:[100,100,100],vivid:[122,103,145],soft:[88,108,82]}[preset]||[100,100,100];[item.contrast,item.brightness,item.saturation]=values;renderDesignStudioInspector();drawDesignStudio()}
+function alignDesignStudioElement(axis){const item=designStudioSelected();if(!item)return;designStudioPushHistory();if(axis==='horizontal')item.x=.5;else item.y=.5;drawDesignStudio()}
+function moveDesignStudioElement(direction){const index=designStudioState.elements.findIndex(item=>item.id===designStudioState.selectedId);if(index<0)return;const target=Math.max(0,Math.min(designStudioState.elements.length-1,index+(direction>0?1:-1)));if(target===index)return;designStudioPushHistory();const [item]=designStudioState.elements.splice(index,1);designStudioState.elements.splice(target,0,item);renderDesignStudioLibrary();drawDesignStudio()}
+function duplicateDesignStudioElement(){const item=designStudioSelected();if(!item)return;designStudioPushHistory();const copy={...item,id:`${item.type}-copy-${Date.now()}-${Math.floor(Math.random()*99999)}`,name:item.name?`${item.name} copie`:item.name,x:Math.min(.92,item.x+.05),y:Math.min(.92,item.y+.05)};designStudioState.elements.push(copy);designStudioState.selectedId=copy.id;designStudioHydrateElement(copy);renderDesignStudioLibrary();renderDesignStudioInspector();refreshDesignStudioProductUI()}
+function removeDesignStudioElement(){const index=designStudioState.elements.findIndex(item=>item.id===designStudioState.selectedId);if(index<0)return;designStudioPushHistory();designStudioState.elements.splice(index,1);designStudioState.selectedId=designStudioState.elements[Math.max(0,index-1)]?.id||null;renderDesignStudioLibrary();renderDesignStudioInspector();refreshDesignStudioProductUI()}
+function waitForDesignStudioImages(){
+  const waits=[];designStudioState.elements.filter(item=>item.type==='image').forEach(item=>{designStudioHydrateElement(item);['source','trace'].forEach(variant=>{const image=designStudioRuntime.images.get(designStudioImageKey(item,variant));if(image&&!image.complete)waits.push(new Promise(resolve=>{const done=()=>resolve();image.addEventListener('load',done,{once:true});image.addEventListener('error',done,{once:true})}))})});return Promise.all(waits);
+}
+async function exportDesignStudioView(view,crop=false){
+  await waitForDesignStudioImages();const full=document.createElement('canvas');full.width=1200;full.height=900;renderDesignStudioScene(full.getContext('2d'),view,false);
+  const output=document.createElement('canvas');if(crop){const print=designStudioGeometry().print;output.width=Math.round(print.w*1.6);output.height=Math.round(print.h*1.6);const context=output.getContext('2d');context.fillStyle='#fffdf9';context.fillRect(0,0,output.width,output.height);context.drawImage(full,print.x,print.y,print.w,print.h,0,0,output.width,output.height)}else{output.width=full.width;output.height=full.height;output.getContext('2d').drawImage(full,0,0)}
+  return view==='trace'?output.toDataURL('image/png'):output.toDataURL('image/jpeg',.88);
+}
+function designStudioProductionElements(){return designStudioState.elements.map(item=>{const base={id:item.id,type:item.type,x:item.x,y:item.y,w:item.w,h:item.h,rotation:item.rotation||0,opacity:item.opacity??100};if(item.type==='image')return{...base,name:item.name||'Image',fit:item.fit||'contain',contrast:item.contrast||100,brightness:item.brightness||100,saturation:item.saturation||100,traceDetail:item.traceDetail||48};if(item.type==='text')return{...base,text:item.text||'',fontFamily:item.fontFamily||'Outfit',fontSize:item.fontSize||10,color:item.color||'#1f6d78'};return{...base,shape:item.shape,color:item.color||'#e8863a',filled:item.filled!==false}})}
+async function addDesignStudioToCart(goCheckout=false){
+  if(designStudioRuntime.busy)return;if(!designStudioState.elements.length)return showToast('Ajoutez une image, un texte ou une forme à votre création','error');
+  const button=document.getElementById('designStudioCartButton');if(button){button.disabled=true;button.querySelector('b').textContent='Préparation...'}setDesignStudioBusy(true,'Création de vos fichiers de production...');
+  try{
+    const [paintedPreview,tracePreview,colorArtwork]=await Promise.all([exportDesignStudioView('painted',false),exportDesignStudioView('trace',true),exportDesignStudioView('edit',true)]),isBag=designStudioState.product==='bag',type=isBag?'custom-bag':'custom-photo',id=`${type}-${Date.now()}`,sizeInfo=designStudioSizes[designStudioState.size]||designStudioSizes.moyen,imageCount=designStudioState.elements.filter(item=>item.type==='image').length,textCount=designStudioState.elements.filter(item=>item.type==='text').length;
+    cart.push({id,type,name:isBag?'Sac personnalisé créé dans le Studio ARTY':`Toile personnalisée ${sizeInfo.label} créée dans le Studio ARTY`,price:designStudioPrice(),image:paintedPreview,qty:designStudioState.quantity,customData:{kind:'design-studio',studioVersion:1,productType:designStudioState.product,productLabel:designStudioProductLabel(),size:isBag?'standard':designStudioState.size,sizeLabel:isBag?'Format sac standard':sizeInfo.label,orientation:isBag?'verticale':designStudioState.orientation==='landscape'?'horizontale':'verticale',notes:designStudioState.notes||'',imageCount,textCount,elementCount:designStudioState.elements.length,paintedPreview,tracePreview,colorArtwork,elements:designStudioProductionElements()}});
+    saveCart();updateCartUI();showToast(`${isBag?'Sac':'Toile'} personnalisé${isBag?'':'e'} ajouté${isBag?'':'e'} au panier`,'success');if(goCheckout)setTimeout(()=>goToCheckout(),250);
+  }catch(error){console.error(error);showToast('Impossible de préparer votre création','error')}finally{setDesignStudioBusy(false);if(button){button.disabled=false;button.querySelector('b').textContent='Ajouter au panier'}}
+}
+function buyDesignStudioNow(){addDesignStudioToCart(true)}
+document.addEventListener('keydown',event=>{if((window.location.hash||'')!=='#/studio'||event.target?.matches?.('input,textarea,select,[contenteditable="true"]'))return;if((event.key==='Delete'||event.key==='Backspace')&&designStudioState.selectedId){event.preventDefault();removeDesignStudioElement()}if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();event.shiftKey?designStudioRedo():designStudioUndo()}});
