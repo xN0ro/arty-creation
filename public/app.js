@@ -3,7 +3,7 @@ let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],tea
 let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,ticketPaymentsConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventType:'wedding',guests:20,date:'',location:'',customText:'',selected:{},hostName:'',notes:''};
 let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
-let siteAnnouncement={enabled:false,message:''},ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
+let siteAnnouncement={enabled:false,message:''},transactionalEmailConfigured=false,ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
 
 document.addEventListener('DOMContentLoaded',async()=>{
   document.addEventListener('mousedown',e=>{
@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;ticketPaymentsConfigured=!!cfg.ticketPaymentsConfigured;ticketEmailConfigured=!!cfg.ticketEmailConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
+  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;ticketPaymentsConfigured=!!cfg.ticketPaymentsConfigured;transactionalEmailConfigured=!!cfg.emailConfigured;ticketEmailConfigured=!!cfg.ticketEmailConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
   await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles(),loadBundleDealRules()]);
   initNavbar();updateAuthUI();updateCartUI();renderSiteAnnouncement();initGoogleSignIn();initAuthValidation();
@@ -52,6 +52,8 @@ function handleRoute(){
   else if(h==='#/tutorials'){show('page-tutorials');renderTutorialsPage();window.scrollTo(0,0)}
   else if(h==='#/checkout'){show('page-checkout');renderCheckoutPage();window.scrollTo(0,0)}
   else if(h.startsWith('#/payment-complete')){show('page-checkout');renderPaymentCompletePage();window.scrollTo(0,0)}
+  else if(h.startsWith('#/reset-password')){show('page-home');renderHomePage();const token=new URLSearchParams(h.split('?')[1]||'').get('token')||'';openModal('auth','reset');const input=document.getElementById('resetPasswordToken');if(input)input.value=token;if(!token)showToast('Le lien de réinitialisation est incomplet','error');window.scrollTo(0,0)}
+  else if(h==='#/forgot-password'){show('page-home');renderHomePage();openModal('auth','forgot');window.scrollTo(0,0)}
   else if(h==='#/privacy'){show('page-privacy');initScrollEffects();window.scrollTo(0,0)}
   else if(h==='#/policies'){show('page-policies');initScrollEffects();window.scrollTo(0,0)}
   else if(h.startsWith('#/party')){show('page-party');renderPartyPage();handlePartySection(h);window.scrollTo(0,0)}
@@ -722,18 +724,23 @@ function renderPaymentCompletePage(){
 function openModal(t,tab){
   document.getElementById(t+'Modal').classList.add('active');
   document.body.style.overflow='hidden';
-  if(tab==='register')switchAuthTab('register');else if(t==='auth')switchAuthTab('login');
+  if(t==='auth')switchAuthTab(['register','forgot','reset'].includes(tab)?tab:'login');
   if(t==='auth')setTimeout(()=>initGoogleSignIn(),120);
 }
 function closeModal(t){document.getElementById(t+'Modal').classList.remove('active');document.body.style.overflow=''}
 function switchAuthTab(t){
-  document.getElementById('tabLogin').classList.toggle('active',t==='login');
-  document.getElementById('tabRegister').classList.toggle('active',t==='register');
-  document.getElementById('loginForm').style.display=t==='login'?'block':'none';
-  document.getElementById('registerForm').style.display=t==='register'?'block':'none';
-  document.getElementById('authModalTitle').textContent=t==='login'?'Bienvenue':'Créer un compte';
-  document.getElementById('authModalSub').textContent=t==='login'?'Connectez-vous à votre compte.':'Inscription rapide et sécurisée.';
-  updatePasswordMatchUI();
+  const active=['login','register','forgot','reset'].includes(t)?t:'login';
+  document.getElementById('tabLogin')?.classList.toggle('active',active==='login');
+  document.getElementById('tabRegister')?.classList.toggle('active',active==='register');
+  const tabs=document.querySelector('#authModal .modal-tabs');if(tabs)tabs.style.display=['login','register'].includes(active)?'flex':'none';
+  const google=document.getElementById('googleBtnWrap'),divider=document.querySelector('#authModal .divider');
+  if(google)google.style.display=['login','register'].includes(active)?'block':'none';
+  if(divider)divider.style.display=['login','register'].includes(active)?'flex':'none';
+  ['login','register','forgotPassword','resetPassword'].forEach(name=>{const el=document.getElementById(name+'Form');if(el)el.style.display=name===(active==='forgot'?'forgotPassword':active==='reset'?'resetPassword':active)?'block':'none'});
+  const copy={login:['Bienvenue','Connectez-vous à votre compte.'],register:['Créer un compte','Inscription rapide et sécurisée.'],forgot:['Mot de passe oublié','Recevez un lien sécurisé par courriel.'],reset:['Nouveau mot de passe','Choisissez votre nouveau mot de passe.']}[active];
+  document.getElementById('authModalTitle').textContent=copy[0];
+  document.getElementById('authModalSub').textContent=copy[1];
+  if(active==='register')updatePasswordMatchUI();
 }
 async function doLogin(){
   const e=document.getElementById('loginEmail').value.trim().toLowerCase(),p=document.getElementById('loginPassword').value;
@@ -760,7 +767,21 @@ async function doRegister(){
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))return showToast('Entrez un courriel valide','error');
   if(p.length<6)return showToast('Mot de passe: 6 caractères minimum','error');
   if(p!==pc){updatePasswordMatchUI();return showToast('Les mots de passe ne correspondent pas','error')}
-  try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p,confirmPassword:pc})});const d=await r.json();if(!r.ok)return showToast(d.error||'Inscription impossible','error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(`Bienvenue chez Arty!, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}
+  try{const r=await fetch('/api/users/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,password:p,confirmPassword:pc})});const d=await r.json();if(!r.ok)return showToast(d.error||'Inscription impossible','error');authToken=d.token;currentUser=d.user;localStorage.setItem('arty_token',authToken);localStorage.setItem('arty_user',JSON.stringify(currentUser));updateAuthUI();closeModal('auth');refreshCheckoutIfOpen();showToast(d.emailStatus==='sent'?'Compte créé. Un courriel de bienvenue vous a été envoyé.':`Bienvenue chez ARTY, ${currentUser.name}!`,'success')}catch{showToast('Erreur','error')}
+}
+async function requestPasswordReset(){
+  const email=document.getElementById('forgotEmail')?.value.trim().toLowerCase(),button=document.getElementById('forgotPasswordButton');
+  if(!email||!validateEmail(email))return showToast('Entrez un courriel valide','error');
+  if(button){button.disabled=true;button.textContent='Envoi en cours...'}
+  try{const r=await fetch('/api/users/forgot-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Envoi impossible','error');showToast(d.message||'Si le compte existe, le lien a été envoyé.','success');switchAuthTab('login');document.getElementById('loginEmail').value=email}catch{showToast('Erreur de connexion','error')}finally{if(button){button.disabled=false;button.textContent='Envoyer le lien'}}
+}
+async function submitPasswordReset(){
+  const token=document.getElementById('resetPasswordToken')?.value.trim(),password=document.getElementById('resetPassword')?.value||'',confirmPassword=document.getElementById('resetPasswordConfirm')?.value||'',button=document.getElementById('resetPasswordButton');
+  if(!token)return showToast('Lien de réinitialisation invalide','error');
+  if(password.length<6)return showToast('Le mot de passe doit contenir au moins 6 caractères','error');
+  if(password!==confirmPassword)return showToast('Les mots de passe ne correspondent pas','error');
+  if(button){button.disabled=true;button.textContent='Modification...'}
+  try{const r=await fetch('/api/users/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token,password,confirmPassword})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||'Modification impossible','error');history.replaceState(null,'',window.location.pathname+'#/');switchAuthTab('login');document.getElementById('resetPassword').value='';document.getElementById('resetPasswordConfirm').value='';showToast(d.message||'Mot de passe modifié','success')}catch{showToast('Erreur de connexion','error')}finally{if(button){button.disabled=false;button.textContent='Modifier le mot de passe'}}
 }
 function logout(s){fetch('/api/users/logout',{method:'POST',headers:authH()}).catch(()=>{});authToken=null;currentUser=null;localStorage.removeItem('arty_token');localStorage.removeItem('arty_user');updateAuthUI();navigate('#/');if(!s)showToast('Déconnecté','success')}
 
@@ -2295,7 +2316,7 @@ function renderAdminEvents(){
   const bookingContacts=selectedBookings.map(booking=>`<article class="admin-booking-contact"><div><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span><small>Accès pour ${booking.guests} personne${booking.guests>1?'s':''} · Total $${toMoney(booking.total)}</small></div><div><span class="admin-email-state ${booking.emailDelivery?.status==='sent'?'sent':'attention'}">${booking.emailDelivery?.status==='sent'?'Courriel envoyé':'Courriel à vérifier'}</span><button type="button" data-resend-booking="${safeAttr(booking.id)}" onclick="resendAdminTickets('${safeAttr(booking.id)}')">Renvoyer le courriel</button></div></article>`).join('');
   const requestRows=(eventRequests||[]).map(request=>`<tr><td><strong>${safeText(request.name)}</strong><br><small>${safeText(request.email)}${request.phone?` · ${safeText(request.phone)}`:''}</small></td><td>${safeText(request.eventType)}<br><small>${request.preferredDate?safeText(request.preferredDate):'Date flexible'} · ${Number(request.guests)||'?'} pers.</small></td><td>${safeText(request.location||'À confirmer')}</td><td><span class="admin-status-badge">${safeText(request.status||'nouvelle')}</span></td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="updateEventRequestStatus(${Number(request.id)},'contactée')">Contactée</button><button class="admin-btn admin-btn-delete" onclick="deleteEventRequest(${Number(request.id)})">Supprimer</button></div></td></tr>`).join('');
   panel.innerHTML=`<div class="admin-events-heading"><div><span>Billetterie et événements</span><h3>Gestion des invités</h3><p>Gérez les événements, retrouvez chaque participant et confirmez les entrées à partir de la même section.</p></div><button class="btn btn-orange" type="button" onclick="document.getElementById('adminEventEditor').open=true;document.getElementById('adminEventEditor').scrollIntoView({behavior:'smooth'})">Créer un événement</button></div>
-    ${!ticketEmailConfigured?'<div class="admin-ticket-config"><strong>Envoi automatique des billets à configurer</strong><p>Ajoutez RESEND_API_KEY, TICKET_EMAIL_FROM et ARTY_PUBLIC_URL dans Render pour activer les courriels.</p></div>':''}
+    ${!transactionalEmailConfigured?'<div class="admin-ticket-config"><strong>Courriels automatiques à configurer</strong><p>Ajoutez RESEND_API_KEY, EMAIL_FROM, EMAIL_REPLY_TO et ARTY_PUBLIC_URL dans Render pour activer les courriels de compte, commandes, suivi et billets.</p></div>':''}
     <div class="admin-event-dashboard admin-ticket-dashboard"><div class="admin-event-card"><span>${adminEvents.filter(event=>(event.status||'published')==='published').length}</span><p>Événements publiés</p></div><div class="admin-event-card"><span>${soldAdmissions}</span><p>Places vendues</p></div><div class="admin-event-card"><span>${checkedAdmissions}</span><p>Entrées confirmées</p></div><div class="admin-event-card"><span>${eventRequests.filter(request=>(request.status||'nouvelle')==='nouvelle').length}</span><p>Demandes privées</p></div></div>
     <section class="admin-event-list"><div class="admin-section-title"><h3>Événements</h3><p>Sélectionnez un événement pour ouvrir sa liste d’invités.</p></div><div class="admin-managed-events">${eventCards||'<div class="admin-empty-panel">Aucun événement créé.</div>'}</div></section>
     <section class="admin-guest-manager" id="adminGuestManager"><div class="admin-guest-head"><div><span>Contrôle des entrées</span><h3>${safeText(selectedEvent?.title||'Liste d’invités')}</h3><p>${selectedEvent?`${safeText(formatEventDate(selectedEvent,true))} · ${safeText(selectedEvent.time||'')} · ${safeText(selectedEvent.location||'Lieu à confirmer')}`:'Créez un événement pour commencer.'}</p></div><div class="admin-guest-totals"><strong>${selectedCounts.checked}<small>/ ${selectedCounts.total}</small></strong><span>présences</span></div></div>

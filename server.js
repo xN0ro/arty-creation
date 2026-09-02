@@ -33,6 +33,7 @@ const DEFAULT_DB = {
   bookings: [],
   eventRequests: [],
   sessions: [],
+  passwordResetTokens: [],
   discounts: [],
   refunds: [],
   supportRequests: [],
@@ -124,6 +125,7 @@ function getCollectionCountsSafe() {
       orders: db.orders.length,
       bundles: db.bundles.length,
       sessions: db.sessions.length,
+      passwordResetTokens: db.passwordResetTokens.length,
       discounts: db.discounts.length,
       refunds: db.refunds.length,
       supportRequests: (db.supportRequests||[]).length,
@@ -151,6 +153,7 @@ function normalizeDB(db = {}) {
     bookings: Array.isArray(db.bookings) ? db.bookings : [],
     eventRequests: Array.isArray(db.eventRequests) ? db.eventRequests : [],
     sessions: Array.isArray(db.sessions) ? db.sessions : [],
+    passwordResetTokens: Array.isArray(db.passwordResetTokens) ? db.passwordResetTokens : [],
     discounts: Array.isArray(db.discounts) ? db.discounts : [],
     refunds: Array.isArray(db.refunds) ? db.refunds : [],
     supportRequests: Array.isArray(db.supportRequests) ? db.supportRequests : [],
@@ -341,6 +344,7 @@ app.get('/api/config', (req, res) => {
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
     stripeConfigured: Boolean(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY),
     ticketPaymentsConfigured: isTicketPaymentEnabled(),
+    emailConfigured: transactionalEmailIsConfigured(),
     ticketEmailConfigured: ticketEmailIsConfigured(),
     announcement: db.announcement || DEFAULT_DB.announcement
   });
@@ -387,6 +391,10 @@ function publicUserAccount(user) {
     createdAt: user.createdAt || ''
   };
 }
+function cleanExpiredPasswordResets(db) {
+  const now = Date.now();
+  db.passwordResetTokens = (db.passwordResetTokens || []).filter(item => !item.usedAt && new Date(item.expiresAt || 0).getTime() > now);
+}
 app.post('/api/users/register', async (req, res) => {
   try {
     const db = readDB();
@@ -405,7 +413,8 @@ app.post('/api/users/register', async (req, res) => {
     const user = { id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', linkedProviders:['local'], picture: '', phone: '', defaultAddress: normalizeAccountAddress(), createdAt: new Date().toISOString() };
     db.users.push(user); writeDB(db);
     const token = createToken(user);
-    res.json({ success: true, token, user: publicUserAccount(user) });
+    const emailResult = await sendAccountWelcomeEmail(user);
+    res.json({ success: true, token, user: publicUserAccount(user), emailStatus:emailResult.status });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
@@ -418,7 +427,8 @@ app.post('/api/users/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Courriel ou mot de passe invalide' });
     if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: 'Courriel ou mot de passe invalide' });
     const token = createToken(user);
-    res.json({ success: true, token, user: publicUserAccount(user) });
+    const emailResult = await sendLoginAlertEmail(user);
+    res.json({ success: true, token, user: publicUserAccount(user), emailStatus:emailResult.status });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Erreur serveur' }); }
 });
 
@@ -429,6 +439,7 @@ app.post('/api/users/google', async (req, res) => {
     db.users = db.users || [];
     let user = db.users.find(u => String(u.email || '').toLowerCase() === g.email);
     const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(g.email);
+    const isNewAccount = !user;
     if (!user) {
       user = { id: Date.now(), name:g.name, email:g.email, password:'', role:isAdmin?'admin':'user', provider:'google', linkedProviders:['google'], picture:g.picture||'', phone:'', defaultAddress:normalizeAccountAddress(), createdAt:new Date().toISOString(), googleLinkedAt:new Date().toISOString() };
       db.users.push(user);
@@ -441,7 +452,8 @@ app.post('/api/users/google', async (req, res) => {
     }
     writeDB(db);
     const token = createToken(user);
-    res.json({ success: true, token, user: publicUserAccount(user) });
+    const emailResult = isNewAccount ? await sendAccountWelcomeEmail(user) : await sendLoginAlertEmail(user);
+    res.json({ success: true, token, user: publicUserAccount(user), emailStatus:emailResult.status });
   } catch (err) { res.status(401).json({ error: 'Échec Google: ' + err.message }); }
 });
 
@@ -455,6 +467,61 @@ app.post('/api/users/logout', (req, res) => {
   }
   res.json({success:true});
 });
+app.post('/api/users/forgot-password', async (req, res) => {
+  const genericResponse = { success:true, message:'Si un compte utilisant ce courriel existe, un lien de réinitialisation a été envoyé.' };
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!validEmail(email)) return res.json(genericResponse);
+    const db = readDB();
+    cleanExpiredPasswordResets(db);
+    const user = (db.users || []).find(item => String(item.email || '').toLowerCase() === email && item.provider === 'local');
+    if (!user) { writeDB(db); return res.json(genericResponse); }
+    const recent = (db.passwordResetTokens || []).find(item => item.userId === user.id && Date.now() - new Date(item.createdAt || 0).getTime() < 60000);
+    if (recent) { writeDB(db); return res.json(genericResponse); }
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const now = new Date();
+    db.passwordResetTokens.push({
+      tokenHash:hashToken(rawToken),
+      userId:user.id,
+      createdAt:now.toISOString(),
+      expiresAt:new Date(now.getTime() + 30 * 60 * 1000).toISOString(),
+      usedAt:''
+    });
+    writeDB(db);
+    await sendPasswordResetEmail(user, rawToken);
+    res.json(genericResponse);
+  } catch (err) {
+    console.error('Password reset request error:', err);
+    res.json(genericResponse);
+  }
+});
+app.post('/api/users/reset-password', async (req, res) => {
+  try {
+    const token = String(req.body.token || '').trim();
+    const password = String(req.body.password || '');
+    const confirmPassword = String(req.body.confirmPassword || '');
+    if (!token) return res.status(400).json({ error:'Lien de réinitialisation invalide' });
+    if (password.length < 6) return res.status(400).json({ error:'Le mot de passe doit contenir au moins 6 caractères' });
+    if (password !== confirmPassword) return res.status(400).json({ error:'Les mots de passe ne correspondent pas' });
+    const db = readDB();
+    cleanExpiredPasswordResets(db);
+    const tokenHash = hashToken(token);
+    const reset = (db.passwordResetTokens || []).find(item => item.tokenHash === tokenHash && !item.usedAt);
+    if (!reset) return res.status(400).json({ error:'Ce lien est invalide ou expiré. Demandez un nouveau lien.' });
+    const user = (db.users || []).find(item => item.id === reset.userId && item.provider === 'local');
+    if (!user) return res.status(400).json({ error:'Compte introuvable' });
+    user.password = await bcrypt.hash(password, 10);
+    reset.usedAt = new Date().toISOString();
+    db.passwordResetTokens = (db.passwordResetTokens || []).filter(item => item.userId !== user.id || item.tokenHash === tokenHash);
+    db.sessions = (db.sessions || []).filter(item => item.userId !== user.id);
+    writeDB(db);
+    const emailResult = await sendPasswordChangedEmail(user);
+    res.json({ success:true, message:'Votre mot de passe a été modifié. Vous pouvez maintenant vous connecter.', emailStatus:emailResult.status });
+  } catch (err) {
+    console.error('Password reset error:', err);
+    res.status(500).json({ error:'Impossible de modifier le mot de passe' });
+  }
+});
 app.get('/api/users/me', auth, (req, res) => { const u = readDB().users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:'Non trouvé'}); res.json(publicUserAccount(u)); });
 app.put('/api/users/me', auth, async (req, res) => {
   const db = readDB(); const idx = db.users.findIndex(u=>u.id===req.session.userId); if(idx===-1) return res.status(404).json({error:'Non trouvé'});
@@ -464,14 +531,17 @@ app.put('/api/users/me', auth, async (req, res) => {
   db.users[idx].name = cleanName;
   db.users[idx].phone = String(phone || '').replace(/\s+/g, ' ').trim().slice(0, 30);
   db.users[idx].defaultAddress = normalizeAccountAddress(defaultAddress, db.users[idx].defaultAddress);
+  let passwordChanged = false;
   if(newPassword && db.users[idx].provider==='local') {
     if(!currentPassword) return res.status(400).json({error:'Mot de passe actuel requis'});
     if(!(await bcrypt.compare(currentPassword,db.users[idx].password))) return res.status(400).json({error:'Mot de passe actuel incorrect'});
     if(String(newPassword).length < 6) return res.status(400).json({error:'Le nouveau mot de passe doit contenir au moins 6 caractères'});
     db.users[idx].password = await bcrypt.hash(newPassword,10);
+    passwordChanged = true;
   }
   writeDB(db); const u=db.users[idx];
-  res.json({success:true,user:publicUserAccount(u)});
+  const emailResult = passwordChanged ? await sendPasswordChangedEmail(u) : { status:'not_needed' };
+  res.json({success:true,user:publicUserAccount(u),emailStatus:emailResult.status});
 });
 
 
@@ -696,7 +766,7 @@ app.post('/api/stripe/confirm-order', optionalAuth, async (req, res) => {
     if (syncedOrder?.paymentStatus === 'paid') ensurePaidOrderBookings(db, syncedOrder);
     if (syncedOrder?.paymentStatus === 'cancelled') { releaseEventSeatsForOrder(db, syncedOrder); cancelOrderTicketBookings(db, syncedOrder); }
     writeDB(db);
-    const delivery = syncedOrder?.paymentStatus === 'paid' ? await deliverPaidOrderTickets(syncedOrder.id, 'stripe-confirmation') : { status:'not_paid', tickets:[] };
+    const delivery = syncedOrder?.paymentStatus === 'paid' ? await deliverPaidOrderCommunications(syncedOrder.id, 'stripe-confirmation') : { status:'not_paid', tickets:[] };
     const latestDB = readDB();
     const updated = (latestDB.orders || []).find(o => String(o.id) === orderId) || order;
     res.json({ success: true, order: updated, stripeStatus: pi.status, emailStatus:delivery.status, tickets:delivery.tickets });
@@ -718,7 +788,89 @@ function normalizePublicUrl() {
   const value = String(process.env.ARTY_PUBLIC_URL || process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '');
   return /^https?:\/\//i.test(value) ? value : '';
 }
-function ticketEmailIsConfigured() { return Boolean(process.env.RESEND_API_KEY && process.env.TICKET_EMAIL_FROM && normalizePublicUrl()); }
+function emailFromAddress() { return String(process.env.EMAIL_FROM || process.env.TICKET_EMAIL_FROM || '').trim(); }
+function emailReplyToAddress() { return String(process.env.EMAIL_REPLY_TO || process.env.TICKET_EMAIL_REPLY_TO || '').trim(); }
+function transactionalEmailIsConfigured() { return Boolean(process.env.RESEND_API_KEY && emailFromAddress() && normalizePublicUrl()); }
+function ticketEmailIsConfigured() { return transactionalEmailIsConfigured(); }
+function emailDate(value = new Date()) {
+  return new Date(value).toLocaleString('fr-CA', { dateStyle:'long', timeStyle:'short', timeZone:process.env.ARTY_TIME_ZONE || 'America/Toronto' });
+}
+function emailShell({ title, intro = '', content = '', ctaLabel = '', ctaUrl = '', footer = 'Vous recevez ce courriel parce qu’une action a été effectuée sur le site ARTY.' }) {
+  const action = ctaLabel && ctaUrl ? `<div style="margin:26px 0;text-align:center"><a href="${escapeEmailHTML(ctaUrl)}" style="display:inline-block;padding:13px 24px;border-radius:999px;background:#e8863a;color:#fff;text-decoration:none;font-weight:800">${escapeEmailHTML(ctaLabel)}</a></div>` : '';
+  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY CRÉATION</div><h1 style="margin:12px 0 4px;font-size:28px">${escapeEmailHTML(title)}</h1>${intro?`<p style="margin:0;opacity:.94;line-height:1.6">${escapeEmailHTML(intro)}</p>`:''}</div><div style="padding:28px;background:#fffdf9;border-radius:0 0 22px 22px"><div style="font-size:15px;line-height:1.7;color:#4f463d">${content}</div>${action}<p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #e8e2d9;font-size:12px;line-height:1.6;color:#75695c">${escapeEmailHTML(footer)}</p></div></div></body></html>`;
+}
+function sendTransactionalEmail({ to, subject, html, idempotencyKey }) {
+  return sendResendEmail({
+    from:emailFromAddress(),
+    to:[String(to || '').trim().toLowerCase()],
+    subject,
+    html,
+    ...(emailReplyToAddress() ? { reply_to:emailReplyToAddress() } : {})
+  }, idempotencyKey);
+}
+function sendAccountWelcomeEmail(user) {
+  const profileUrl = `${normalizePublicUrl()}/#/profile`;
+  return sendTransactionalEmail({
+    to:user.email,
+    subject:'Bienvenue chez ARTY — votre compte est prêt',
+    idempotencyKey:`account-welcome-${user.id}`,
+    html:emailShell({
+      title:'Bienvenue chez ARTY',
+      intro:'Votre compte a été créé avec succès.',
+      content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><p>Vous pouvez maintenant consulter vos commandes, retrouver vos billets et contacter notre équipe depuis votre espace client.</p>`,
+      ctaLabel:'Accéder à mon compte',
+      ctaUrl:profileUrl,
+      footer:'Si vous n’avez pas créé ce compte, répondez à ce courriel pour nous prévenir.'
+    })
+  });
+}
+function sendLoginAlertEmail(user) {
+  const resetUrl = `${normalizePublicUrl()}/#/forgot-password`;
+  return sendTransactionalEmail({
+    to:user.email,
+    subject:'Nouvelle connexion à votre compte ARTY',
+    idempotencyKey:`login-${user.id}-${Date.now()}`,
+    html:emailShell({
+      title:'Nouvelle connexion',
+      intro:'Une connexion à votre compte ARTY vient d’être effectuée.',
+      content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><div style="padding:16px;border-radius:14px;background:#eefafa"><strong>Date et heure</strong><br>${escapeEmailHTML(emailDate())}</div><p>Si c’était bien vous, aucune action n’est nécessaire.</p>`,
+      ctaLabel:'Sécuriser mon compte',
+      ctaUrl:resetUrl,
+      footer:'Si vous ne reconnaissez pas cette connexion, modifiez immédiatement votre mot de passe.'
+    })
+  });
+}
+function sendPasswordResetEmail(user, token) {
+  const resetUrl = `${normalizePublicUrl()}/#/reset-password?token=${encodeURIComponent(token)}`;
+  return sendTransactionalEmail({
+    to:user.email,
+    subject:'Réinitialisation de votre mot de passe ARTY',
+    idempotencyKey:`password-reset-${hashToken(token).slice(0,24)}`,
+    html:emailShell({
+      title:'Réinitialiser votre mot de passe',
+      intro:'Nous avons reçu une demande de nouveau mot de passe.',
+      content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><p>Ce lien est valide pendant <strong>30 minutes</strong> et ne peut être utilisé qu’une seule fois.</p>`,
+      ctaLabel:'Créer un nouveau mot de passe',
+      ctaUrl:resetUrl,
+      footer:'Si vous n’avez pas demandé cette modification, ignorez ce courriel. Votre mot de passe actuel restera valide.'
+    })
+  });
+}
+function sendPasswordChangedEmail(user) {
+  return sendTransactionalEmail({
+    to:user.email,
+    subject:'Votre mot de passe ARTY a été modifié',
+    idempotencyKey:`password-changed-${user.id}-${Date.now()}`,
+    html:emailShell({
+      title:'Mot de passe modifié',
+      intro:'La sécurité de votre compte a été mise à jour.',
+      content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><p>Votre mot de passe a été modifié le <strong>${escapeEmailHTML(emailDate())}</strong>.</p>`,
+      ctaLabel:'Accéder au site ARTY',
+      ctaUrl:normalizePublicUrl(),
+      footer:'Si vous n’avez pas effectué cette modification, répondez immédiatement à ce courriel.'
+    })
+  });
+}
 function createTicketCode(db, eventId) {
   const used = new Set((db.bookings || []).flatMap(booking => (booking.tickets || []).map(ticket => ticket.code)));
   let code = '';
@@ -810,7 +962,7 @@ function buildTicketEmailHTML(booking, event) {
 }
 function sendResendEmail(payload, idempotencyKey) {
   if (process.env.ARTY_EMAIL_MODE === 'log') return Promise.resolve({ status: 'sent', id: `log-${Date.now()}` });
-  if (!ticketEmailIsConfigured()) return Promise.resolve({ status: 'not_configured', error: 'Configuration courriel incomplète' });
+  if (!transactionalEmailIsConfigured()) return Promise.resolve({ status: 'not_configured', error: 'Configuration courriel incomplète' });
   const body = JSON.stringify(payload);
   return new Promise(resolve => {
     const request = https.request({ hostname:'api.resend.com', path:'/emails', method:'POST', headers:{ Authorization:`Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type':'application/json', 'Content-Length':Buffer.byteLength(body), 'Idempotency-Key':idempotencyKey } }, response => {
@@ -830,11 +982,11 @@ function sendResendEmail(payload, idempotencyKey) {
 async function deliverBookingTickets(booking, event, reason = 'confirmation') {
   const attempt = Number(booking.emailDelivery?.attempts || 0) + 1;
   const result = await sendResendEmail({
-    from: process.env.TICKET_EMAIL_FROM,
+    from: emailFromAddress(),
     to: [booking.email],
-    subject: `Vos billets ARTY — ${event?.title || 'Événement'}`,
+    subject: `Votre billet ARTY — ${event?.title || 'Événement'}`,
     html: buildTicketEmailHTML(booking, event),
-    ...(process.env.TICKET_EMAIL_REPLY_TO ? { reply_to: process.env.TICKET_EMAIL_REPLY_TO } : {})
+    ...(emailReplyToAddress() ? { reply_to:emailReplyToAddress() } : {})
   }, `ticket-${reason}-${booking.id}-${attempt}`);
   booking.emailDelivery = { status:result.status, provider:'resend', providerId:result.id || '', error:result.error || '', attempts:attempt, lastAttemptAt:new Date().toISOString(), sentAt:result.status === 'sent' ? new Date().toISOString() : (booking.emailDelivery?.sentAt || '') };
   return result;
@@ -946,6 +1098,109 @@ async function deliverPaidOrderTickets(orderId, reason = 'payment') {
   const finalDB = readDB();
   const statuses = (finalDB.bookings || []).filter(item => (order.ticketBookingIds || []).map(String).includes(String(item.id))).map(item => item.emailDelivery?.status || 'pending');
   return { status:statuses.length && statuses.every(status => status === 'sent') ? 'sent' : (statuses[0] || 'not_sent'), tickets:issuedTickets };
+}
+
+function orderEmailRecipient(order) {
+  return String(order?.customer?.email || order?.guestEmail || '').trim().toLowerCase();
+}
+function orderEmailItemsHTML(order) {
+  return (order.items || []).map(item => {
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const lineTotal = Number(item.lineTotal ?? ((Number(item.price) || 0) * qty));
+    const quantityLabel = item.type === 'event-ticket' ? `Accès pour ${qty} personne${qty > 1 ? 's' : ''}` : `Quantité : ${qty}`;
+    return `<div style="display:flex;justify-content:space-between;gap:18px;padding:14px 0;border-bottom:1px solid #e8e2d9"><div><strong style="color:#332b22">${escapeEmailHTML(item.name || 'Article ARTY')}</strong><br><span style="font-size:13px;color:#75695c">${escapeEmailHTML(quantityLabel)}</span></div><strong style="white-space:nowrap;color:#332b22">$${money(lineTotal).toFixed(2)}</strong></div>`;
+  }).join('');
+}
+function buildOrderConfirmationEmailHTML(order) {
+  const address = order.address || {};
+  const hasShipping = (order.items || []).some(item => item.type !== 'event-ticket');
+  const addressBlock = hasShipping ? `<div style="margin-top:22px;padding:16px;border-radius:14px;background:#f6f2ec"><strong>Adresse de livraison</strong><br>${escapeEmailHTML(address.line1 || '')}<br>${escapeEmailHTML([address.city,address.province,address.postal].filter(Boolean).join(', '))}<br>${escapeEmailHTML(address.country || '')}</div>` : '';
+  return emailShell({
+    title:'Commande confirmée',
+    intro:`Votre paiement pour la commande ${order.id} a été confirmé.`,
+    content:`<p>Bonjour ${escapeEmailHTML(order.customer?.name || 'Client ARTY')},</p><div style="margin:20px 0">${orderEmailItemsHTML(order)}</div><div style="display:flex;justify-content:space-between;padding:16px;border-radius:14px;background:#eefafa;font-size:18px"><strong>Total payé</strong><strong>$${money(order.total).toFixed(2)} CAD</strong></div>${addressBlock}<p>${hasShipping?'Nous vous écrirons lorsque votre commande sera expédiée.':'Votre billet est envoyé dans un courriel séparé et reste aussi disponible dans votre compte.'}</p>`,
+    ctaLabel:order.userId ? 'Voir mes commandes' : 'Visiter ARTY',
+    ctaUrl:order.userId ? `${normalizePublicUrl()}/#/profile` : normalizePublicUrl(),
+    footer:`Conservez ce courriel comme confirmation de la commande ${order.id}.`
+  });
+}
+async function deliverOrderConfirmation(orderId, reason = 'payment') {
+  let db = readDB();
+  const order = (db.orders || []).find(item => String(item.id) === String(orderId));
+  if (!order || order.paymentStatus !== 'paid') return { status:'not_paid' };
+  if (!validEmail(orderEmailRecipient(order))) return { status:'invalid_email' };
+  const previous = order.emailDelivery?.confirmation || {};
+  if (previous.status === 'sent') return { status:'sent', id:previous.providerId || '' };
+  const attempt = Number(previous.attempts || 0) + 1;
+  const result = await sendTransactionalEmail({
+    to:orderEmailRecipient(order),
+    subject:`Commande ARTY ${order.id} confirmée`,
+    html:buildOrderConfirmationEmailHTML(order),
+    idempotencyKey:`order-confirmation-${order.id}`
+  });
+  db = readDB();
+  const saved = (db.orders || []).find(item => String(item.id) === String(orderId));
+  if (saved) {
+    saved.emailDelivery = saved.emailDelivery && typeof saved.emailDelivery === 'object' ? saved.emailDelivery : {};
+    saved.emailDelivery.confirmation = { status:result.status, provider:'resend', providerId:result.id || '', error:result.error || '', attempts:attempt, reason, lastAttemptAt:new Date().toISOString(), sentAt:result.status === 'sent' ? new Date().toISOString() : (previous.sentAt || '') };
+    writeDB(db);
+  }
+  return result;
+}
+function orderStatusEmailCopy(status) {
+  return {
+    'préparation':{ title:'Votre commande est en préparation', intro:'Notre équipe prépare maintenant votre commande ARTY.' },
+    'expédiée':{ title:'Votre commande a été expédiée', intro:'Votre colis est maintenant en route.' },
+    'livrée':{ title:'Votre commande a été livrée', intro:'Votre commande ARTY est indiquée comme livrée.' },
+    'annulée':{ title:'Votre commande a été annulée', intro:'Le statut de votre commande a été mis à jour.' },
+    'remboursée':{ title:'Votre commande a été remboursée', intro:'Le remboursement de votre commande a été enregistré.' }
+  }[status] || null;
+}
+async function deliverOrderStatusEmail(orderId, status, reason = 'status-update') {
+  const db = readDB();
+  const order = (db.orders || []).find(item => String(item.id) === String(orderId));
+  const copy = orderStatusEmailCopy(status);
+  if (!order || !copy || !validEmail(orderEmailRecipient(order))) return { status:'not_needed' };
+  const tracking = order.tracking || {};
+  const trackingBlock = status === 'expédiée' ? `<div style="margin:20px 0;padding:16px;border-radius:14px;background:#eefafa"><strong>Suivi de livraison</strong>${tracking.carrier?`<br>Transporteur : ${escapeEmailHTML(tracking.carrier)}`:''}${tracking.number?`<br>Numéro : ${escapeEmailHTML(tracking.number)}`:''}${tracking.estimatedDelivery?`<br>Livraison estimée : ${escapeEmailHTML(tracking.estimatedDelivery)}`:''}</div>` : '';
+  return sendTransactionalEmail({
+    to:orderEmailRecipient(order),
+    subject:`${copy.title} — ${order.id}`,
+    idempotencyKey:`order-status-${order.id}-${status}-${hashToken(JSON.stringify(tracking)).slice(0,12)}-${order.updatedAt}`,
+    html:emailShell({
+      title:copy.title,
+      intro:copy.intro,
+      content:`<p>Bonjour ${escapeEmailHTML(order.customer?.name || 'Client ARTY')},</p><p>Commande <strong>${escapeEmailHTML(order.id)}</strong></p>${trackingBlock}`,
+      ctaLabel:tracking.url && /^https?:\/\//i.test(tracking.url) ? 'Suivre mon colis' : (order.userId ? 'Voir ma commande' : 'Visiter ARTY'),
+      ctaUrl:tracking.url && /^https?:\/\//i.test(tracking.url) ? tracking.url : (order.userId ? `${normalizePublicUrl()}/#/profile` : normalizePublicUrl()),
+      footer:'Pour toute question, répondez à ce courriel et indiquez votre numéro de commande.'
+    })
+  });
+}
+async function deliverPaidOrderCommunications(orderId, reason = 'payment') {
+  const confirmation = await deliverOrderConfirmation(orderId, reason);
+  const tickets = await deliverPaidOrderTickets(orderId, reason);
+  return {
+    status:tickets.tickets.length ? tickets.status : confirmation.status,
+    confirmationStatus:confirmation.status,
+    ticketStatus:tickets.status,
+    tickets:tickets.tickets
+  };
+}
+function sendSupportReplyEmail(request) {
+  return sendTransactionalEmail({
+    to:request.customer?.email,
+    subject:`Réponse ARTY — ${request.subject}`,
+    idempotencyKey:`support-reply-${request.id}-${hashToken(request.adminReply || '').slice(0,16)}`,
+    html:emailShell({
+      title:'Notre équipe vous a répondu',
+      intro:request.subject,
+      content:`<p>Bonjour ${escapeEmailHTML(request.customer?.name || 'Client ARTY')},</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#eefafa">${escapeEmailHTML(request.adminReply || '').replace(/\n/g,'<br>')}</div>`,
+      ctaLabel:'Voir la demande',
+      ctaUrl:`${normalizePublicUrl()}/#/profile`,
+      footer:`Demande ${request.id}. Vous pouvez répondre à ce courriel ou ouvrir votre compte ARTY.`
+    })
+  });
 }
 
 app.post('/api/bookings', optionalAuth, async (req, res) => {
@@ -1086,7 +1341,7 @@ app.get('/api/admin/support-requests', adminOnly, (req, res) => {
   const db = readDB();
   res.json((db.supportRequests || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
-app.patch('/api/admin/support-requests/:id', adminOnly, (req, res) => {
+app.patch('/api/admin/support-requests/:id', adminOnly, async (req, res) => {
   const db = readDB();
   const request = (db.supportRequests || []).find(item => String(item.id) === String(req.params.id));
   if (!request) return res.status(404).json({ error: 'Demande non trouvée' });
@@ -1099,7 +1354,8 @@ app.patch('/api/admin/support-requests/:id', adminOnly, (req, res) => {
   request.updatedAt = new Date().toISOString();
   if (adminReply && adminReply !== previousReply) request.repliedAt = request.updatedAt;
   writeDB(db);
-  res.json({ success: true, request });
+  const emailResult = adminReply && adminReply !== previousReply ? await sendSupportReplyEmail(request) : { status:'not_needed' };
+  res.json({ success: true, request, emailStatus:emailResult.status });
 });
 app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
   const db = readDB();
@@ -1115,6 +1371,7 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
   order.status = status;
   const trackingInput = req.body.tracking && typeof req.body.tracking === 'object' ? req.body.tracking : {};
   const currentTracking = order.tracking && typeof order.tracking === 'object' ? order.tracking : {};
+  const previousTracking = JSON.stringify([currentTracking.carrier || '', currentTracking.number || '', currentTracking.url || '', currentTracking.estimatedDelivery || '']);
   const trackingUrl = String(trackingInput.url ?? currentTracking.url ?? '').trim().slice(0, 500);
   if (trackingUrl && !/^https?:\/\//i.test(trackingUrl)) return res.status(400).json({ error: 'Le lien de suivi doit commencer par http:// ou https://' });
   order.tracking = {
@@ -1124,6 +1381,7 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
     estimatedDelivery: String(trackingInput.estimatedDelivery ?? currentTracking.estimatedDelivery ?? '').trim().slice(0, 20),
     updatedAt: new Date().toISOString()
   };
+  const trackingChanged = previousTracking !== JSON.stringify([order.tracking.carrier, order.tracking.number, order.tracking.url, order.tracking.estimatedDelivery]);
   if (status === 'payée') {
     order.paymentStatus = 'paid';
     order.paidAt = order.paidAt || new Date().toISOString();
@@ -1145,9 +1403,10 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
   if (status === 'livrée' && !order.deliveredAt) order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();
   writeDB(db);
-  const delivery = status === 'payée' ? await deliverPaidOrderTickets(order.id, 'admin-payment') : { status:'not_sent', tickets:[] };
+  const delivery = status === 'payée' ? await deliverPaidOrderCommunications(order.id, 'admin-payment') : { status:'not_sent', tickets:[] };
+  const statusDelivery = status !== 'payée' && (oldStatus !== status || (status === 'expédiée' && trackingChanged)) ? await deliverOrderStatusEmail(order.id, status, 'admin-status') : { status:'not_needed' };
   const latestOrder = (readDB().orders || []).find(item => String(item.id) === String(order.id)) || order;
-  res.json({ success: true, order:latestOrder, emailStatus:delivery.status, tickets:delivery.tickets });
+  res.json({ success: true, order:latestOrder, emailStatus:delivery.status, statusEmailStatus:statusDelivery.status, tickets:delivery.tickets });
 });
 
 
@@ -1875,7 +2134,7 @@ async function handleStripeWebhook(req, res) {
       if (order?.paymentStatus === 'paid') ensurePaidOrderBookings(db, order);
       if (order?.paymentStatus === 'cancelled') { releaseEventSeatsForOrder(db, order); cancelOrderTicketBookings(db, order); }
       writeDB(db);
-      if (order?.paymentStatus === 'paid') await deliverPaidOrderTickets(order.id, 'stripe-webhook');
+      if (order?.paymentStatus === 'paid') await deliverPaidOrderCommunications(order.id, 'stripe-webhook');
     }
     res.json({ received: true });
   } catch (err) {

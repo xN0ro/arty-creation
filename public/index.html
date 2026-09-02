@@ -570,7 +570,8 @@
     <div id="loginForm">
       <div class="form-group"><label>Courriel</label><input type="email" id="loginEmail" placeholder="vous@exemple.com" autocomplete="email"></div>
       <div class="form-group"><label>Mot de passe</label><div class="password-field"><input type="password" id="loginPassword" placeholder="Mot de passe" autocomplete="current-password"><button type="button" class="pw-toggle" onclick="togglePasswordField('loginPassword',this)">Voir</button></div></div>
-      <button class="btn btn-orange" onclick="doLogin()">Se Connecter →</button>
+      <button type="button" class="auth-forgot-link" onclick="switchAuthTab('forgot')">Mot de passe oublié?</button>
+      <button class="btn btn-orange auth-submit-button" onclick="doLogin()">Se connecter →</button>
     </div>
     <div id="registerForm" style="display:none">
       <div class="form-group"><label>Nom complet</label><input type="text" id="regName" placeholder="Votre nom" autocomplete="name"></div>
@@ -580,7 +581,21 @@
         <div class="form-group"><label>Confirmer</label><div class="password-field"><input type="password" id="regPasswordConfirm" placeholder="Répéter le mot de passe" autocomplete="new-password" oninput="updatePasswordMatchUI()"><button type="button" class="pw-toggle" onclick="togglePasswordField('regPasswordConfirm',this)">Voir</button></div></div>
       </div>
       <div class="password-feedback" id="passwordFeedback">Utilisez au moins 6 caractères. Les deux mots de passe doivent être identiques.</div>
-      <button class="btn btn-orange" onclick="doRegister()">Créer un Compte →</button>
+      <button class="btn btn-orange auth-submit-button" onclick="doRegister()">Créer un compte →</button>
+    </div>
+    <div id="forgotPasswordForm" style="display:none">
+      <div class="auth-message-box">Entrez le courriel associé à votre compte. Nous vous enverrons un lien sécurisé valide pendant 30 minutes.</div>
+      <div class="form-group"><label>Courriel</label><input type="email" id="forgotEmail" placeholder="vous@exemple.com" autocomplete="email"></div>
+      <button class="btn btn-orange auth-submit-button" id="forgotPasswordButton" onclick="requestPasswordReset()">Envoyer le lien</button>
+      <button type="button" class="auth-back-link" onclick="switchAuthTab('login')">Retour à la connexion</button>
+    </div>
+    <div id="resetPasswordForm" style="display:none">
+      <input type="hidden" id="resetPasswordToken">
+      <div class="auth-message-box">Choisissez un nouveau mot de passe pour votre compte.</div>
+      <div class="form-group"><label>Nouveau mot de passe</label><div class="password-field"><input type="password" id="resetPassword" placeholder="6+ caractères" autocomplete="new-password"><button type="button" class="pw-toggle" onclick="togglePasswordField('resetPassword',this)">Voir</button></div></div>
+      <div class="form-group"><label>Confirmer le mot de passe</label><div class="password-field"><input type="password" id="resetPasswordConfirm" placeholder="Répéter le mot de passe" autocomplete="new-password"><button type="button" class="pw-toggle" onclick="togglePasswordField('resetPasswordConfirm',this)">Voir</button></div></div>
+      <button class="btn btn-orange auth-submit-button" id="resetPasswordButton" onclick="submitPasswordReset()">Modifier le mot de passe</button>
+      <button type="button" class="auth-back-link" onclick="switchAuthTab('login')">Retour à la connexion</button>
     </div>
   </div>
 </div>
