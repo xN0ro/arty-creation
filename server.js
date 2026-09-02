@@ -1263,28 +1263,300 @@ app.get('/api/tickets/:code/barcode.svg', (req, res) => {
   res.set('Cache-Control','private, no-store');
   res.type('image/svg+xml').send(ticketBarcodeSVG(record.ticket.code));
 });
-app.post('/api/event-requests', (req, res) => {
-  const db = readDB();
-  const { name, email, phone, eventType, preferredDate, guests, location, budget, message } = req.body;
-  if (!name || !email || !eventType) return res.status(400).json({ error: 'Nom, courriel et type d’événement requis' });
-  const request = {
-    id: Date.now(),
-    name: String(name).trim(),
-    email: String(email).trim(),
-    phone: String(phone || '').trim(),
-    eventType: String(eventType).trim(),
-    preferredDate: String(preferredDate || '').trim(),
-    guests: parseInt(guests) || 0,
-    location: String(location || '').trim(),
-    budget: String(budget || '').trim(),
-    message: String(message || '').trim(),
-    status: 'nouvelle',
-    createdAt: new Date().toISOString()
+function eventRequestPath(value) {
+  return ['inventory', 'custom', 'expert'].includes(String(value || '').trim()) ? String(value).trim() : 'expert';
+}
+function eventRequestPathLabel(value) {
+  return { inventory:'Kits du catalogue', custom:'Kit personnalisé', expert:'Accompagnement par un expert' }[eventRequestPath(value)];
+}
+function cleanEventRequestItems(db, rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems.slice(0, 30).map(raw => {
+    const kit = (db.kits || []).find(item => Number(item.id) === Number(raw.kitId));
+    const quantity = Math.max(1, Math.min(1000, parseInt(raw.quantity ?? raw.qty) || 1));
+    if (!kit || kit.inStock === false) return null;
+    return { kitId:kit.id, name:String(kit.name || '').slice(0,160), quantity, image:String(kit.image || '').slice(0,1200) };
+  }).filter(Boolean);
+}
+function cleanEventRequestImage(value) {
+  const image = String(value || '');
+  return /^data:image\/(png|jpe?g|webp);base64,/i.test(image) && image.length <= 12_000_000 ? image : '';
+}
+function eventRequestLocation(address, fallback = '') {
+  const parts = [address?.line1, address?.city, address?.province, address?.postal].map(value => String(value || '').trim()).filter(Boolean);
+  return parts.join(', ') || String(fallback || '').trim();
+}
+function eventRequestEmailSummary(request) {
+  const path = eventRequestPathLabel(request.servicePath);
+  const selected = (request.inventoryItems || []).map(item => `${escapeEmailHTML(item.name)} × ${item.quantity}`).join('<br>');
+  const solution = request.servicePath === 'inventory'
+    ? (selected || 'Sélection à confirmer')
+    : request.servicePath === 'custom'
+      ? `${escapeEmailHTML(request.customKit?.sizeLabel || 'Format à confirmer')} · ${Math.max(1, Number(request.customKit?.quantity) || request.guests || 1)} kit(s)`
+      : escapeEmailHTML(request.expertBrief || request.message || 'Concept à discuter avec le client');
+  return `<div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec;line-height:1.7"><strong>${escapeEmailHTML(request.eventType)}</strong><br>${request.preferredDate ? escapeEmailHTML(request.preferredDate) : 'Date à confirmer'} · ${request.guests} personne${request.guests > 1 ? 's' : ''}<br>${escapeEmailHTML(request.location || 'Lieu à confirmer')}<br><br><strong>${escapeEmailHTML(path)}</strong><br>${solution}</div>`;
+}
+function sendEventRequestReceiptEmail(request) {
+  return sendTransactionalEmail({
+    to:request.email,
+    subject:`Demande d’événement ARTY ${request.reference}`,
+    idempotencyKey:`event-request-receipt-${request.id}`,
+    html:emailShell({
+      title:'Votre demande de devis est reçue',
+      intro:'Notre équipe examinera votre projet et communiquera avec vous pour confirmer les détails et le prix.',
+      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}<p>Aucun paiement n’a été demandé. Un lien de paiement sécurisé pourra vous être envoyé seulement après votre accord sur le devis.</p>`,
+      ctaLabel:'Voir les événements ARTY',
+      ctaUrl:`${normalizePublicUrl()}/#/party`,
+      footer:`Référence ${request.reference}. Répondez à ce courriel si vous souhaitez ajouter une précision.`
+    })
+  });
+}
+function sendEventRequestAdminEmail(request) {
+  const recipient = emailReplyToAddress();
+  if (!validEmail(recipient)) return Promise.resolve({ status:'not_configured' });
+  return sendTransactionalEmail({
+    to:recipient,
+    subject:`Nouvelle demande d’événement — ${request.eventType}`,
+    idempotencyKey:`event-request-admin-${request.id}`,
+    html:emailShell({
+      title:'Nouvelle demande d’événement',
+      intro:`${request.name} souhaite organiser : ${request.eventType}`,
+      content:`${eventRequestEmailSummary(request)}<p><strong>Client</strong><br>${escapeEmailHTML(request.name)}<br>${escapeEmailHTML(request.email)}${request.phone ? `<br>${escapeEmailHTML(request.phone)}` : ''}</p>`,
+      ctaLabel:'Ouvrir l’administration',
+      ctaUrl:`${normalizePublicUrl()}/#/admin`,
+      footer:`Référence ${request.reference}. Les images et les détails complets sont disponibles dans l’administration ARTY.`
+    })
+  });
+}
+async function deliverEventRequestEmails(request) {
+  const [customer, admin] = await Promise.all([sendEventRequestReceiptEmail(request), sendEventRequestAdminEmail(request)]);
+  return { customer:customer.status, admin:admin.status };
+}
+function publicEventQuoteView(request) {
+  const customKit = request.customKit || {};
+  return {
+    reference:request.reference,
+    eventName:request.eventType,
+    preferredDate:request.preferredDate || '',
+    eventTime:request.eventTime || '',
+    guests:request.guests || 0,
+    location:request.location || '',
+    servicePath:request.servicePath || 'expert',
+    servicePathLabel:eventRequestPathLabel(request.servicePath),
+    inventoryItems:(request.inventoryItems || []).map(item => ({ name:item.name, quantity:item.quantity, image:item.image || '' })),
+    customKit:request.servicePath === 'custom' ? { sizeLabel:customKit.sizeLabel || '', quantity:customKit.quantity || request.guests || 1, notes:customKit.notes || '' } : null,
+    expertBrief:request.servicePath === 'expert' ? request.expertBrief || '' : '',
+    quoteDescription:request.quoteDescription || '',
+    quoteAmount:money(request.quoteAmount || 0),
+    status:request.status || 'nouvelle',
+    paymentStatus:request.quotePaymentStatus || 'not_created',
+    paidAt:request.quotePaidAt || ''
   };
-  if (!db.eventRequests) db.eventRequests = [];
+}
+function findEventRequestByPaymentToken(db, token) {
+  const candidate = hashToken(String(token || ''));
+  return (db.eventRequests || []).find(request => request.paymentTokenHash && request.paymentTokenHash === candidate) || null;
+}
+function eventQuoteTokenIsValid(request) {
+  if (!request?.paymentTokenHash) return false;
+  if (!request.paymentLinkExpiresAt) return true;
+  return new Date(request.paymentLinkExpiresAt).getTime() > Date.now();
+}
+function createStripePaymentIntentForEventQuote(request) {
+  return stripeRequest('POST', '/v1/payment_intents', {
+    amount:stripeAmountCents(request.quoteAmount),
+    currency:'cad',
+    'automatic_payment_methods[enabled]':'true',
+    receipt_email:request.email || '',
+    description:`Devis événement ARTY ${request.reference}`,
+    'metadata[eventRequestId]':String(request.id),
+    'metadata[eventRequestReference]':request.reference || '',
+    'metadata[source]':'arty-event-quote'
+  });
+}
+function syncEventRequestFromStripePaymentIntent(db, paymentIntent, source = 'stripe') {
+  const requestId = paymentIntent?.metadata?.eventRequestId || '';
+  const request = (db.eventRequests || []).find(item => String(item.id) === String(requestId) || String(item.paymentReference || '') === String(paymentIntent?.id || ''));
+  if (!request) return null;
+  request.paymentReference = paymentIntent.id || request.paymentReference || '';
+  request.quotePaymentStatus = paymentIntent.status === 'succeeded' ? 'paid' : paymentIntent.status === 'processing' ? 'processing' : paymentIntent.status === 'canceled' ? 'cancelled' : paymentIntent.last_payment_error ? 'failed' : 'pending';
+  request.paymentLastSyncedAt = new Date().toISOString();
+  request.paymentLastSource = source;
+  if (paymentIntent.status === 'succeeded') {
+    request.status = 'payée';
+    request.quotePaidAt = request.quotePaidAt || new Date().toISOString();
+    request.paymentAmountReceived = money((Number(paymentIntent.amount_received) || 0) / 100);
+  }
+  request.updatedAt = new Date().toISOString();
+  return request;
+}
+function sendEventQuotePaymentLinkEmail(request) {
+  return sendTransactionalEmail({
+    to:request.email,
+    subject:`Votre devis ARTY est prêt — ${request.reference}`,
+    idempotencyKey:`event-quote-link-${request.id}-${hashToken(request.paymentLinkUrl || '').slice(0,16)}`,
+    html:emailShell({
+      title:'Votre devis personnalisé est prêt',
+      intro:`Nous avons préparé votre proposition pour ${request.eventType}.`,
+      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}${request.quoteDescription ? `<div style="margin:18px 0;padding:18px;border-left:4px solid #1695a7;background:#eefafa">${escapeEmailHTML(request.quoteDescription).replace(/\n/g,'<br>')}</div>` : ''}<div style="display:flex;justify-content:space-between;padding:16px;border-radius:14px;background:#f6f2ec;font-size:18px"><strong>Montant du devis</strong><strong>$${money(request.quoteAmount).toFixed(2)} CAD</strong></div><p>Utilisez le bouton ci-dessous pour consulter le devis et effectuer le paiement sécurisé.</p>`,
+      ctaLabel:'Consulter et payer le devis',
+      ctaUrl:request.paymentLinkUrl,
+      footer:`Référence ${request.reference}. Le lien est personnel et expire le ${new Date(request.paymentLinkExpiresAt).toLocaleDateString('fr-CA')}.`
+    })
+  });
+}
+function sendEventQuotePaidEmail(request) {
+  return sendTransactionalEmail({
+    to:request.email,
+    subject:`Paiement reçu — devis ${request.reference}`,
+    idempotencyKey:`event-quote-paid-${request.id}`,
+    html:emailShell({
+      title:'Paiement reçu',
+      intro:'Votre événement ARTY est maintenant confirmé pour la prochaine étape de préparation.',
+      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p><p>Nous avons reçu votre paiement de <strong>$${money(request.quoteAmount).toFixed(2)} CAD</strong> pour <strong>${escapeEmailHTML(request.eventType)}</strong>.</p><p>Notre équipe communiquera avec vous pour finaliser la production, la livraison et les détails de l’événement.</p>`,
+      ctaLabel:'Visiter ARTY',
+      ctaUrl:normalizePublicUrl(),
+      footer:`Confirmation de paiement pour la demande ${request.reference}.`
+    })
+  });
+}
+async function deliverEventQuotePaidEmail(requestId) {
+  let db = readDB();
+  const request = (db.eventRequests || []).find(item => String(item.id) === String(requestId));
+  if (!request || request.quotePaymentStatus !== 'paid') return { status:'not_paid' };
+  if (request.paidEmailDelivery?.status === 'sent') return request.paidEmailDelivery;
+  const result = await sendEventQuotePaidEmail(request);
+  db = readDB();
+  const saved = (db.eventRequests || []).find(item => String(item.id) === String(requestId));
+  if (saved) {
+    saved.paidEmailDelivery = { status:result.status, providerId:result.id || '', error:result.error || '', sentAt:result.status === 'sent' ? new Date().toISOString() : '' };
+    writeDB(db);
+  }
+  return result;
+}
+
+app.post('/api/event-requests', async (req, res) => {
+  const db = readDB();
+  const body = req.body || {};
+  const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const email = String(body.email || '').trim().toLowerCase().slice(0, 240);
+  const phone = String(body.phone || '').trim().slice(0, 80);
+  const eventName = String(body.eventName || body.eventType || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+  const preferredDate = String(body.preferredDate || '').trim().slice(0, 20);
+  const eventTime = String(body.eventTime || '').trim().slice(0, 20);
+  const guests = Math.max(1, Math.min(1000, parseInt(body.guests) || 0));
+  const address = {
+    line1:String(body.address?.line1 || body.location || '').trim().slice(0, 240),
+    city:String(body.address?.city || '').trim().slice(0, 120),
+    province:String(body.address?.province || '').trim().slice(0, 80),
+    postal:String(body.address?.postal || '').trim().slice(0, 30),
+    country:String(body.address?.country || 'Canada').trim().slice(0, 80)
+  };
+  const servicePath = eventRequestPath(body.servicePath);
+  if (!name || !validEmail(email) || !eventName || !guests || !address.line1) return res.status(400).json({ error:'Nom, courriel, événement, nombre d’invités et adresse requis' });
+  const inventoryItems = servicePath === 'inventory' ? cleanEventRequestItems(db, body.inventoryItems) : [];
+  if (servicePath === 'inventory' && !inventoryItems.length) return res.status(400).json({ error:'Choisissez au moins un kit du catalogue' });
+  const rawCustom = body.customKit && typeof body.customKit === 'object' ? body.customKit : {};
+  const customKit = servicePath === 'custom' ? {
+    size:String(rawCustom.size || '').trim().slice(0, 40),
+    sizeLabel:String(rawCustom.sizeLabel || '').trim().slice(0, 100),
+    quantity:Math.max(1, Math.min(1000, parseInt(rawCustom.quantity) || guests)),
+    notes:String(rawCustom.notes || '').trim().slice(0, 1800),
+    sourceImage:cleanEventRequestImage(rawCustom.sourceImage),
+    traceImage:cleanEventRequestImage(rawCustom.traceImage)
+  } : null;
+  if (servicePath === 'custom' && (!customKit.sourceImage || !customKit.traceImage)) return res.status(400).json({ error:'Ajoutez une photo valide pour le kit personnalisé' });
+  const expertBrief = servicePath === 'expert' ? String(body.expertBrief || body.message || '').trim().slice(0, 3000) : '';
+  if (servicePath === 'expert' && expertBrief.length < 10) return res.status(400).json({ error:'Décrivez brièvement le concept que vous souhaitez créer' });
+  const id = Date.now();
+  const request = {
+    id,
+    reference:`EVT-${id.toString(36).toUpperCase()}`,
+    name,
+    email,
+    phone,
+    eventType:eventName,
+    preferredDate,
+    eventTime,
+    guests,
+    address,
+    location:eventRequestLocation(address, body.location),
+    servicePath,
+    inventoryItems,
+    customKit,
+    expertBrief,
+    message:String(body.notes || body.message || '').trim().slice(0, 3000),
+    contactPreference:['email','phone'].includes(body.contactPreference) ? body.contactPreference : 'email',
+    status:'nouvelle',
+    adminNote:'',
+    quoteAmount:0,
+    quoteDescription:'',
+    quotePaymentStatus:'not_created',
+    createdAt:new Date().toISOString(),
+    updatedAt:new Date().toISOString()
+  };
+  db.eventRequests = db.eventRequests || [];
   db.eventRequests.push(request);
   writeDB(db);
-  res.json({ success: true, request });
+  const delivery = await deliverEventRequestEmails(request);
+  res.json({ success:true, reference:request.reference, emailStatus:delivery.customer });
+});
+
+app.get('/api/event-quotes/:token', (req, res) => {
+  const db = readDB();
+  const request = findEventRequestByPaymentToken(db, req.params.token);
+  if (!request || !eventQuoteTokenIsValid(request)) return res.status(404).json({ error:'Ce lien de paiement est invalide ou expiré' });
+  res.set('Cache-Control', 'private, no-store');
+  res.json(publicEventQuoteView(request));
+});
+app.post('/api/event-quotes/:token/payment', async (req, res) => {
+  try {
+    if (!isStripeEnabled()) return res.status(503).json({ error:'Le paiement Stripe n’est pas disponible' });
+    const db = readDB();
+    const request = findEventRequestByPaymentToken(db, req.params.token);
+    if (!request || !eventQuoteTokenIsValid(request)) return res.status(404).json({ error:'Ce lien de paiement est invalide ou expiré' });
+    if (request.quotePaymentStatus === 'paid') return res.json({ success:true, paid:true, quote:publicEventQuoteView(request) });
+    if (money(request.quoteAmount) < 0.5) return res.status(400).json({ error:'Le montant du devis est invalide' });
+    let paymentIntent = null;
+    if (request.paymentReference) {
+      try {
+        const existing = await retrieveStripePaymentIntent(request.paymentReference);
+        if (!['canceled','succeeded'].includes(existing.status) && Number(existing.amount) === stripeAmountCents(request.quoteAmount)) paymentIntent = existing;
+        if (existing.status === 'succeeded') {
+          syncEventRequestFromStripePaymentIntent(db, existing, 'payment-link-open');
+          writeDB(db);
+          await deliverEventQuotePaidEmail(request.id);
+          return res.json({ success:true, paid:true, quote:publicEventQuoteView(request) });
+        }
+      } catch {}
+    }
+    if (!paymentIntent) paymentIntent = await createStripePaymentIntentForEventQuote(request);
+    request.paymentReference = paymentIntent.id || '';
+    request.quotePaymentStatus = paymentIntent.status === 'processing' ? 'processing' : 'pending';
+    request.updatedAt = new Date().toISOString();
+    writeDB(db);
+    res.json({ success:true, publishableKey:process.env.STRIPE_PUBLISHABLE_KEY || '', clientSecret:paymentIntent.client_secret || '', paymentIntentId:paymentIntent.id || '', quote:publicEventQuoteView(request) });
+  } catch (error) {
+    console.error('Event quote payment error:', error);
+    res.status(500).json({ error:'Impossible de préparer le paiement: ' + error.message });
+  }
+});
+app.post('/api/event-quotes/:token/confirm', async (req, res) => {
+  try {
+    const db = readDB();
+    const request = findEventRequestByPaymentToken(db, req.params.token);
+    if (!request || !eventQuoteTokenIsValid(request)) return res.status(404).json({ error:'Ce lien de paiement est invalide ou expiré' });
+    const paymentIntentId = String(req.body.paymentIntentId || '').trim();
+    if (!paymentIntentId || paymentIntentId !== request.paymentReference) return res.status(400).json({ error:'Paiement non associé à ce devis' });
+    const paymentIntent = await retrieveStripePaymentIntent(paymentIntentId);
+    const synced = syncEventRequestFromStripePaymentIntent(db, paymentIntent, 'client-confirm');
+    writeDB(db);
+    if (synced?.quotePaymentStatus === 'paid') await deliverEventQuotePaidEmail(synced.id);
+    res.json({ success:true, paid:synced?.quotePaymentStatus === 'paid', quote:publicEventQuoteView(synced || request) });
+  } catch (error) {
+    console.error('Event quote confirmation error:', error);
+    res.status(500).json({ error:'Impossible de confirmer le paiement: ' + error.message });
+  }
 });
 app.post('/api/contact', (req, res) => { const {name,email,message}=req.body; if(!name||!email||!message) return res.status(400).json({error:'Champs requis'}); console.log('Contact:',req.body); res.json({success:true,message:'Merci! Nous vous répondrons bientôt.'}); });
 
@@ -1686,9 +1958,49 @@ app.patch('/api/admin/event-requests/:id', adminOnly, (req, res) => {
   const db = readDB();
   const i = (db.eventRequests || []).findIndex(r => r.id === parseInt(req.params.id));
   if (i === -1) return res.status(404).json({ error: 'Non trouvé' });
-  db.eventRequests[i] = { ...db.eventRequests[i], status: req.body.status || db.eventRequests[i].status, adminNote: req.body.adminNote ?? db.eventRequests[i].adminNote };
+  const current = db.eventRequests[i];
+  const allowedStatuses = ['nouvelle','en étude','contactée','devis préparé','paiement prêt','payée','fermée'];
+  const nextStatus = allowedStatuses.includes(String(req.body.status || '')) ? String(req.body.status) : current.status;
+  const quoteAmount = req.body.quoteAmount === undefined ? Number(current.quoteAmount || 0) : money(Math.max(0, Number(req.body.quoteAmount) || 0));
+  db.eventRequests[i] = {
+    ...current,
+    status:nextStatus,
+    adminNote:String(req.body.adminNote ?? current.adminNote ?? '').trim().slice(0, 3000),
+    quoteDescription:String(req.body.quoteDescription ?? current.quoteDescription ?? '').trim().slice(0, 3000),
+    quoteAmount,
+    updatedAt:new Date().toISOString()
+  };
   writeDB(db);
   res.json({ success: true, request: db.eventRequests[i] });
+});
+app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, res) => {
+  const db = readDB();
+  const request = (db.eventRequests || []).find(item => item.id === parseInt(req.params.id));
+  if (!request) return res.status(404).json({ error:'Demande non trouvée' });
+  if (!isStripeEnabled()) return res.status(503).json({ error:'Stripe doit être configuré avant de créer un lien de paiement' });
+  const quoteAmount = money(Math.max(0, Number(req.body.quoteAmount ?? request.quoteAmount) || 0));
+  if (quoteAmount < 0.5) return res.status(400).json({ error:'Entrez un montant de devis valide' });
+  request.quoteAmount = quoteAmount;
+  request.quoteDescription = String(req.body.quoteDescription ?? request.quoteDescription ?? '').trim().slice(0, 3000);
+  request.adminNote = String(req.body.adminNote ?? request.adminNote ?? '').trim().slice(0, 3000);
+  const rawToken = crypto.randomBytes(30).toString('hex');
+  request.paymentTokenHash = hashToken(rawToken);
+  request.paymentLinkCreatedAt = new Date().toISOString();
+  request.paymentLinkExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  request.paymentLinkUrl = `${normalizePublicUrl()}/#/event-quote/${rawToken}`;
+  request.paymentReference = '';
+  request.quotePaymentStatus = 'ready';
+  request.status = 'paiement prêt';
+  request.updatedAt = new Date().toISOString();
+  writeDB(db);
+  const emailResult = await sendEventQuotePaymentLinkEmail(request);
+  const latest = readDB();
+  const saved = (latest.eventRequests || []).find(item => item.id === request.id);
+  if (saved) {
+    saved.quoteEmailDelivery = { status:emailResult.status, providerId:emailResult.id || '', error:emailResult.error || '', sentAt:emailResult.status === 'sent' ? new Date().toISOString() : '' };
+    writeDB(latest);
+  }
+  res.json({ success:true, request:saved || request, paymentLink:request.paymentLinkUrl, emailStatus:emailResult.status });
 });
 app.delete('/api/admin/event-requests/:id', adminOnly, (req, res) => { const db=readDB(); db.eventRequests=(db.eventRequests||[]).filter(r=>r.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
@@ -2131,10 +2443,12 @@ async function handleStripeWebhook(req, res) {
     const obj = event.data?.object || {};
     if (event.type && event.type.startsWith('payment_intent.')) {
       const order = syncOrderFromStripePaymentIntent(db, obj, 'webhook:' + event.type);
+      const eventRequest = syncEventRequestFromStripePaymentIntent(db, obj, 'webhook:' + event.type);
       if (order?.paymentStatus === 'paid') ensurePaidOrderBookings(db, order);
       if (order?.paymentStatus === 'cancelled') { releaseEventSeatsForOrder(db, order); cancelOrderTicketBookings(db, order); }
       writeDB(db);
       if (order?.paymentStatus === 'paid') await deliverPaidOrderCommunications(order.id, 'stripe-webhook');
+      if (eventRequest?.quotePaymentStatus === 'paid') await deliverEventQuotePaidEmail(eventRequest.id);
     }
     res.json({ received: true });
   } catch (err) {
