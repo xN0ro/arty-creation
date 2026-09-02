@@ -1750,14 +1750,14 @@ function traceImageToLineArt(dataUrl,targetW,targetH,opts={}){
       const gray=new Uint8ClampedArray(len);
       for(let i=0,j=0;i<pix.length;i+=4,j++)gray[j]=(pix[i]*.299+pix[i+1]*.587+pix[i+2]*.114)|0;
       const out=sctx.createImageData(targetW,targetH);
-      const od=out.data, threshold=Number(opts.threshold)||48, detail=Number(opts.detail)||1;
+      const od=out.data, threshold=Number(opts.threshold)||48, detail=Number(opts.detail)||1, thresholdSquared=threshold*threshold, detailSquared=detail*detail;
       for(let yy=1;yy<targetH-1;yy++){
         for(let xx=1;xx<targetW-1;xx++){
           const idx=yy*targetW+xx;
           const gx=-gray[idx-targetW-1]-2*gray[idx-1]-gray[idx+targetW-1]+gray[idx-targetW+1]+2*gray[idx+1]+gray[idx+targetW+1];
           const gy=-gray[idx-targetW-1]-2*gray[idx-targetW]-gray[idx-targetW+1]+gray[idx+targetW-1]+2*gray[idx+targetW]+gray[idx+targetW+1];
-          const magnitudeSquared=(gx*gx+gy*gy)*detail*detail;
-          const oi=idx*4, edge=magnitudeSquared>threshold*threshold;
+          const magnitudeSquared=(gx*gx+gy*gy)*detailSquared;
+          const oi=idx*4, edge=magnitudeSquared>thresholdSquared;
           if(opts.transparent){
             od[oi]=0;od[oi+1]=0;od[oi+2]=0;od[oi+3]=edge?245:0;
           }else{
@@ -2742,7 +2742,7 @@ async function processDesignStudioFiles(files){
   if(!accepted.length)return showToast('Choisissez une image JPG, PNG ou WEBP de moins de 10 Mo','error');if(!remaining)return showToast('Vous pouvez utiliser un maximum de six images','error');
   const selected=accepted.slice(0,remaining);designStudioPushHistory();setDesignStudioBusy(true,selected.length>1?'Préparation de vos images...':'Préparation de votre image...');
   try{
-    for(const file of selected){const compressed=await compressDesignStudioImage(file),traceWidth=compressed.ratio>=1?900:Math.max(220,Math.round(900*compressed.ratio)),traceHeight=compressed.ratio>=1?Math.max(220,Math.round(900/compressed.ratio)):900,trace=await traceImageToLineArt(compressed.data,traceWidth,traceHeight,{threshold:48,detail:1.08,transparent:true}),print=designStudioGeometry().print,w=.64,h=Math.max(.16,Math.min(.78,w*(print.w/print.h)/Math.max(.2,compressed.ratio))),item={id:`studio-image-${Date.now()}-${Math.floor(Math.random()*999999)}`,type:'image',name:file.name.replace(/\.[^.]+$/,''),source:compressed.data,sourceRatio:compressed.ratio,trace,x:.5,y:.5,w,h,rotation:0,opacity:100,contrast:100,brightness:100,saturation:100,traceDetail:48,fit:'contain'};designStudioState.elements.push(item);designStudioState.selectedId=item.id;designStudioHydrateElement(item)}
+    for(const file of selected){const compressed=await compressDesignStudioImage(file),traceMax=440,traceWidth=compressed.ratio>=1?traceMax:Math.max(160,Math.round(traceMax*compressed.ratio)),traceHeight=compressed.ratio>=1?Math.max(160,Math.round(traceMax/compressed.ratio)):traceMax,trace=await traceImageToLineArt(compressed.data,traceWidth,traceHeight,{threshold:48,detail:1.08,transparent:true}),print=designStudioGeometry().print,w=.64,h=Math.max(.16,Math.min(.78,w*(print.w/print.h)/Math.max(.2,compressed.ratio))),item={id:`studio-image-${Date.now()}-${Math.floor(Math.random()*999999)}`,type:'image',name:file.name.replace(/\.[^.]+$/,''),source:compressed.data,sourceRatio:compressed.ratio,trace,x:.5,y:.5,w,h,rotation:0,opacity:100,contrast:100,brightness:100,saturation:100,traceDetail:48,fit:'contain'};designStudioState.elements.push(item);designStudioState.selectedId=item.id;designStudioHydrateElement(item)}
     designStudioState.activePanel='images';renderDesignStudioLibrary();renderDesignStudioInspector();refreshDesignStudioProductUI();showToast(`${selected.length} image${selected.length>1?'s':''} ajoutée${selected.length>1?'s':''}`,'success');
     if(accepted.length>remaining)showToast('Le studio accepte un maximum de six images','error');
   }catch(error){console.error(error);showToast('Impossible de préparer cette image','error')}finally{setDesignStudioBusy(false)}
@@ -2765,7 +2765,7 @@ function updateDesignStudioElement(key,value,record=false){
   if(key==='traceDetail')scheduleDesignStudioTrace(item);drawDesignStudio();
 }
 function scheduleDesignStudioTrace(item){
-  if(item.type!=='image'||!item.source)return;designStudioRuntime.traceTimers=designStudioRuntime.traceTimers||new Map();clearTimeout(designStudioRuntime.traceTimers.get(item.id));designStudioRuntime.traceTimers.set(item.id,setTimeout(async()=>{try{const ratio=Math.max(.2,Number(item.sourceRatio)||1),width=ratio>=1?900:Math.max(220,Math.round(900*ratio)),height=ratio>=1?Math.max(220,Math.round(900/ratio)):900;item.trace=await traceImageToLineArt(item.source,width,height,{threshold:Number(item.traceDetail)||48,detail:1.08,transparent:true});designStudioHydrateElement(item);drawDesignStudio()}catch{}},260));
+  if(item.type!=='image'||!item.source)return;designStudioRuntime.traceTimers=designStudioRuntime.traceTimers||new Map();clearTimeout(designStudioRuntime.traceTimers.get(item.id));designStudioRuntime.traceTimers.set(item.id,setTimeout(async()=>{try{const ratio=Math.max(.2,Number(item.sourceRatio)||1),traceMax=440,width=ratio>=1?traceMax:Math.max(160,Math.round(traceMax*ratio)),height=ratio>=1?Math.max(160,Math.round(traceMax/ratio)):traceMax;item.trace=await traceImageToLineArt(item.source,width,height,{threshold:Number(item.traceDetail)||48,detail:1.08,transparent:true});designStudioHydrateElement(item);drawDesignStudio()}catch{}},260));
 }
 function applyDesignStudioImagePreset(preset){const item=designStudioSelected();if(item?.type!=='image')return;designStudioPushHistory();const values={natural:[100,100,100],vivid:[122,103,145],soft:[88,108,82]}[preset]||[100,100,100];[item.contrast,item.brightness,item.saturation]=values;renderDesignStudioInspector();drawDesignStudio()}
 function alignDesignStudioElement(axis){const item=designStudioSelected();if(!item)return;designStudioPushHistory();if(axis==='horizontal')item.x=.5;else item.y=.5;drawDesignStudio()}
