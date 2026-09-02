@@ -29,7 +29,7 @@
         <div class="nav-submenu" aria-label="Sous-menu Événements">
           <a href="#/party">Tous les événements</a>
           <a href="#/party?section=calendar">Calendrier public</a>
-          <a href="#/party?section=private">Événement privé</a>
+          <a href="#/event-builder">Créer un événement</a>
           <a href="#/party?section=team">Entreprise / équipe</a>
         </div>
       </div>
@@ -300,7 +300,6 @@
             <div class="event-hero-actions">
               <button class="btn btn-orange" onclick="navigate('#/event-builder')">Créer mon événement</button>
               <button class="btn btn-teal" onclick="scrollToPartyEvents()">Voir le calendrier</button>
-              <button class="btn btn-ghost" onclick="scrollToEventRequest()">Demande rapide</button>
             </div>
           </div>
           <div class="event-hero-panel">
@@ -316,9 +315,9 @@
     <section class="section-pad event-options-section">
       <div class="container">
         <div class="event-options-grid fade-up">
-          <div class="event-option-card"><span>🎟️</span><h3>Réserver une place</h3><p>Choisissez un événement, consultez les places disponibles et réservez votre place directement.</p></div>
-          <div class="event-option-card event-builder-promo-card"><span>✨</span><h3>Créer mon événement</h3><p>Personnalisez votre activité en quelques étapes simples.</p><button class="btn btn-orange btn-sm" onclick="navigate('#/event-builder')">Commencer →</button></div>
-          <div class="event-option-card"><span>🤝</span><h3>Entreprise / équipe</h3><p>Team building, réunion créative ou journée de reconnaissance avec kits livrés et animation possible.</p></div>
+          <div class="event-option-card"><div class="event-option-number">01</div><h3>Réserver une place</h3><p>Choisissez un atelier publié, consultez les disponibilités et achetez vos billets directement.</p><button class="btn btn-ghost btn-sm" onclick="scrollToPartyEvents()">Voir le calendrier</button></div>
+          <div class="event-option-card event-builder-promo-card"><div class="event-option-number">02</div><h3>Créer mon événement</h3><p>Décrivez votre projet, choisissez des kits existants, créez un modèle personnalisé ou travaillez avec un expert.</p><button class="btn btn-orange btn-sm" onclick="navigate('#/event-builder')">Demander un devis</button></div>
+          <div class="event-option-card"><div class="event-option-number">03</div><h3>Entreprise et équipe</h3><p>Planifiez une activité créative adaptée à votre groupe, votre lieu et votre image de marque.</p><button class="btn btn-ghost btn-sm" onclick="prefillPrivateEventType('Activité d’entreprise')">Planifier l’activité</button></div>
         </div>
       </div>
     </section>
@@ -360,37 +359,12 @@
             <h2 class="section-heading">Activités créatives <span class="accent">pour entreprises</span></h2>
             <p class="section-sub team-intro-main">Arty transforme vos team buildings, réunions et journées de reconnaissance en expériences créatives, uniques et mémorables. Les kits peuvent être livrés au bureau et l’animation peut se faire en présentiel ou avec vidéos préenregistrées.</p>
           </div>
-          <button class="btn btn-orange" onclick="prefillPrivateEventType('Entreprise / équipe')">Demander pour mon équipe →</button>
+          <button class="btn btn-orange" onclick="prefillPrivateEventType('Activité d’entreprise')">Créer une demande de devis</button>
         </div>
         <div class="team-grid team-activities-grid stagger-children" id="teamGrid"></div>
       </div>
     </section>
 
-    <section class="section-pad private-event-section" id="privateEventRequest">
-      <div class="container">
-        <div class="private-event-layout fade-up">
-          <div class="private-event-copy">
-            <div class="section-tag">Sur mesure</div>
-            <h2 class="section-heading">Demander un <span class="accent">événement privé</span></h2>
-            <p>Pour un mariage, anniversaire, fête familiale, activité d’école, équipe de travail ou groupe privé, envoyez vos détails et nous vous répondrons rapidement.</p>
-            <ul class="private-event-list">
-              <li>Choix de la date et du type d’événement</li>
-              <li>Nombre approximatif de participants</li>
-              <li>Lieu, budget et message personnalisé</li>
-            </ul>
-          </div>
-          <div class="private-event-form">
-            <h3>Créer une demande</h3>
-            <div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="reqName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="reqEmail" placeholder="nom@exemple.com"></div></div>
-            <div class="form-row"><div class="form-group"><label>Téléphone</label><input type="text" id="reqPhone" placeholder="(514) 000-0000"></div><div class="form-group"><label>Type</label><select id="reqType"><option>Anniversaire</option><option>Mariage</option><option>Soirée entre amis</option><option>Famille</option><option>Entreprise / équipe</option><option>École / enfants</option><option>Autre</option></select></div></div>
-            <div class="form-row"><div class="form-group"><label>Date souhaitée</label><input type="date" id="reqDate"></div><div class="form-group"><label>Participants</label><input type="number" id="reqGuests" min="1" placeholder="Ex: 12"></div></div>
-            <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="reqLocation" placeholder="À la maison, salle, studio..."></div><div class="form-group"><label>Budget</label><input type="text" id="reqBudget" placeholder="Optionnel"></div></div>
-            <div class="form-group"><label>Message</label><textarea id="reqMessage" placeholder="Expliquez le style d’événement souhaité."></textarea></div>
-            <button class="btn btn-orange" onclick="submitPrivateEventRequest()">Envoyer la demande →</button>
-          </div>
-        </div>
-      </div>
-    </section>
   </div>
 </div>
 
@@ -548,12 +522,19 @@
   </div>
 </div>
 
+<!-- ===================== EVENT QUOTE PAYMENT ===================== -->
+<div class="page" id="page-event-quote">
+  <div class="event-quote-page section-pad">
+    <div class="container" id="eventQuotePageContent"></div>
+  </div>
+</div>
+
 <footer class="footer" id="mainFooter">
   <div class="container">
     <div class="footer-grid">
       <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Création</span></a><p>Kits de peinture créatifs, tutoriels et événements qui libèrent votre artiste intérieur.</p></div>
       <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les kits</a></li><li><a href="#/custom-photo">Photo personnalisée</a></li><li><a href="#/checkout">Panier / commande</a></li></ul></div>
-      <div><h4>Événements</h4><ul><li><a href="#/party">Tous les événements</a></li><li><a href="#/party?section=calendar">Calendrier public</a></li><li><a href="#/party?section=private">Demande privée</a></li><li><a href="#/party?section=team">Entreprise / équipe</a></li></ul></div>
+      <div><h4>Événements</h4><ul><li><a href="#/party">Tous les événements</a></li><li><a href="#/party?section=calendar">Calendrier public</a></li><li><a href="#/event-builder">Créer un événement</a></li><li><a href="#/party?section=team">Entreprise / équipe</a></li></ul></div>
       <div><h4>Informations</h4><ul><li><a href="#/tutorials">Tutoriels</a></li><li><a href="#/privacy">Confidentialité</a></li><li><a href="#/policies">Politiques d'achat</a></li><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li></ul></div>
     </div>
     <div class="footer-bottom"><span>&copy; 2026 Arty!</span><span><a href="#/privacy">Confidentialité</a> · <a href="#/policies">Politiques</a></span></div>
