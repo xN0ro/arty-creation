@@ -728,15 +728,18 @@ function createTicketCode(db, eventId) {
 function ensureBookingTickets(db, booking) {
   const total = Math.max(1, parseInt(booking.guests) || 1);
   const guestNames = Array.isArray(booking.guestNames) ? booking.guestNames : [];
+  const groupTicket = booking.ticketMode === 'group';
+  const ticketCount = groupTicket ? 1 : total;
   if (!Array.isArray(booking.tickets)) booking.tickets = [];
   let changed = false;
-  while (booking.tickets.length < total) {
+  while (booking.tickets.length < ticketCount) {
     const position = booking.tickets.length + 1;
     booking.tickets.push({
       id: `TKT-${crypto.randomBytes(8).toString('hex').toUpperCase()}`,
       code: createTicketCode(db, booking.eventId),
       guestNumber: position,
-      holderName: String(guestNames[position - 1] || (position === 1 ? booking.name : `Invité ${position} de ${booking.name}`)).trim().slice(0, 120),
+      admissions: groupTicket ? total : 1,
+      holderName: String(groupTicket ? booking.name : (guestNames[position - 1] || (position === 1 ? booking.name : `Invité ${position} de ${booking.name}`))).trim().slice(0, 120),
       status: 'valid',
       createdAt: booking.bookedAt || new Date().toISOString(),
       checkedInAt: '',
@@ -780,7 +783,7 @@ function publicTicketRecord(record) {
   if (!record) return null;
   const { booking, ticket, event } = record;
   return {
-    ticket: { id: ticket.id, code: ticket.code, guestNumber: ticket.guestNumber, holderName: ticket.holderName, status: ticket.status, checkedInAt: ticket.checkedInAt || '' },
+    ticket: { id: ticket.id, code: ticket.code, guestNumber: ticket.guestNumber, admissions:Math.max(1,parseInt(ticket.admissions)||1), holderName: ticket.holderName, status: ticket.status, checkedInAt: ticket.checkedInAt || '' },
     booking: { id: booking.id, name: booking.name, guests: booking.guests, status: booking.status, bookedAt: booking.bookedAt },
     event: event ? { id: event.id, title: event.title, date: event.date, time: event.time, duration: event.duration, location: event.location, image: event.image, hostNote: event.hostNote, status: event.status } : null
   };
@@ -789,7 +792,7 @@ function publicBookingView(booking, event) {
   return {
     ...booking,
     emailDelivery: { status: booking.emailDelivery?.status || 'not_sent', sentAt: booking.emailDelivery?.sentAt || '', attempts: booking.emailDelivery?.attempts || 0 },
-    tickets: (booking.tickets || []).map(ticket => ({ id: ticket.id, code: ticket.code, guestNumber: ticket.guestNumber, holderName: ticket.holderName, status: ticket.status, createdAt: ticket.createdAt, checkedInAt: ticket.checkedInAt || '' })),
+    tickets: (booking.tickets || []).map(ticket => ({ id: ticket.id, code: ticket.code, guestNumber: ticket.guestNumber, admissions:Math.max(1,parseInt(ticket.admissions)||1), holderName: ticket.holderName, status: ticket.status, createdAt: ticket.createdAt, checkedInAt: ticket.checkedInAt || '' })),
     event: event || null
   };
 }
@@ -798,10 +801,12 @@ function buildTicketEmailHTML(booking, event) {
   const ticketBlocks = (booking.tickets || []).map((ticket, index) => {
     const barcodeUrl = `${publicUrl}/api/tickets/${encodeURIComponent(ticket.code)}/barcode.svg`;
     const ticketUrl = `${publicUrl}/#/ticket/${encodeURIComponent(ticket.code)}`;
-    return `<div style="margin:18px 0;padding:22px;border:1px solid #e8e2d9;border-radius:18px;background:#fff"><div style="font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:#1695a7">Billet ${index + 1} sur ${booking.tickets.length}</div><div style="margin:5px 0 12px;font-size:18px;font-weight:800;color:#332b22">${escapeEmailHTML(ticket.holderName)}</div><a href="${ticketUrl}" style="display:block;text-align:center"><img src="${barcodeUrl}" width="430" style="display:block;max-width:100%;height:auto;margin:auto" alt="Code-barres du billet ${escapeEmailHTML(ticket.code)}"></a><div style="margin-top:9px;text-align:center;font-family:monospace;font-size:13px;color:#6f6255">${escapeEmailHTML(ticket.code)}</div></div>`;
+    const admissions = Math.max(1, parseInt(ticket.admissions) || 1);
+    const ticketLabel = admissions > 1 ? `Accès pour ${admissions} personnes` : (booking.tickets.length > 1 ? `Billet ${index + 1} sur ${booking.tickets.length}` : 'Accès pour 1 personne');
+    return `<div style="margin:18px 0;padding:22px;border:1px solid #e8e2d9;border-radius:18px;background:#fff"><div style="font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:#1695a7">${ticketLabel}</div><div style="margin:5px 0 12px;font-size:18px;font-weight:800;color:#332b22">${escapeEmailHTML(ticket.holderName)}</div><a href="${ticketUrl}" style="display:block;text-align:center"><img src="${barcodeUrl}" width="430" style="display:block;max-width:100%;height:auto;margin:auto" alt="Code-barres du billet ${escapeEmailHTML(ticket.code)}"></a><div style="margin-top:9px;text-align:center;font-family:monospace;font-size:13px;color:#6f6255">${escapeEmailHTML(ticket.code)}</div></div>`;
   }).join('');
   const eventDate = event?.date ? new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : 'Date à confirmer';
-  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY</div><h1 style="margin:12px 0 4px;font-size:28px">Vos billets sont prêts</h1><p style="margin:0;opacity:.92">Présentez le code-barres à votre arrivée.</p></div><div style="padding:26px;background:#fffdf9;border-radius:0 0 22px 22px"><p style="margin-top:0">Bonjour ${escapeEmailHTML(booking.name)},</p><h2 style="margin-bottom:8px;font-size:22px">${escapeEmailHTML(event?.title || 'Événement ARTY')}</h2><div style="padding:15px;border-radius:14px;background:#eefafa;line-height:1.7;color:#4f463d"><strong>${escapeEmailHTML(eventDate)}</strong><br>${escapeEmailHTML(event?.time || 'Heure à confirmer')}${event?.location?`<br>${escapeEmailHTML(event.location)}`:''}<br>${booking.guests} place${booking.guests > 1 ? 's' : ''}</div>${ticketBlocks}<p style="margin:22px 0 5px;font-size:13px;line-height:1.6;color:#75695c">Conservez ce courriel et présentez chaque billet à l’entrée. Chaque code est unique et ne peut être validé qu’une seule fois.</p></div></div></body></html>`;
+  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY</div><h1 style="margin:12px 0 4px;font-size:28px">Votre billet est prêt</h1><p style="margin:0;opacity:.92">Présentez le code-barres à votre arrivée.</p></div><div style="padding:26px;background:#fffdf9;border-radius:0 0 22px 22px"><p style="margin-top:0">Bonjour ${escapeEmailHTML(booking.name)},</p><h2 style="margin-bottom:8px;font-size:22px">${escapeEmailHTML(event?.title || 'Événement ARTY')}</h2><div style="padding:15px;border-radius:14px;background:#eefafa;line-height:1.7;color:#4f463d"><strong>${escapeEmailHTML(eventDate)}</strong><br>${escapeEmailHTML(event?.time || 'Heure à confirmer')}${event?.location?`<br>${escapeEmailHTML(event.location)}`:''}<br>Accès pour ${booking.guests} personne${booking.guests > 1 ? 's' : ''}</div>${ticketBlocks}<p style="margin:22px 0 5px;font-size:13px;line-height:1.6;color:#75695c">Conservez ce courriel et présentez le billet à l’entrée. Le code est unique et valide pour le nombre de personnes indiqué.</p></div></div></body></html>`;
 }
 function sendResendEmail(payload, idempotencyKey) {
   if (process.env.ARTY_EMAIL_MODE === 'log') return Promise.resolve({ status: 'sent', id: `log-${Date.now()}` });
@@ -844,12 +849,10 @@ function groupEventTicketItems(items) {
     if (item.type !== 'event-ticket') continue;
     const eventId = Number(item.eventId || item.customData?.eventId);
     if (!eventId) continue;
-    if (!grouped.has(eventId)) grouped.set(eventId, { eventId, qty:0, guestNames:[], notes:[], total:0 });
+    if (!grouped.has(eventId)) grouped.set(eventId, { eventId, qty:0, total:0 });
     const group = grouped.get(eventId), qty = Math.max(1, parseInt(item.qty) || 1);
     group.qty += qty;
     group.total += Number(item.lineTotal ?? ((Number(item.price) || 0) * qty)) || 0;
-    group.guestNames.push(...(Array.isArray(item.customData?.guestNames) ? item.customData.guestNames.slice(0, qty) : []));
-    if (item.customData?.notes) group.notes.push(String(item.customData.notes));
   }
   return [...grouped.values()];
 }
@@ -899,7 +902,6 @@ function ensurePaidOrderBookings(db, order) {
     const event = (db.events || []).find(item => Number(item.id) === group.eventId);
     if (!event) continue;
     const bookedAt = order.paidAt || new Date().toISOString();
-    const guestNames = Array.from({ length:group.qty }, (_,index) => String(group.guestNames[index] || (index === 0 ? order.customer?.name : `Invité ${index + 1} de ${order.customer?.name || 'ARTY'}`)).replace(/\s+/g,' ').trim().slice(0,120));
     const booking = {
       id:`BKG-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
       sourceOrderId:order.id,
@@ -909,8 +911,9 @@ function ensurePaidOrderBookings(db, order) {
       email:String(order.customer?.email || order.guestEmail || '').trim().toLowerCase(),
       phone:String(order.customer?.phone || '').trim(),
       guests:group.qty,
-      guestNames,
-      notes:group.notes.join(' · ').slice(0,500),
+      ticketMode:'group',
+      guestNames:[String(order.customer?.name || '').replace(/\s+/g,' ').trim().slice(0,120)],
+      notes:'',
       total:money(group.total),
       bookedAt,
       status:'confirmée',
@@ -934,7 +937,7 @@ async function deliverPaidOrderTickets(orderId, reason = 'payment') {
     const booking = (db.bookings || []).find(item => String(item.id) === String(bookingId));
     const event = (db.events || []).find(item => Number(item.id) === Number(booking?.eventId));
     if (!booking || !event) continue;
-    issuedTickets.push(...(booking.tickets || []).map(ticket => ({ id:ticket.id, code:ticket.code, holderName:ticket.holderName, bookingId:booking.id, eventId:booking.eventId })));
+    issuedTickets.push(...(booking.tickets || []).map(ticket => ({ id:ticket.id, code:ticket.code, admissions:Math.max(1,parseInt(ticket.admissions)||1), holderName:ticket.holderName, bookingId:booking.id, eventId:booking.eventId })));
     if (booking.emailDelivery?.status === 'sent') continue;
     await deliverBookingTickets(booking, event, reason);
     const latest = readDB(), saved = (latest.bookings || []).find(item => String(item.id) === String(booking.id));
@@ -961,8 +964,6 @@ app.post('/api/bookings', optionalAuth, async (req, res) => {
   if (spotsLeft <= 0) return res.status(400).json({ error: 'Complet' });
   if (guestCount > spotsLeft) return res.status(400).json({ error: `Il reste seulement ${spotsLeft} place${spotsLeft > 1 ? 's' : ''}` });
   const bookedAt = new Date().toISOString();
-  const submittedGuestNames = Array.isArray(req.body.guestNames) ? req.body.guestNames : [];
-  const guestNames = Array.from({ length:guestCount }, (_,index) => String(index === 0 ? name : (submittedGuestNames[index] || '')).replace(/\s+/g,' ').trim().slice(0,120));
   const b = {
     id: `BKG-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
     userId: req.session?.userId || null,
@@ -971,8 +972,9 @@ app.post('/api/bookings', optionalAuth, async (req, res) => {
     email: String(email).trim().toLowerCase(),
     phone: String(phone || '').trim(),
     guests: guestCount,
+    ticketMode:'group',
     notes: String(notes || '').trim(),
-    guestNames,
+    guestNames:[String(name).replace(/\s+/g,' ').trim().slice(0,120)],
     total: Number(((Number(ev.price) || 0) * guestCount).toFixed(2)),
     bookedAt,
     status: 'confirmée',
@@ -1377,9 +1379,9 @@ app.get('/api/admin/bookings', adminOnly, (req, res) => {
   res.json((db.bookings || []).map(b => ({ ...b, event: (db.events || []).find(e => e.id === b.eventId) || null })).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
 });
 function updateBookingAttendanceStatus(booking) {
-  const checked = (booking.tickets || []).filter(ticket => ticket.status === 'checked_in').length;
+  const checked = (booking.tickets || []).filter(ticket => ticket.status === 'checked_in').reduce((sum,ticket) => sum + Math.max(1,parseInt(ticket.admissions)||1), 0);
   booking.checkedInCount = checked;
-  booking.status = checked === 0 ? 'confirmée' : (checked >= (booking.tickets || []).length ? 'présente' : 'arrivée partielle');
+  booking.status = checked === 0 ? 'confirmée' : (checked >= Math.max(1,parseInt(booking.guests)||1) ? 'présente' : 'arrivée partielle');
   booking.updatedAt = new Date().toISOString();
 }
 app.post('/api/admin/tickets/check-in', adminOnly, (req, res) => {
@@ -2136,7 +2138,6 @@ function buildEventTicketItem(db, raw, qty) {
   const cleanQty = Math.max(1, Math.min(10, parseInt(qty) || 1));
   const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
   if (cleanQty > available) return { error:`Il reste seulement ${available} billet${available > 1 ? 's' : ''} pour ${event.title}` };
-  const guestNames = Array.isArray(input.guestNames) ? input.guestNames.slice(0, cleanQty).map(name => String(name || '').replace(/\s+/g,' ').trim().slice(0,120)) : [];
   const unitPrice = money(Math.max(0, Number(event.price) || 0));
   return {
     id:`event-ticket-${event.id}`,
@@ -2150,8 +2151,6 @@ function buildEventTicketItem(db, raw, qty) {
     customData:{
       kind:'event-ticket',
       eventId:event.id,
-      guestNames,
-      notes:String(input.notes || '').trim().slice(0,500),
       eventDate:event.date || '',
       eventTime:event.time || '',
       eventLocation:event.location || ''
