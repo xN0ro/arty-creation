@@ -340,6 +340,7 @@ app.get('/api/config', (req, res) => {
     stripeMode: process.env.STRIPE_MODE || (String(process.env.STRIPE_SECRET_KEY || '').startsWith('sk_live_') ? 'live' : 'test'),
     stripePublishableKey: process.env.STRIPE_PUBLISHABLE_KEY || '',
     stripeConfigured: Boolean(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY),
+    ticketPaymentsConfigured: isTicketPaymentEnabled(),
     ticketEmailConfigured: ticketEmailIsConfigured(),
     announcement: db.announcement || DEFAULT_DB.announcement
   });
@@ -519,12 +520,20 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
 
   if (!customerName) return res.status(400).json({ error: 'Nom requis' });
   if (!validEmail(customerEmail)) return res.status(400).json({ error: 'Courriel valide requis' });
-  if (!address || !String(address.line1 || '').trim()) return res.status(400).json({ error: 'Adresse de livraison requise' });
+  const needsShipping = built.items.some(item => item.type !== 'event-ticket');
+  if (needsShipping && (!address || !String(address.line1 || '').trim())) return res.status(400).json({ error: 'Adresse de livraison requise' });
 
   const pricing = priceOrder(db, built.items);
+  const hasEventTickets = pricing.items.some(item => item.type === 'event-ticket');
+  if (hasEventTickets && !isTicketPaymentEnabled()) return res.status(503).json({ error: 'Le paiement sécurisé des billets doit être entièrement configuré avant la vente' });
   const orderId = 'ARTY-' + Date.now().toString(36).toUpperCase();
   const inventoryResult = reserveInventoryForItems(db, pricing.items, orderId);
   if (inventoryResult.error) return res.status(400).json({ error: inventoryResult.error });
+  const eventSeatResult = reserveEventSeatsForItems(db, pricing.items);
+  if (eventSeatResult.error) {
+    releaseInventoryForItems(db, pricing.items, orderId, 'Réservation de billets impossible');
+    return res.status(400).json({ error: eventSeatResult.error });
+  }
 
   const createdAt = new Date().toISOString();
   const order = {
@@ -554,6 +563,9 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     paymentReference: '',
     inventoryReserved: true,
     inventoryRestocked: false,
+    eventSeatsReserved: eventSeatResult.reserved > 0,
+    eventSeatsReleased: false,
+    ticketBookingIds: [],
     refundStatus: 'none',
     refundedTotal: 0,
     createdAt,
@@ -592,6 +604,7 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
         releaseInventoryForItems(db, order.items || [], order.id, 'Paiement Stripe non créé');
         order.inventoryRestocked = true;
       }
+      releaseEventSeatsForOrder(db, order);
       return res.status(500).json({ error: 'Paiement Stripe non disponible: ' + err.message });
     }
   }
@@ -679,10 +692,14 @@ app.post('/api/stripe/confirm-order', optionalAuth, async (req, res) => {
     if (String(order.paymentReference || '') !== paymentIntentId) return res.status(400).json({ error: 'Paiement non associé à cette commande' });
 
     const pi = await retrieveStripePaymentIntent(paymentIntentId);
-    syncOrderFromStripePaymentIntent(db, pi, 'client-confirm');
+    const syncedOrder = syncOrderFromStripePaymentIntent(db, pi, 'client-confirm');
+    if (syncedOrder?.paymentStatus === 'paid') ensurePaidOrderBookings(db, syncedOrder);
+    if (syncedOrder?.paymentStatus === 'cancelled') { releaseEventSeatsForOrder(db, syncedOrder); cancelOrderTicketBookings(db, syncedOrder); }
     writeDB(db);
-    const updated = (db.orders || []).find(o => String(o.id) === orderId) || order;
-    res.json({ success: true, order: updated, stripeStatus: pi.status });
+    const delivery = syncedOrder?.paymentStatus === 'paid' ? await deliverPaidOrderTickets(syncedOrder.id, 'stripe-confirmation') : { status:'not_paid', tickets:[] };
+    const latestDB = readDB();
+    const updated = (latestDB.orders || []).find(o => String(o.id) === orderId) || order;
+    res.json({ success: true, order: updated, stripeStatus: pi.status, emailStatus:delivery.status, tickets:delivery.tickets });
   } catch (err) {
     console.error('Stripe confirm-order error:', err);
     res.status(500).json({ error: 'Impossible de confirmer le paiement: ' + err.message });
@@ -818,6 +835,116 @@ async function deliverBookingTickets(booking, event, reason = 'confirmation') {
   return result;
 }
 
+function eventTicketItems(order) {
+  return (order?.items || []).filter(item => item.type === 'event-ticket');
+}
+function groupEventTicketItems(items) {
+  const grouped = new Map();
+  for (const item of (items || [])) {
+    if (item.type !== 'event-ticket') continue;
+    const eventId = Number(item.eventId || item.customData?.eventId);
+    if (!eventId) continue;
+    if (!grouped.has(eventId)) grouped.set(eventId, { eventId, qty:0, guestNames:[], notes:[], total:0 });
+    const group = grouped.get(eventId), qty = Math.max(1, parseInt(item.qty) || 1);
+    group.qty += qty;
+    group.total += Number(item.lineTotal ?? ((Number(item.price) || 0) * qty)) || 0;
+    group.guestNames.push(...(Array.isArray(item.customData?.guestNames) ? item.customData.guestNames.slice(0, qty) : []));
+    if (item.customData?.notes) group.notes.push(String(item.customData.notes));
+  }
+  return [...grouped.values()];
+}
+function reserveEventSeatsForItems(db, items) {
+  const groups = groupEventTicketItems(items);
+  for (const group of groups) {
+    const event = (db.events || []).find(item => Number(item.id) === group.eventId);
+    if (!event || (event.status || 'published') !== 'published') return { error:'Un événement du panier n’est plus disponible' };
+    const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
+    if (group.qty > available) return { error:`Il reste seulement ${available} billet${available > 1 ? 's' : ''} pour ${event.title}` };
+  }
+  for (const group of groups) {
+    const event = (db.events || []).find(item => Number(item.id) === group.eventId);
+    event.bookedSpots = (parseInt(event.bookedSpots) || 0) + group.qty;
+    event.updatedAt = new Date().toISOString();
+  }
+  return { success:true, reserved:groups.reduce((sum,group) => sum + group.qty, 0) };
+}
+function releaseEventSeatsForOrder(db, order) {
+  if (!order?.eventSeatsReserved || order.eventSeatsReleased) return false;
+  for (const group of groupEventTicketItems(eventTicketItems(order))) {
+    const event = (db.events || []).find(item => Number(item.id) === group.eventId);
+    if (event) event.bookedSpots = Math.max(0, (parseInt(event.bookedSpots) || 0) - group.qty);
+  }
+  order.eventSeatsReleased = true;
+  order.updatedAt = new Date().toISOString();
+  return true;
+}
+function cancelOrderTicketBookings(db, order) {
+  for (const booking of (db.bookings || []).filter(item => String(item.sourceOrderId || '') === String(order.id))) {
+    booking.status = 'annulée';
+    booking.updatedAt = new Date().toISOString();
+    for (const ticket of (booking.tickets || [])) {
+      ticket.status = 'cancelled';
+      ticket.cancelledAt = booking.updatedAt;
+    }
+  }
+}
+function ensurePaidOrderBookings(db, order) {
+  if (!order || order.paymentStatus !== 'paid') return [];
+  db.bookings = db.bookings || [];
+  const bookingIds = new Set((order.ticketBookingIds || []).map(String));
+  for (const existing of db.bookings.filter(item => String(item.sourceOrderId || '') === String(order.id))) bookingIds.add(String(existing.id));
+  for (const group of groupEventTicketItems(eventTicketItems(order))) {
+    const existing = db.bookings.find(item => String(item.sourceOrderId || '') === String(order.id) && Number(item.eventId) === group.eventId);
+    if (existing) { bookingIds.add(String(existing.id)); continue; }
+    const event = (db.events || []).find(item => Number(item.id) === group.eventId);
+    if (!event) continue;
+    const bookedAt = order.paidAt || new Date().toISOString();
+    const guestNames = Array.from({ length:group.qty }, (_,index) => String(group.guestNames[index] || (index === 0 ? order.customer?.name : `Invité ${index + 1} de ${order.customer?.name || 'ARTY'}`)).replace(/\s+/g,' ').trim().slice(0,120));
+    const booking = {
+      id:`BKG-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+      sourceOrderId:order.id,
+      userId:order.userId || null,
+      eventId:group.eventId,
+      name:String(order.customer?.name || '').trim(),
+      email:String(order.customer?.email || order.guestEmail || '').trim().toLowerCase(),
+      phone:String(order.customer?.phone || '').trim(),
+      guests:group.qty,
+      guestNames,
+      notes:group.notes.join(' · ').slice(0,500),
+      total:money(group.total),
+      bookedAt,
+      status:'confirmée',
+      paymentStatus:'paid',
+      emailDelivery:{ status:'pending', attempts:0, sentAt:'', lastAttemptAt:'' },
+      tickets:[]
+    };
+    ensureBookingTickets(db, booking);
+    db.bookings.push(booking);
+    bookingIds.add(String(booking.id));
+  }
+  order.ticketBookingIds = [...bookingIds];
+  return db.bookings.filter(item => bookingIds.has(String(item.id)));
+}
+async function deliverPaidOrderTickets(orderId, reason = 'payment') {
+  let db = readDB(), order = (db.orders || []).find(item => String(item.id) === String(orderId));
+  if (!order || order.paymentStatus !== 'paid') return { status:'not_paid', tickets:[] };
+  const issuedTickets = [];
+  for (const bookingId of (order.ticketBookingIds || [])) {
+    db = readDB();
+    const booking = (db.bookings || []).find(item => String(item.id) === String(bookingId));
+    const event = (db.events || []).find(item => Number(item.id) === Number(booking?.eventId));
+    if (!booking || !event) continue;
+    issuedTickets.push(...(booking.tickets || []).map(ticket => ({ id:ticket.id, code:ticket.code, holderName:ticket.holderName, bookingId:booking.id, eventId:booking.eventId })));
+    if (booking.emailDelivery?.status === 'sent') continue;
+    await deliverBookingTickets(booking, event, reason);
+    const latest = readDB(), saved = (latest.bookings || []).find(item => String(item.id) === String(booking.id));
+    if (saved) { saved.emailDelivery = booking.emailDelivery; writeDB(latest); }
+  }
+  const finalDB = readDB();
+  const statuses = (finalDB.bookings || []).filter(item => (order.ticketBookingIds || []).map(String).includes(String(item.id))).map(item => item.emailDelivery?.status || 'pending');
+  return { status:statuses.length && statuses.every(status => status === 'sent') ? 'sent' : (statuses[0] || 'not_sent'), tickets:issuedTickets };
+}
+
 app.post('/api/bookings', optionalAuth, async (req, res) => {
   const db = readDB();
   const { eventId, name, email, phone, guests, notes } = req.body;
@@ -827,6 +954,7 @@ app.post('/api/bookings', optionalAuth, async (req, res) => {
   const ev = (db.events || []).find(e => e.id === parseInt(eventId));
   if (!ev) return res.status(404).json({ error: 'Événement non trouvé' });
   if ((ev.status || 'published') !== 'published') return res.status(400).json({ error: 'Cet événement n’est pas disponible à la réservation' });
+  if (Number(ev.price) > 0) return res.status(402).json({ error: 'Ajoutez les billets au panier et complétez le paiement pour les recevoir' });
   const booked = parseInt(ev.bookedSpots) || 0;
   const max = parseInt(ev.maxSpots) || 0;
   const spotsLeft = Math.max(0, max - booked);
@@ -971,7 +1099,7 @@ app.patch('/api/admin/support-requests/:id', adminOnly, (req, res) => {
   writeDB(db);
   res.json({ success: true, request });
 });
-app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
+app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
   const db = readDB();
   const id = String(req.params.id || '');
   const i = (db.orders || []).findIndex(o => String(o.id) === id);
@@ -994,13 +1122,19 @@ app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
     estimatedDelivery: String(trackingInput.estimatedDelivery ?? currentTracking.estimatedDelivery ?? '').trim().slice(0, 20),
     updatedAt: new Date().toISOString()
   };
-  if (status === 'payée') order.paymentStatus = 'paid';
+  if (status === 'payée') {
+    order.paymentStatus = 'paid';
+    order.paidAt = order.paidAt || new Date().toISOString();
+    ensurePaidOrderBookings(db, order);
+  }
   if (status === 'annulée') {
     order.paymentStatus = order.paymentStatus === 'paid' ? 'refund_needed' : 'cancelled';
     if (order.inventoryReserved && !order.inventoryRestocked) {
       releaseInventoryForItems(db, order.items || [], order.id, 'Commande annulée');
       order.inventoryRestocked = true;
     }
+    releaseEventSeatsForOrder(db, order);
+    cancelOrderTicketBookings(db, order);
   }
   if (status === 'remboursée') order.refundStatus = 'refunded';
   order.statusHistory = order.statusHistory || [];
@@ -1009,7 +1143,9 @@ app.put('/api/admin/orders/:id/status', adminOnly, (req, res) => {
   if (status === 'livrée' && !order.deliveredAt) order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();
   writeDB(db);
-  res.json({ success: true, order });
+  const delivery = status === 'payée' ? await deliverPaidOrderTickets(order.id, 'admin-payment') : { status:'not_sent', tickets:[] };
+  const latestOrder = (readDB().orders || []).find(item => String(item.id) === String(order.id)) || order;
+  res.json({ success: true, order:latestOrder, emailStatus:delivery.status, tickets:delivery.tickets });
 });
 
 
@@ -1250,6 +1386,7 @@ app.post('/api/admin/tickets/check-in', adminOnly, (req, res) => {
   const db = readDB(); const record = findTicketRecord(db, req.body.code);
   if (!record) return res.status(404).json({ error:'Billet introuvable' });
   if (!record.event || record.event.status === 'cancelled') return res.status(400).json({ error:'Cet événement est annulé ou indisponible' });
+  if (record.ticket.status === 'cancelled') return res.status(400).json({ error:'Ce billet a été annulé' });
   if (record.ticket.status === 'checked_in') return res.status(409).json({ error:'Ce billet a déjà été validé', record:publicTicketRecord(record) });
   record.ticket.status = 'checked_in'; record.ticket.checkedInAt = new Date().toISOString(); record.ticket.checkedInBy = req.session.email || 'admin';
   updateBookingAttendanceStatus(record.booking); writeDB(db);
@@ -1260,6 +1397,7 @@ app.patch('/api/admin/tickets/:ticketId', adminOnly, (req, res) => {
   if (!record) return res.status(404).json({ error:'Billet introuvable' });
   const checkedIn = req.body.checkedIn === true || req.body.checkedIn === 'true';
   if (checkedIn && (!record.event || record.event.status === 'cancelled')) return res.status(400).json({ error:'Cet événement est annulé ou indisponible' });
+  if (checkedIn && record.ticket.status === 'cancelled') return res.status(400).json({ error:'Ce billet a été annulé' });
   record.ticket.status = checkedIn ? 'checked_in' : 'valid';
   record.ticket.checkedInAt = checkedIn ? new Date().toISOString() : '';
   record.ticket.checkedInBy = checkedIn ? (req.session.email || 'admin') : '';
@@ -1606,6 +1744,9 @@ function releaseInventoryForItems(db, items, orderId, reason = 'Retour stock') {
 function isStripeEnabled() {
   return String(process.env.PAYMENT_PROVIDER || '').toLowerCase() === 'stripe' && Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY);
 }
+function isTicketPaymentEnabled() {
+  return isStripeEnabled() && Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || '').trim());
+}
 function stripeAmountCents(amount) {
   return Math.max(50, Math.round((Number(amount) || 0) * 100));
 }
@@ -1702,12 +1843,13 @@ function syncOrderFromStripePaymentIntent(db, pi, source = 'stripe') {
   return order;
 }
 function verifyStripeSignature(rawBody, signatureHeader, secret) {
-  if (!secret) return true;
+  if (!secret) return false;
   if (!signatureHeader) return false;
   const parts = Object.fromEntries(signatureHeader.split(',').map(p => p.split('=').map(x => x.trim())).filter(p => p.length === 2));
   const timestamp = parts.t;
   const signature = parts.v1;
   if (!timestamp || !signature) return false;
+  if (!Number.isFinite(Number(timestamp)) || Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp)) > 300) return false;
   const signedPayload = `${timestamp}.${rawBody.toString('utf8')}`;
   const expected = crypto.createHmac('sha256', secret).update(signedPayload).digest('hex');
   try {
@@ -1716,18 +1858,22 @@ function verifyStripeSignature(rawBody, signatureHeader, secret) {
     return false;
   }
 }
-function handleStripeWebhook(req, res) {
+async function handleStripeWebhook(req, res) {
   try {
     const secret = process.env.STRIPE_WEBHOOK_SECRET || '';
-    if (secret && !verifyStripeSignature(req.body, req.headers['stripe-signature'], secret)) {
+    if (!secret) return res.status(503).send('Stripe webhook is not configured');
+    if (!verifyStripeSignature(req.body, req.headers['stripe-signature'], secret)) {
       return res.status(400).send('Webhook signature verification failed');
     }
     const event = JSON.parse(req.body.toString('utf8'));
     const db = readDB();
     const obj = event.data?.object || {};
     if (event.type && event.type.startsWith('payment_intent.')) {
-      syncOrderFromStripePaymentIntent(db, obj, 'webhook:' + event.type);
+      const order = syncOrderFromStripePaymentIntent(db, obj, 'webhook:' + event.type);
+      if (order?.paymentStatus === 'paid') ensurePaidOrderBookings(db, order);
+      if (order?.paymentStatus === 'cancelled') { releaseEventSeatsForOrder(db, order); cancelOrderTicketBookings(db, order); }
       writeDB(db);
+      if (order?.paymentStatus === 'paid') await deliverPaidOrderTickets(order.id, 'stripe-webhook');
     }
     res.json({ received: true });
   } catch (err) {
@@ -1982,6 +2128,36 @@ function resolveProductConfiguration(kit, raw) {
     } : null
   };
 }
+function buildEventTicketItem(db, raw, qty) {
+  const input = raw.customData && typeof raw.customData === 'object' ? raw.customData : {};
+  const eventId = Number(input.eventId || /^event-ticket-(\d+)/.exec(String(raw.id || ''))?.[1]);
+  const event = (db.events || []).find(item => Number(item.id) === eventId);
+  if (!event || (event.status || 'published') !== 'published') return { error:'Cet événement n’est plus disponible' };
+  const cleanQty = Math.max(1, Math.min(10, parseInt(qty) || 1));
+  const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
+  if (cleanQty > available) return { error:`Il reste seulement ${available} billet${available > 1 ? 's' : ''} pour ${event.title}` };
+  const guestNames = Array.isArray(input.guestNames) ? input.guestNames.slice(0, cleanQty).map(name => String(name || '').replace(/\s+/g,' ').trim().slice(0,120)) : [];
+  const unitPrice = money(Math.max(0, Number(event.price) || 0));
+  return {
+    id:`event-ticket-${event.id}`,
+    eventId:event.id,
+    type:'event-ticket',
+    name:`Billet — ${event.title}`,
+    unitPrice,
+    price:unitPrice,
+    image:String(event.image || '').trim(),
+    qty:cleanQty,
+    customData:{
+      kind:'event-ticket',
+      eventId:event.id,
+      guestNames,
+      notes:String(input.notes || '').trim().slice(0,500),
+      eventDate:event.date || '',
+      eventTime:event.time || '',
+      eventLocation:event.location || ''
+    }
+  };
+}
 function buildOrderItems(db, rawItems = []) {
   const items = [];
   for (const raw of rawItems) {
@@ -1990,6 +2166,12 @@ function buildOrderItems(db, rawItems = []) {
     const qty = Math.max(1, parseInt(raw.qty) || 1);
     if (!rawId) return { error: 'Article invalide' };
 
+    if (rawType === 'event-ticket' || rawId.startsWith('event-ticket-')) {
+      const built = buildEventTicketItem(db, raw, qty);
+      if (built.error) return built;
+      items.push(built);
+      continue;
+    }
     if (rawType === 'custom-bundle' || rawId.startsWith('client-bundle-')) {
       const built = calculateCustomPackageItem(db, { ...raw, qty }, 'custom-bundle');
       if (built.error) return built;

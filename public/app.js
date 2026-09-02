@@ -1,6 +1,6 @@
 /* Arty! — Application v3 */
 let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
-let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
+let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,ticketPaymentsConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventType:'wedding',guests:20,date:'',location:'',customText:'',selected:{},hostName:'',notes:''};
 let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 let siteAnnouncement={enabled:false,message:''},ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   authToken=localStorage.getItem('arty_token');
   const u=localStorage.getItem('arty_user'); if(u) currentUser=JSON.parse(u);
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
-  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;ticketEmailConfigured=!!cfg.ticketEmailConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
+  try{const r=await fetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;ticketPaymentsConfigured=!!cfg.ticketPaymentsConfigured;ticketEmailConfigured=!!cfg.ticketEmailConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
   if(authToken&&currentUser){try{const r=await fetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
   await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles(),loadBundleDealRules()]);
   initNavbar();updateAuthUI();updateCartUI();renderSiteAnnouncement();initGoogleSignIn();initAuthValidation();
@@ -563,27 +563,32 @@ function renderCheckoutPage(){
   const c=document.getElementById('checkoutPageContent');
   if(!c)return;
   if(!cart.length){c.innerHTML=`<div class="checkout-empty"><div class="section-tag">Panier</div><h2 class="section-heading">Votre panier est <span class="accent">vide</span></h2><p class="section-sub">Ajoutez un kit ou un ensemble avant de continuer.</p><a href="#/paintings" class="btn btn-orange">Voir les kits →</a></div>`;return}
+  const hasEventTickets=cart.some(item=>item.type==='event-ticket'),needsShipping=cart.some(item=>item.type!=='event-ticket'),ticketOnly=hasEventTickets&&!needsShipping;
+  const firstTicket=cart.find(item=>item.type==='event-ticket')?.customData||{};
   const savedAddress=currentUser?.defaultAddress||{};
+  const checkoutName=currentUser?.name||firstTicket.buyerName||'',checkoutEmail=currentUser?.email||firstTicket.buyerEmail||'',checkoutPhone=currentUser?.phone||firstTicket.buyerPhone||'';
   const userBox=currentUser?`<div class="checkout-account-box connected"><strong>Connecté comme ${safeText(currentUser.name)}</strong><span>${safeText(currentUser.email)}</span></div>`:`<div class="checkout-account-box"><strong>Pas de compte?</strong><span>Vous pouvez créer un compte ou acheter comme invité. Le courriel est obligatoire pour recevoir la confirmation.</span><div class="checkout-account-actions"><button class="btn btn-orange btn-sm" onclick="openModal('auth','register')">Créer un compte</button><button class="btn btn-ghost btn-sm" onclick="openModal('auth','login')">Connexion</button></div></div>`;
   const summary=cart.map(i=>`<div class="checkout-line"><img src="${safeAttr(i.image)}" alt="${safeAttr(i.name)}"><div><strong>${safeText(i.name)}</strong>${configuredKitDetailsHTML(i,'checkout-config-details')}<small>Qté ${i.qty} × $${toMoney(i.price)}</small></div><span>$${toMoney(i.price*i.qty)}</span></div>`).join('');
+  const shippingStep=needsShipping?`<div class="checkout-step-title"><span>2</span><div><h3>Livraison</h3><p>Adresse pour recevoir les produits physiques.</p></div></div>
+        <div class="form-group"><label>Adresse complète *</label><input type="text" id="coAddress" value="${safeAttr(savedAddress.line1||'')}" placeholder="Numéro, rue, appartement"></div>
+        <div class="form-row"><div class="form-group"><label>Ville</label><input type="text" id="coCity" value="${safeAttr(savedAddress.city||'')}" placeholder="Ville"></div><div class="form-group"><label>Province</label><input type="text" id="coProvince" value="${safeAttr(savedAddress.province||'QC')}"></div></div>
+        <div class="form-row"><div class="form-group"><label>Code postal</label><input type="text" id="coPostal" value="${safeAttr(savedAddress.postal||'')}" placeholder="A1A 1A1"></div><div class="form-group"><label>Pays</label><input type="text" id="coCountry" value="${safeAttr(savedAddress.country||'Canada')}"></div></div>
+        <div class="form-group"><label>Note de livraison</label><textarea id="coNotes" placeholder="Instructions spéciales pour la livraison"></textarea></div>`:`<div class="checkout-step-title"><span>2</span><div><h3>Billets électroniques</h3><p>Aucune adresse de livraison n’est nécessaire.</p></div></div><div class="checkout-ticket-delivery"><strong>Vos billets sont protégés jusqu’au paiement.</strong><p>Après confirmation du paiement, les billets avec leurs codes d’entrée seront créés et envoyés au courriel indiqué ci-dessus.</p></div>`;
+  const paymentUnavailable=hasEventTickets&&!ticketPaymentsConfigured;
   c.innerHTML=`
     <div class="checkout-hero-clean">
-      <div><div class="section-tag">Paiement</div><h2 class="section-heading">Finaliser votre <span class="accent">commande</span></h2><p>Un vrai parcours panier → informations → commande. Les cartes seront traitées plus tard par un fournisseur sécurisé comme Stripe, Square ou Moneris.</p></div>
-      <button class="btn btn-ghost" onclick="navigate('#/paintings')">← Continuer à magasiner</button>
+      <div><div class="section-tag">Paiement</div><h2 class="section-heading">Finaliser votre <span class="accent">commande</span></h2><p>${hasEventTickets?'Les billets sont émis uniquement après la confirmation du paiement.':'Vérifiez vos coordonnées, votre livraison et le résumé avant de payer.'}</p></div>
+      <button class="btn btn-ghost" onclick="navigate('${ticketOnly?'#/party':'#/paintings'}')">← Continuer à magasiner</button>
     </div>
     <div class="checkout-layout">
       <section class="checkout-card-main">
         <div class="checkout-step-title"><span>1</span><div><h3>Client</h3><p>Compte ou achat invité.</p></div></div>
         ${userBox}
-        <div class="form-row"><div class="form-group"><label>Nom complet</label><input type="text" id="coName" value="${safeAttr(currentUser?.name||'')}" placeholder="Votre nom"></div><div class="form-group"><label>Courriel *</label><input type="email" id="coEmail" value="${safeAttr(currentUser?.email||'')}" placeholder="nom@exemple.com"></div></div>
-        <div class="form-group"><label>Téléphone</label><input type="text" id="coPhone" value="${safeAttr(currentUser?.phone||'')}" placeholder="Optionnel"></div>
-        <div class="checkout-step-title"><span>2</span><div><h3>Livraison</h3><p>Adresse pour recevoir les kits.</p></div></div>
-        <div class="form-group"><label>Adresse complète *</label><input type="text" id="coAddress" value="${safeAttr(savedAddress.line1||'')}" placeholder="Numéro, rue, appartement"></div>
-        <div class="form-row"><div class="form-group"><label>Ville</label><input type="text" id="coCity" value="${safeAttr(savedAddress.city||'')}" placeholder="Ville"></div><div class="form-group"><label>Province</label><input type="text" id="coProvince" value="${safeAttr(savedAddress.province||'QC')}"></div></div>
-        <div class="form-row"><div class="form-group"><label>Code postal</label><input type="text" id="coPostal" value="${safeAttr(savedAddress.postal||'')}" placeholder="A1A 1A1"></div><div class="form-group"><label>Pays</label><input type="text" id="coCountry" value="${safeAttr(savedAddress.country||'Canada')}"></div></div>
-        <div class="form-group"><label>Note de livraison</label><textarea id="coNotes" placeholder="Instructions spéciales, date souhaitée, etc."></textarea></div>
-        <div class="checkout-step-title"><span>3</span><div><h3>Paiement sécurisé</h3><p>${stripeConfigured?'Paiement intégré avec Stripe. Vous restez sur le site Arty.':'Aucune carte n’est entrée dans Arty pour le moment.'}</p></div></div>
-        <div class="payment-provider-box ${stripeConfigured?'stripe-ready':''}"><strong>${stripeConfigured?'Stripe connecté ('+safeText(stripeMode)+')':'Fournisseur de paiement à connecter'}</strong><p>${stripeConfigured?'Cliquez sur Continuer au paiement pour afficher le champ de carte sécurisé. Arty ne voit jamais le numéro complet de la carte.':'La commande sera enregistrée en statut “en attente de paiement”.'}</p></div>
+        <div class="form-row"><div class="form-group"><label>Nom complet</label><input type="text" id="coName" value="${safeAttr(checkoutName)}" placeholder="Votre nom"></div><div class="form-group"><label>Courriel *</label><input type="email" id="coEmail" value="${safeAttr(checkoutEmail)}" placeholder="nom@exemple.com"></div></div>
+        <div class="form-group"><label>Téléphone</label><input type="text" id="coPhone" value="${safeAttr(checkoutPhone)}" placeholder="Optionnel"></div>
+        ${shippingStep}
+        <div class="checkout-step-title"><span>3</span><div><h3>Paiement sécurisé</h3><p>${paymentUnavailable?'Le paiement et sa confirmation automatique doivent être configurés avant la vente de billets.':stripeConfigured?'Paiement intégré avec Stripe. ARTY ne reçoit jamais le numéro complet de la carte.':'Le paiement en ligne n’est pas encore connecté.'}</p></div></div>
+        <div class="payment-provider-box ${stripeConfigured&&!paymentUnavailable?'stripe-ready':''} ${paymentUnavailable?'payment-required':''}"><strong>${paymentUnavailable?'Paiement des billets indisponible':stripeConfigured?'Paiement sécurisé par Stripe':'Paiement en ligne indisponible'}</strong><p>${paymentUnavailable?'La commande ne peut pas être passée et aucun billet ne sera créé tant que la confirmation sécurisée du paiement n’est pas active.':stripeConfigured?'Cliquez sur Continuer au paiement pour afficher le formulaire sécurisé.':'La commande sera enregistrée en attente de paiement.'}</p></div>
         <div class="stripe-payment-panel" id="stripePaymentPanel" style="display:none">
           <div class="stripe-payment-head"><strong>Paiement par carte</strong><span id="stripeOrderLabel"></span></div>
           <div id="payment-element"></div>
@@ -591,29 +596,31 @@ function renderCheckoutPage(){
           <button class="btn btn-orange checkout-submit" id="stripePayBtn" onclick="confirmStripePayment()">Payer maintenant →</button>
         </div>
         <label class="checkout-policy-check"><input type="checkbox" id="coPolicyAccept"> J'accepte les <a href="#/policies">politiques d'achat</a> et la <a href="#/privacy">politique de confidentialité</a>.</label>
-        <button class="btn btn-orange checkout-submit" id="placeOrderBtn" onclick="placeOrder()">${stripeConfigured?'Continuer au paiement sécurisé →':'Créer la commande →'}</button>
+        <button class="btn btn-orange checkout-submit" id="placeOrderBtn" onclick="placeOrder()" ${paymentUnavailable?'disabled':''}>${paymentUnavailable?'Paiement requis pour acheter les billets':stripeConfigured?'Continuer au paiement sécurisé →':'Créer la commande →'}</button>
       </section>
       <aside class="checkout-summary-card">
         <h3>Résumé</h3>${summary}
         <div class="checkout-total-row"><span>Sous-total</span><strong>$${toMoney(getSubtotal())}</strong></div>
-        <div class="checkout-note-small">Taxes/livraison peuvent être ajoutées quand le fournisseur de paiement sera connecté.</div>
+        <div class="checkout-note-small">${hasEventTickets?(needsShipping?'Les billets seront envoyés après paiement. Les produits physiques seront livrés à l’adresse indiquée.':'Les billets et leurs codes d’entrée seront envoyés seulement après la confirmation du paiement.'):'Les taxes et frais de livraison applicables sont confirmés au paiement.'}</div>
       </aside>
     </div>`;
 }
 async function placeOrder(){
   if(!cart.length)return showToast('Panier vide','error');
+  const hasEventTickets=cart.some(item=>item.type==='event-ticket'),needsShipping=cart.some(item=>item.type!=='event-ticket');
   const name=document.getElementById('coName')?.value.trim();
   const email=document.getElementById('coEmail')?.value.trim();
   const phone=document.getElementById('coPhone')?.value.trim();
-  const address=document.getElementById('coAddress')?.value.trim();
-  const city=document.getElementById('coCity')?.value.trim();
-  const province=document.getElementById('coProvince')?.value.trim();
-  const postal=document.getElementById('coPostal')?.value.trim();
-  const country=document.getElementById('coCountry')?.value.trim();
-  const notes=document.getElementById('coNotes')?.value.trim();
+  const address=document.getElementById('coAddress')?.value.trim()||'';
+  const city=document.getElementById('coCity')?.value.trim()||'';
+  const province=document.getElementById('coProvince')?.value.trim()||'';
+  const postal=document.getElementById('coPostal')?.value.trim()||'';
+  const country=document.getElementById('coCountry')?.value.trim()||'';
+  const notes=document.getElementById('coNotes')?.value.trim()||'';
   if(!name)return showToast('Entrez votre nom','error');
   if(!email||!validateEmail(email))return showToast('Entrez un courriel valide','error');
-  if(!address)return showToast('Entrez l’adresse de livraison','error');
+  if(needsShipping&&!address)return showToast('Entrez l’adresse de livraison','error');
+  if(hasEventTickets&&!ticketPaymentsConfigured)return showToast('Le paiement sécurisé doit être entièrement configuré avant de vendre des billets','error');
   if(!document.getElementById('coPolicyAccept')?.checked)return showToast('Veuillez accepter les politiques avant de continuer','error');
   const payload={items:cart,total:getTotal(),customer:{name,email,phone},address:{line1:address,city,province,postal,country,notes},checkoutMode:currentUser?'account':'guest'};
   const btn=document.getElementById('placeOrderBtn');
@@ -685,6 +692,19 @@ async function confirmStripePayment(){
     const d=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(d.error||'Paiement traité, mais confirmation serveur impossible');
     cart=[];saveCart();updateCartUI();
+    const issuedTicket=Array.isArray(d.tickets)?d.tickets[0]:null;
+    if(issuedTicket?.code){
+      lastTicketEmailStatus=d.emailStatus||'';
+      currentStripeOrder=null;currentStripePayment=null;stripeElements=null;
+      showToast('Paiement confirmé. Vos billets sont prêts.','success');
+      navigate(`#/ticket/${encodeURIComponent(issuedTicket.code)}`);
+      return;
+    }
+    if((d.order?.paymentStatus||'')!=='paid'){
+      showToast('Paiement en traitement. Les billets seront envoyés après confirmation.','success');
+      navigate(`#/payment-complete?order=${encodeURIComponent(currentStripeOrder.id)}`);
+      return;
+    }
     showOrderSuccess(d.order||currentStripeOrder,'Paiement Stripe confirmé. La commande est maintenant marquée comme payée.');
     renderCheckoutPage();
   }catch(err){
@@ -696,7 +716,7 @@ async function confirmStripePayment(){
 function renderPaymentCompletePage(){
   const c=document.getElementById('checkoutPageContent');
   if(!c)return;
-  c.innerHTML=`<div class="checkout-empty"><div class="section-tag">Paiement</div><h2 class="section-heading">Vérification du <span class="accent">paiement</span></h2><p class="section-sub">Si Stripe a demandé une vérification bancaire, la commande sera confirmée automatiquement par webhook. Vous pouvez vérifier le statut dans l’admin.</p><a href="#/" class="btn btn-orange">Retour à l’accueil</a></div>`;
+  c.innerHTML=`<div class="checkout-empty"><div class="section-tag">Paiement</div><h2 class="section-heading">Vérification du <span class="accent">paiement</span></h2><p class="section-sub">Votre banque peut prendre un moment pour confirmer le paiement. Si votre commande contient des billets, ils seront créés et envoyés par courriel uniquement après cette confirmation.</p><a href="#/profile" class="btn btn-orange">Voir mon compte</a></div>`;
 }
 
 // ===== AUTH =====
@@ -804,17 +824,14 @@ async function confirmBooking(){
   const button=document.getElementById('bookingSubmitButton');
   if(!n||!e)return showToast('Remplissez nom et courriel','error');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))return showToast('Entrez un courriel valide','error');
-  if(button){button.disabled=true;button.textContent='Création des billets...'}
-  try{
-    const r=await fetch('/api/bookings',{method:'POST',headers:authH(),body:JSON.stringify({eventId:eid,name:n,email:e,phone:p,guests:g,guestNames,notes})});
-    const d=await r.json();
-    if(!r.ok)return showToast(d.error,'error');
-    closeModal('booking');
-    lastTicketEmailStatus=d.emailStatus||'';
-    await loadEvents();
-    const firstTicket=d.booking?.tickets?.[0];
-    if(firstTicket)navigate(`#/ticket/${encodeURIComponent(firstTicket.code)}`);else showToast('Réservation confirmée','success');
-  }catch{showToast('Erreur de connexion','error')}finally{if(button){button.disabled=false;button.textContent='Confirmer et recevoir mes billets'}}
+  const event=allEvents.find(item=>String(item.id)===String(eid));if(!event)return showToast('Événement introuvable','error');
+  const qty=Math.max(1,parseInt(g)||1),id=`event-ticket-${event.id}`,existing=cart.find(item=>String(item.id)===id),combined=(Number(existing?.qty)||0)+qty;
+  if(combined>spotsLeft(event))return showToast(`Il reste seulement ${spotsLeft(event)} billet${spotsLeft(event)>1?'s':''}`,'error');
+  if(button){button.disabled=true;button.textContent='Ajout au panier...'}
+  const item={id,name:`Billet — ${event.title}`,price:Number(event.price)||0,image:event.image||'logoarty.png',qty,type:'event-ticket',customData:{kind:'event-ticket',eventId:event.id,buyerName:n,buyerEmail:e,buyerPhone:p,guestNames,notes,eventDate:event.date||'',eventTime:event.time||'',eventLocation:event.location||''}};
+  if(existing){existing.qty=combined;existing.customData=existing.customData||{};existing.customData.guestNames=[...(existing.customData.guestNames||[]),...guestNames];if(notes)existing.customData.notes=[existing.customData.notes,notes].filter(Boolean).join(' · ')}else cart.push(item);
+  saveCart();updateCartUI();closeModal('booking');showToast('Billets ajoutés au panier','success');setTimeout(openCart,120);
+  if(button){button.disabled=false;button.textContent='Ajouter les billets au panier'}
 }
 async function submitPrivateEventRequest(){
   const payload={
@@ -1113,7 +1130,12 @@ function addToCart(kitId){
   saveCart();updateCartUI();showToast(`${kit.name} ajouté au panier!`,'success');return true;
 }
 function configuredKitDetailsHTML(item,className=''){
-  const data=item?.customData;if(data?.kind!=='configured-kit')return '';
+  const data=item?.customData;
+  if(data?.kind==='event-ticket'){
+    const date=data.eventDate?new Date(`${data.eventDate}T00:00:00`).toLocaleDateString('fr-CA',{day:'numeric',month:'long',year:'numeric'}):'Date à confirmer';
+    return `<div class="configured-kit-details event-ticket-details ${safeAttr(className)}"><span>${safeText(date)} · ${safeText(data.eventTime||'Heure à confirmer')}</span><span>${Number(item.qty)||1} billet${Number(item.qty)>1?'s':''}</span></div>`;
+  }
+  if(data?.kind!=='configured-kit')return '';
   const parts=[data.sizeLabel,...(Array.isArray(data.addOnLabels)?data.addOnLabels:[])].filter(Boolean);
   return parts.length?`<div class="configured-kit-details ${safeAttr(className)}">${parts.map(part=>`<span>${safeText(part)}</span>`).join('')}</div>`:'';
 }
@@ -1121,7 +1143,7 @@ function renderCartItems(){
   const c=document.getElementById('cartItems'),f=document.getElementById('cartFooter');if(!c||!f)return;
   if(!cart.length){c.innerHTML='<div class="cart-empty"><div class="cart-empty-icon">Panier</div><p>Panier vide</p></div>';f.style.display='none';return}
   f.style.display='block';
-  c.innerHTML=cart.map(i=>`<div class="cart-item"><img src="${safeAttr(i.image)}" class="cart-item-img" alt="${safeAttr(i.name)}"><div class="cart-item-info"><div class="cart-item-name">${safeText(i.name)}</div>${configuredKitDetailsHTML(i,'cart-config-details')}<div class="cart-item-price">$${toMoney(i.price)}${i.discountLabel?` <small>${safeText(i.discountLabel)}</small>`:''}</div><div class="cart-qty-control"><button onclick="changeCartQty('${safeAttr(i.id)}',-1)">−</button><span>${i.qty}</span><button onclick="changeCartQty('${safeAttr(i.id)}',1)">+</button></div></div><button class="cart-item-remove" onclick="removeFromCart('${safeAttr(i.id)}')" aria-label="Retirer">×</button></div>`).join('');
+  c.innerHTML=cart.map(i=>`<div class="cart-item ${i.type==='event-ticket'?'cart-event-ticket':''}"><img src="${safeAttr(i.image)}" class="cart-item-img" alt="${safeAttr(i.name)}"><div class="cart-item-info"><div class="cart-item-name">${safeText(i.name)}</div>${configuredKitDetailsHTML(i,'cart-config-details')}<div class="cart-item-price">$${toMoney(i.price)}${i.discountLabel?` <small>${safeText(i.discountLabel)}</small>`:''}</div>${i.type==='event-ticket'?`<div class="cart-ticket-quantity">${i.qty} billet${i.qty>1?'s':''}</div>`:`<div class="cart-qty-control"><button onclick="changeCartQty('${safeAttr(i.id)}',-1)">−</button><span>${i.qty}</span><button onclick="changeCartQty('${safeAttr(i.id)}',1)">+</button></div>`}</div><button class="cart-item-remove" onclick="removeFromCart('${safeAttr(i.id)}')" aria-label="Retirer">×</button></div>`).join('');
   document.getElementById('cartTotal').textContent=`$${toMoney(getTotal())}`;
 }
 
@@ -2142,6 +2164,11 @@ function adminOrderStatusOptions(current){return [['en attente de paiement','En 
 function adminPaymentMeta(status){const key=String(status||'pending').toLowerCase(),map={paid:['Paiement confirmé','ok'],pending:['En attente','pending'],cancelled:['Annulé','out'],refund_needed:['Remboursement requis','pending'],refunded:['Remboursé','out'],provider_not_connected:['Paiement à confirmer','pending']};const value=map[key]||[status||'À confirmer','pending'];return{label:value[0],className:value[1]}}
 function adminOrderItemDetails(item){
   const custom=item.customData||{},details=[];
+  if(custom.kind==='event-ticket'){
+    if(custom.eventDate)details.push(`Date : ${custom.eventDate}${custom.eventTime?` à ${custom.eventTime}`:''}`);
+    if(custom.eventLocation)details.push(`Lieu : ${custom.eventLocation}`);
+    (custom.guestNames||[]).forEach((name,index)=>details.push(`Participant ${index+1} : ${name}`));
+  }
   if(custom.selectionLabel)details.push(custom.selectionLabel);
   if(custom.sizeLabel&&!details.includes(custom.sizeLabel))details.push(`Format : ${custom.sizeLabel}`);
   (custom.addOnLabels||[]).forEach(label=>details.push(`Option : ${label}`));
@@ -2168,15 +2195,15 @@ function renderAdminOrders(){
   const refundRows=(adminRefunds||[]).map(refund=>`<tr><td>${safeText(refund.id)}</td><td>${safeText(refund.orderId)}</td><td>$${toMoney(refund.amount)}</td><td>${safeText(refund.reason||'')}</td><td>${safeText(refund.status||'noté')}</td></tr>`).join('');
   const awaiting=(adminOrders||[]).filter(order=>['payée','préparation'].includes(order.status)).length,shipping=(adminOrders||[]).filter(order=>order.status==='expédiée').length;
   const rows=(adminOrders||[]).map(order=>{
-    const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],meta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),quantity=items.reduce((total,item)=>total+(Number(item.qty)||1),0);
-    return `<tr class="admin-order-row"><td><button type="button" class="admin-order-number" onclick="openAdminOrderDetail('${safeAttr(order.id)}')"><strong>${safeText(order.id)}</strong><span>${profileDate(order.createdAt)}</span></button></td><td><strong>${safeText(customer.name||'Client non indiqué')}</strong><span class="admin-order-cell-note">${safeText(customer.email||order.guestEmail||'Courriel non indiqué')}</span></td><td><strong>${safeText(address.city||'Adresse à consulter')}</strong><span class="admin-order-cell-note">${safeText([address.province,address.postal].filter(Boolean).join(' · '))}</span></td><td><strong>${quantity} article${quantity>1?'s':''}</strong><span class="admin-order-cell-note">${safeText(items[0]?.name||'Aucun article')}${items.length>1?` + ${items.length-1}`:''}</span></td><td><strong>$${toMoney(order.total)}</strong><span class="admin-status ${payment.className}">${safeText(payment.label)}</span></td><td><span class="account-status ${meta.className}">${safeText(meta.label)}</span></td><td><button type="button" class="admin-order-view" onclick="openAdminOrderDetail('${safeAttr(order.id)}')">Voir les détails</button></td></tr>`;
+    const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],ticketOnly=items.length>0&&items.every(item=>item.type==='event-ticket'),meta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),quantity=items.reduce((total,item)=>total+(Number(item.qty)||1),0);
+    return `<tr class="admin-order-row"><td><button type="button" class="admin-order-number" onclick="openAdminOrderDetail('${safeAttr(order.id)}')"><strong>${safeText(order.id)}</strong><span>${profileDate(order.createdAt)}</span></button></td><td><strong>${safeText(customer.name||'Client non indiqué')}</strong><span class="admin-order-cell-note">${safeText(customer.email||order.guestEmail||'Courriel non indiqué')}</span></td><td><strong>${safeText(ticketOnly?'Billet électronique':address.city||'Adresse à consulter')}</strong><span class="admin-order-cell-note">${safeText(ticketOnly?'Envoi après paiement':[address.province,address.postal].filter(Boolean).join(' · '))}</span></td><td><strong>${quantity} article${quantity>1?'s':''}</strong><span class="admin-order-cell-note">${safeText(items[0]?.name||'Aucun article')}${items.length>1?` + ${items.length-1}`:''}</span></td><td><strong>$${toMoney(order.total)}</strong><span class="admin-status ${payment.className}">${safeText(payment.label)}</span></td><td><span class="account-status ${meta.className}">${safeText(meta.label)}</span></td><td><button type="button" class="admin-order-view" onclick="openAdminOrderDetail('${safeAttr(order.id)}')">Voir les détails</button></td></tr>`;
   }).join('');
   panel.innerHTML=`<div class="admin-orders-heading"><div><span>Gestion des commandes</span><h3>Commandes et livraisons</h3><p>Ouvrez une commande pour consulter les coordonnées du client, l’adresse de livraison, les produits et le suivi.</p></div><div class="admin-orders-overview"><div><strong>${(adminOrders||[]).length}</strong><span>Commandes</span></div><div><strong>${awaiting}</strong><span>À préparer</span></div><div><strong>${shipping}</strong><span>En livraison</span></div></div></div><div class="admin-table-wrap admin-orders-table"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Destination</th><th>Produits</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="admin-muted">Aucune commande pour le moment.</td></tr>'}</tbody></table></div><div class="admin-section-title"><h3>Historique des remboursements</h3></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Remboursement</th><th>Commande</th><th>Montant</th><th>Raison</th><th>Statut</th></tr></thead><tbody>${refundRows||'<tr><td colspan="5" class="admin-muted">Aucun remboursement.</td></tr>'}</tbody></table></div><div class="admin-order-detail-modal" id="adminOrderDetailModal" hidden><button class="admin-order-detail-backdrop" type="button" onclick="closeAdminOrderDetail()" aria-label="Fermer les détails"></button><section class="admin-order-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="adminOrderDetailTitle"><button class="admin-order-detail-close" type="button" onclick="closeAdminOrderDetail()" aria-label="Fermer">×</button><div id="adminOrderDetailContent"></div></section></div>`;
 }
 function openAdminOrderDetail(orderId){
   const order=(adminOrders||[]).find(item=>String(item.id)===String(orderId)),modal=document.getElementById('adminOrderDetailModal'),content=document.getElementById('adminOrderDetailContent');if(!order||!modal||!content)return;
-  const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],tracking=order.tracking||{},statusMeta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),domId=adminOrderDomId(order.id),email=customer.email||order.guestEmail||'',phone=customer.phone||'',phoneHref=String(phone).replace(/[^\d+]/g,''),remaining=Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0));
-  const itemRows=items.map(item=>{const qty=Number(item.qty)||1,details=adminOrderItemDetails(item),unit=Number(item.originalUnitPrice??item.price??0),line=Number(item.lineTotal??(unit*qty));return `<article class="admin-order-detail-item"><img src="${safeAttr(item.image||'logoarty.png')}" alt=""><div><span>${safeText(item.type==='bundle'?'Forfait':'Produit')}</span><h4>${safeText(item.name||'Produit ARTY')}</h4><p>Quantité : ${qty} · Prix unitaire : $${toMoney(unit)}</p>${details.length?`<ul>${details.map(detail=>`<li>${safeText(detail)}</li>`).join('')}</ul>`:''}</div><strong>$${toMoney(line)}</strong></article>`}).join('');
+  const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],ticketOnly=items.length>0&&items.every(item=>item.type==='event-ticket'),tracking=order.tracking||{},statusMeta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),domId=adminOrderDomId(order.id),email=customer.email||order.guestEmail||'',phone=customer.phone||'',phoneHref=String(phone).replace(/[^\d+]/g,''),remaining=Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0));
+  const itemRows=items.map(item=>{const qty=Number(item.qty)||1,details=adminOrderItemDetails(item),unit=Number(item.originalUnitPrice??item.price??0),line=Number(item.lineTotal??(unit*qty)),typeLabel=item.type==='event-ticket'?'Billet':item.type==='bundle'?'Forfait':'Produit';return `<article class="admin-order-detail-item"><img src="${safeAttr(item.image||'logoarty.png')}" alt=""><div><span>${safeText(typeLabel)}</span><h4>${safeText(item.name||'Produit ARTY')}</h4><p>Quantité : ${qty} · Prix unitaire : $${toMoney(unit)}</p>${details.length?`<ul>${details.map(detail=>`<li>${safeText(detail)}</li>`).join('')}</ul>`:''}</div><strong>$${toMoney(line)}</strong></article>`}).join('');
   const history=(order.statusHistory||[]).slice().reverse().map(entry=>`<div class="admin-order-history-entry"><span></span><div><strong>${safeText(profileStatusMeta(entry.to).label)}</strong><small>${profileDate(entry.at,true)}</small></div></div>`).join('');
   const paymentProviderLabel=order.paymentProvider==='stripe'?'Stripe':order.paymentProvider&&order.paymentProvider!=='not_connected'?order.paymentProvider:'À confirmer';
   content.innerHTML=`<header class="admin-order-detail-head"><div><span>Commande ${safeText(order.id)}</span><h2 id="adminOrderDetailTitle">Détails de la commande</h2><p>Reçue le ${profileDate(order.createdAt,true)}</p></div><div><b class="account-status ${statusMeta.className}">${safeText(statusMeta.label)}</b><b class="admin-status ${payment.className}">${safeText(payment.label)}</b></div></header><div class="admin-order-detail-summary"><div>${profileIcon('receipt')}<span>Total de la commande<strong>$${toMoney(order.total)}</strong></span></div><div>${profileIcon('orders')}<span>Nombre d’articles<strong>${items.reduce((total,item)=>total+(Number(item.qty)||1),0)}</strong></span></div><div>${profileIcon('user')}<span>Type de commande<strong>${order.checkoutMode==='account'?'Compte client':'Commande invité'}</strong></span></div></div><div class="admin-order-detail-columns"><main><section class="admin-order-detail-card"><div class="admin-order-detail-title"><div>${profileIcon('user')}<h3>Informations du client</h3></div><span>Pour communiquer au besoin</span></div><div class="admin-customer-info"><div><span>Nom complet</span><strong>${safeText(customer.name||'Non indiqué')}</strong></div><div><span>Courriel</span><strong>${safeText(email||'Non indiqué')}</strong></div><div><span>Téléphone</span><strong>${safeText(phone||'Non indiqué')}</strong></div></div><div class="admin-contact-actions">${email?`<a href="mailto:${safeAttr(email)}">Envoyer un courriel</a>`:''}${phoneHref?`<a href="tel:${safeAttr(phoneHref)}">Appeler le client</a>`:''}</div></section><section class="admin-order-detail-card"><div class="admin-order-detail-title"><div>${profileIcon('location')}<h3>Adresse de livraison</h3></div><button type="button" onclick="copyAdminShippingAddress('${safeAttr(order.id)}')">Copier l’adresse</button></div><address><strong>${safeText(customer.name||'')}</strong><span>${safeText(address.line1||'Adresse non indiquée')}</span><span>${safeText([address.city,address.province,address.postal].filter(Boolean).join(', '))}</span><span>${safeText(address.country||'')}</span></address>${address.notes?`<div class="admin-shipping-note"><strong>Instructions de livraison</strong><p>${safeText(address.notes)}</p></div>`:''}</section><section class="admin-order-detail-card"><div class="admin-order-detail-title"><div>${profileIcon('orders')}<h3>Produits commandés</h3></div><span>${items.length} produit${items.length>1?'s':''}</span></div><div class="admin-order-detail-items">${itemRows||'<p class="admin-muted">Aucun produit enregistré.</p>'}</div><div class="admin-order-detail-totals"><div><span>Sous-total</span><strong>$${toMoney(order.subtotal??order.total)}</strong></div>${Number(order.discountTotal)>0?`<div class="discount"><span>Rabais</span><strong>− $${toMoney(order.discountTotal)}</strong></div>`:''}${Number(order.refundedTotal)>0?`<div><span>Montant remboursé</span><strong>− $${toMoney(order.refundedTotal)}</strong></div>`:''}<div class="total"><span>Total</span><strong>$${toMoney(order.total)}</strong></div></div></section></main><aside><section class="admin-order-detail-card admin-order-management"><div class="admin-order-detail-title"><div>${profileIcon('truck')}<h3>Statut et suivi</h3></div></div><div class="form-group"><label>Statut de la commande</label><select id="detailStatus-${domId}">${adminOrderStatusOptions(order.status)}</select></div><div class="form-group"><label>Transporteur</label><input id="detailCarrier-${domId}" value="${safeAttr(tracking.carrier||'')}" placeholder="Ex: Postes Canada"></div><div class="form-group"><label>Numéro de suivi</label><input id="detailNumber-${domId}" value="${safeAttr(tracking.number||'')}" placeholder="Numéro de suivi"></div><div class="form-group"><label>Livraison estimée</label><input id="detailDate-${domId}" type="date" value="${safeAttr(tracking.estimatedDelivery||'')}"></div><div class="form-group"><label>Lien de suivi</label><input id="detailUrl-${domId}" value="${safeAttr(tracking.url||'')}" placeholder="https://..."></div><button class="btn btn-teal" type="button" id="detailSave-${domId}" onclick="saveAdminOrderDetail('${safeAttr(order.id)}','${safeAttr(domId)}')">Enregistrer les changements</button></section><section class="admin-order-detail-card"><div class="admin-order-detail-title"><div>${profileIcon('receipt')}<h3>Paiement</h3></div></div><div class="admin-payment-details"><div><span>Statut</span><strong>${safeText(payment.label)}</strong></div><div><span>Mode</span><strong>${safeText(paymentProviderLabel)}</strong></div>${order.paymentReference?`<div><span>Référence</span><strong>${safeText(order.paymentReference)}</strong></div>`:''}</div>${remaining>0?`<button class="admin-refund-button" type="button" onclick="closeAdminOrderDetail();createRefund('${safeAttr(order.id)}')">Effectuer un remboursement</button>`:''}</section>${history?`<section class="admin-order-detail-card"><div class="admin-order-detail-title"><div>${profileIcon('receipt')}<h3>Historique</h3></div></div><div class="admin-order-history">${history}</div></section>`:''}</aside></div>`;
@@ -2193,9 +2220,9 @@ document.addEventListener('keydown',event=>{const modal=document.getElementById(
    EVENT TICKETS — customer tickets, guest list and check-in
    ========================================================= */
 function ticketStatusMeta(status){
-  return String(status||'valid')==='checked_in'
-    ? {label:'Entrée confirmée',className:'checked'}
-    : {label:'Billet valide',className:'valid'};
+  const value=String(status||'valid');
+  if(value==='cancelled')return {label:'Billet annulé',className:'cancelled'};
+  return value==='checked_in'?{label:'Entrée confirmée',className:'checked'}:{label:'Billet valide',className:'valid'};
 }
 
 async function renderPublicTicket(code){
@@ -2204,7 +2231,7 @@ async function renderPublicTicket(code){
   try{
     const response=await fetch(`/api/tickets/${encodeURIComponent(code)}`),data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||'Billet non trouvé');
-    const ticket=data.ticket||{},event=data.event||{},booking=data.booking||{},eventCancelled=event.status==='cancelled',meta=eventCancelled?{label:'Événement annulé',className:'cancelled'}:ticketStatusMeta(ticket.status);
+    const ticket=data.ticket||{},event=data.event||{},booking=data.booking||{},eventCancelled=event.status==='cancelled',ticketCancelled=ticket.status==='cancelled',meta=eventCancelled?{label:'Événement annulé',className:'cancelled'}:ticketStatusMeta(ticket.status);
     const eventDate=event.date?new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Date à confirmer';
     const emailNotice=lastTicketEmailStatus==='sent'
       ? '<div class="ticket-delivery-note success"><strong>Billets envoyés par courriel</strong><span>Une copie a été envoyée à l’adresse utilisée pour la réservation.</span></div>'
@@ -2212,7 +2239,7 @@ async function renderPublicTicket(code){
         ? '<div class="ticket-delivery-note warning"><strong>Votre billet est prêt</strong><span>Gardez cette page accessible. L’envoi par courriel n’a pas pu être complété.</span></div>'
         : '';
     container.innerHTML=`<button type="button" class="product-back ticket-back" onclick="navigate('#/party')">← Retour aux événements</button>
-      ${eventCancelled?'<div class="ticket-delivery-note cancelled"><strong>Événement annulé</strong><span>Communiquez avec l’équipe ARTY pour les prochaines étapes.</span></div>':emailNotice}
+      ${eventCancelled?'<div class="ticket-delivery-note cancelled"><strong>Événement annulé</strong><span>Communiquez avec l’équipe ARTY pour les prochaines étapes.</span></div>':ticketCancelled?'<div class="ticket-delivery-note cancelled"><strong>Billet annulé</strong><span>Ce billet ne peut plus être utilisé à l’entrée.</span></div>':emailNotice}
       <div class="public-ticket-layout">
         <section class="public-ticket-card ${meta.className}">
           <header class="public-ticket-brand"><div><span>ARTY</span><small>Billet d’entrée</small></div><b class="ticket-status ${meta.className}">${safeText(meta.label)}</b></header>
@@ -2274,7 +2301,7 @@ function renderAdminEvents(){
   const selectedEvent=adminEvents.find(event=>String(event.id)===String(adminGuestEventId)),selectedBookings=selectedEvent?adminEventBookings(selectedEvent.id):[];
   const totalTickets=(adminBookings||[]).flatMap(booking=>booking.tickets||[]),checkedTickets=totalTickets.filter(ticket=>ticket.status==='checked_in');
   const eventCards=(adminEvents||[]).map(event=>{const counts=adminEventTicketCounts(event.id),capacity=Number(event.maxSpots)||0,pct=capacity?Math.min(100,Math.round((counts.total/capacity)*100)):0;return `<article class="admin-managed-event ${String(event.id)===String(adminGuestEventId)?'selected':''}"><img src="${safeAttr(event.image||'photoacceuil.jpg')}" alt=""><div><span>${safeText(event.date?formatEventDate(event,true):'Date à confirmer')} · ${safeText(event.time||'')}</span><h4>${safeText(event.title)}</h4><p>${safeText(event.location||'Lieu à confirmer')}</p><div class="admin-event-capacity"><span style="width:${pct}%"></span></div><small>${counts.total} billet${counts.total>1?'s':''} · ${counts.checked} présence${counts.checked>1?'s':''} · ${safeText(event.status||'published')}</small></div><div class="admin-managed-actions"><button type="button" onclick="selectAdminGuestEvent('${safeAttr(event.id)}')">Liste d’invités</button><button type="button" onclick="openAdminEventEditor(${Number(event.id)})">Modifier</button><button type="button" class="danger" onclick="deleteEv(${Number(event.id)})">Supprimer</button></div></article>`}).join('');
-  const guestRows=selectedBookings.flatMap(booking=>(booking.tickets||[]).map(ticket=>{const checked=ticket.status==='checked_in',search=[ticket.holderName,booking.name,booking.email,booking.phone,ticket.code].join(' ').toLowerCase();return `<tr data-guest-search="${safeAttr(search)}"><td><strong>${safeText(ticket.holderName)}</strong><span>${safeText(ticket.code)}</span></td><td><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span></td><td><span class="admin-ticket-state ${checked?'checked':'valid'}">${checked?'Présent':'À venir'}</span>${checked&&ticket.checkedInAt?`<small>${profileDate(ticket.checkedInAt,true)}</small>`:''}</td><td><button class="admin-checkin-button ${checked?'undo':''}" type="button" onclick="checkInAdminTicket('${safeAttr(ticket.id)}',${checked?'false':'true'})">${checked?'Annuler':'Confirmer l’entrée'}</button></td></tr>`})).join('');
+  const guestRows=selectedBookings.flatMap(booking=>(booking.tickets||[]).map(ticket=>{const checked=ticket.status==='checked_in',cancelled=ticket.status==='cancelled',search=[ticket.holderName,booking.name,booking.email,booking.phone,ticket.code].join(' ').toLowerCase();return `<tr data-guest-search="${safeAttr(search)}"><td><strong>${safeText(ticket.holderName)}</strong><span>${safeText(ticket.code)}</span></td><td><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span></td><td><span class="admin-ticket-state ${cancelled?'cancelled':checked?'checked':'valid'}">${cancelled?'Annulé':checked?'Présent':'À venir'}</span>${checked&&ticket.checkedInAt?`<small>${profileDate(ticket.checkedInAt,true)}</small>`:''}</td><td>${cancelled?'<span class="admin-ticket-unavailable">Aucune entrée</span>':`<button class="admin-checkin-button ${checked?'undo':''}" type="button" onclick="checkInAdminTicket('${safeAttr(ticket.id)}',${checked?'false':'true'})">${checked?'Annuler':'Confirmer l’entrée'}</button>`}</td></tr>`})).join('');
   const selectedCounts=selectedEvent?adminEventTicketCounts(selectedEvent.id):{total:0,checked:0};
   const bookingContacts=selectedBookings.map(booking=>`<article class="admin-booking-contact"><div><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span><small>${booking.guests} billet${booking.guests>1?'s':''} · Total $${toMoney(booking.total)}</small></div><div><span class="admin-email-state ${booking.emailDelivery?.status==='sent'?'sent':'attention'}">${booking.emailDelivery?.status==='sent'?'Courriel envoyé':'Courriel à vérifier'}</span><button type="button" data-resend-booking="${safeAttr(booking.id)}" onclick="resendAdminTickets('${safeAttr(booking.id)}')">Renvoyer le courriel</button></div></article>`).join('');
   const requestRows=(eventRequests||[]).map(request=>`<tr><td><strong>${safeText(request.name)}</strong><br><small>${safeText(request.email)}${request.phone?` · ${safeText(request.phone)}`:''}</small></td><td>${safeText(request.eventType)}<br><small>${request.preferredDate?safeText(request.preferredDate):'Date flexible'} · ${Number(request.guests)||'?'} pers.</small></td><td>${safeText(request.location||'À confirmer')}</td><td><span class="admin-status-badge">${safeText(request.status||'nouvelle')}</span></td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="updateEventRequestStatus(${Number(request.id)},'contactée')">Contactée</button><button class="admin-btn admin-btn-delete" onclick="deleteEventRequest(${Number(request.id)})">Supprimer</button></div></td></tr>`).join('');
