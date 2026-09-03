@@ -192,15 +192,16 @@
       </div>
       <div class="contact-layout fade-up">
         <div class="contact-info-card">
-          <h3>Nous Joindre</h3><p>Nous répondons dans les 24 heures.</p>
-          <div class="contact-detail"><div class="contact-detail-icon">📍</div><div><h4>Adresse</h4><p>Montréal, QC</p></div></div>
-          <div class="contact-detail"><div class="contact-detail-icon">📧</div><div><h4>Courriel</h4><p>hello@arty.com</p></div></div>
-          <div class="contact-detail"><div class="contact-detail-icon">📞</div><div><h4>Téléphone</h4><p>(514) 555-0192</p></div></div>
-          <div class="contact-socials"><a href="#" class="contact-social-link">IG</a><a href="#" class="contact-social-link">FB</a><a href="#" class="contact-social-link">TT</a></div>
+          <h3>Nous joindre</h3><p>Choisissez l’adresse qui correspond à votre demande.</p>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4z"></path><path d="m4 7 8 6 8-6"></path></svg></span></div><div><h4>Informations générales</h4><p><a href="mailto:info@creationarty.com">info@creationarty.com</a></p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-2a8 8 0 0 1 16 0v2"></path><path d="M4 14h3v6H5a2 2 0 0 1-2-2v-2a2 2 0 0 1 1-2ZM20 14h-3v6h2a2 2 0 0 0 2-2v-2a2 2 0 0 0-1-2Z"></path></svg></span></div><div><h4>Service à la clientèle</h4><p><a href="mailto:support@creationarty.com">support@creationarty.com</a></p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z"></path><circle cx="7" cy="18" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg></span></div><div><h4>Commandes et livraison</h4><p><a href="mailto:orders@creationarty.com">orders@creationarty.com</a></p></div></div>
+          <div class="contact-detail"><div class="contact-detail-icon"><span class="art-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="3"></rect><path d="M8 3v4M16 3v4M3 10h18"></path></svg></span></div><div><h4>Événements et groupes</h4><p><a href="mailto:events@creationarty.com">events@creationarty.com</a></p></div></div>
         </div>
         <div class="contact-form">
           <h3>Envoyez un Message</h3>
           <div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="contactName" placeholder="Votre nom"></div><div class="form-group"><label>Courriel</label><input type="email" id="contactEmail" placeholder="nom@exemple.com"></div></div>
+          <div class="form-group"><label>Votre demande concerne</label><select id="contactTopic"><option value="contact">Renseignements généraux</option><option value="support">Service à la clientèle</option><option value="orders">Commande ou livraison</option><option value="events">Événement ou groupe</option></select></div>
           <div class="form-group"><label>Message</label><textarea id="contactMessage" placeholder="Votre message..."></textarea></div>
           <button class="btn btn-orange" onclick="submitContact()">Envoyer →</button>
         </div>

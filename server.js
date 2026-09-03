@@ -717,7 +717,7 @@ app.get('/api/support-requests/mine', auth, (req, res) => {
   const db = readDB();
   res.json((db.supportRequests || []).filter(request => request.userId === req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(customerSupportView));
 });
-app.post('/api/support-requests', auth, (req, res) => {
+app.post('/api/support-requests', auth, async (req, res) => {
   const db = readDB();
   const user = (db.users || []).find(item => item.id === req.session.userId);
   if (!user) return res.status(404).json({ error: 'Compte non trouvé' });
@@ -747,7 +747,22 @@ app.post('/api/support-requests', auth, (req, res) => {
   db.supportRequests = db.supportRequests || [];
   db.supportRequests.push(request);
   writeDB(db);
-  res.json({ success: true, request: customerSupportView(request) });
+  const [customerEmail, adminEmail] = await Promise.all([
+    sendSupportRequestReceiptEmail(request),
+    sendSupportRequestAdminEmail(request)
+  ]);
+  const latest = readDB();
+  const saved = (latest.supportRequests || []).find(item => String(item.id) === String(request.id));
+  if (saved) {
+    saved.emailDelivery = {
+      customer:customerEmail.status,
+      admin:adminEmail.status,
+      recipient:businessEmailAddress(supportEmailChannel(request)),
+      sentAt:new Date().toISOString()
+    };
+    writeDB(latest);
+  }
+  res.json({ success: true, request: customerSupportView(saved || request), emailStatus:{ customer:customerEmail.status, admin:adminEmail.status } });
 });
 
 app.post('/api/stripe/confirm-order', optionalAuth, async (req, res) => {
@@ -789,7 +804,22 @@ function normalizePublicUrl() {
   return /^https?:\/\//i.test(value) ? value : '';
 }
 function emailFromAddress() { return String(process.env.EMAIL_FROM || process.env.TICKET_EMAIL_FROM || '').trim(); }
-function emailReplyToAddress() { return String(process.env.EMAIL_REPLY_TO || process.env.TICKET_EMAIL_REPLY_TO || '').trim(); }
+const BUSINESS_EMAILS = {
+  info: { env:'EMAIL_INFO', fallback:'info@creationarty.com' },
+  contact: { env:'EMAIL_CONTACT', fallback:'contact@creationarty.com' },
+  support: { env:'EMAIL_SUPPORT', fallback:'support@creationarty.com' },
+  orders: { env:'EMAIL_ORDERS', fallback:'orders@creationarty.com' },
+  events: { env:'EMAIL_EVENTS', fallback:'events@creationarty.com' }
+};
+function businessEmailAddress(channel = 'info') {
+  const config = BUSINESS_EMAILS[channel] || BUSINESS_EMAILS.info;
+  const configured = String(process.env[config.env] || '').trim().toLowerCase();
+  return validEmail(configured) ? configured : config.fallback;
+}
+function emailReplyToAddress(channel = 'info') {
+  if (validEmail(channel)) return String(channel).trim().toLowerCase();
+  return businessEmailAddress(channel);
+}
 function transactionalEmailIsConfigured() { return Boolean(process.env.RESEND_API_KEY && emailFromAddress() && normalizePublicUrl()); }
 function ticketEmailIsConfigured() { return transactionalEmailIsConfigured(); }
 function emailDate(value = new Date()) {
@@ -799,13 +829,14 @@ function emailShell({ title, intro = '', content = '', ctaLabel = '', ctaUrl = '
   const action = ctaLabel && ctaUrl ? `<div style="margin:26px 0;text-align:center"><a href="${escapeEmailHTML(ctaUrl)}" style="display:inline-block;padding:13px 24px;border-radius:999px;background:#e8863a;color:#fff;text-decoration:none;font-weight:800">${escapeEmailHTML(ctaLabel)}</a></div>` : '';
   return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY CRÉATION</div><h1 style="margin:12px 0 4px;font-size:28px">${escapeEmailHTML(title)}</h1>${intro?`<p style="margin:0;opacity:.94;line-height:1.6">${escapeEmailHTML(intro)}</p>`:''}</div><div style="padding:28px;background:#fffdf9;border-radius:0 0 22px 22px"><div style="font-size:15px;line-height:1.7;color:#4f463d">${content}</div>${action}<p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #e8e2d9;font-size:12px;line-height:1.6;color:#75695c">${escapeEmailHTML(footer)}</p></div></div></body></html>`;
 }
-function sendTransactionalEmail({ to, subject, html, idempotencyKey }) {
+function sendTransactionalEmail({ to, subject, html, idempotencyKey, replyTo = 'info' }) {
+  const replyAddress = emailReplyToAddress(replyTo);
   return sendResendEmail({
     from:emailFromAddress(),
     to:[String(to || '').trim().toLowerCase()],
     subject,
     html,
-    ...(emailReplyToAddress() ? { reply_to:emailReplyToAddress() } : {})
+    ...(replyAddress ? { reply_to:replyAddress } : {})
   }, idempotencyKey);
 }
 function sendAccountWelcomeEmail(user) {
@@ -814,6 +845,7 @@ function sendAccountWelcomeEmail(user) {
     to:user.email,
     subject:'Bienvenue chez ARTY — votre compte est prêt',
     idempotencyKey:`account-welcome-${user.id}`,
+    replyTo:'support',
     html:emailShell({
       title:'Bienvenue chez ARTY',
       intro:'Votre compte a été créé avec succès.',
@@ -830,6 +862,7 @@ function sendLoginAlertEmail(user) {
     to:user.email,
     subject:'Nouvelle connexion à votre compte ARTY',
     idempotencyKey:`login-${user.id}-${Date.now()}`,
+    replyTo:'support',
     html:emailShell({
       title:'Nouvelle connexion',
       intro:'Une connexion à votre compte ARTY vient d’être effectuée.',
@@ -846,6 +879,7 @@ function sendPasswordResetEmail(user, token) {
     to:user.email,
     subject:'Réinitialisation de votre mot de passe ARTY',
     idempotencyKey:`password-reset-${hashToken(token).slice(0,24)}`,
+    replyTo:'support',
     html:emailShell({
       title:'Réinitialiser votre mot de passe',
       intro:'Nous avons reçu une demande de nouveau mot de passe.',
@@ -861,6 +895,7 @@ function sendPasswordChangedEmail(user) {
     to:user.email,
     subject:'Votre mot de passe ARTY a été modifié',
     idempotencyKey:`password-changed-${user.id}-${Date.now()}`,
+    replyTo:'support',
     html:emailShell({
       title:'Mot de passe modifié',
       intro:'La sécurité de votre compte a été mise à jour.',
@@ -981,13 +1016,13 @@ function sendResendEmail(payload, idempotencyKey) {
 }
 async function deliverBookingTickets(booking, event, reason = 'confirmation') {
   const attempt = Number(booking.emailDelivery?.attempts || 0) + 1;
-  const result = await sendResendEmail({
-    from: emailFromAddress(),
-    to: [booking.email],
+  const result = await sendTransactionalEmail({
+    to: booking.email,
     subject: `Votre billet ARTY — ${event?.title || 'Événement'}`,
     html: buildTicketEmailHTML(booking, event),
-    ...(emailReplyToAddress() ? { reply_to:emailReplyToAddress() } : {})
-  }, `ticket-${reason}-${booking.id}-${attempt}`);
+    idempotencyKey:`ticket-${reason}-${booking.id}-${attempt}`,
+    replyTo:'events'
+  });
   booking.emailDelivery = { status:result.status, provider:'resend', providerId:result.id || '', error:result.error || '', attempts:attempt, lastAttemptAt:new Date().toISOString(), sentAt:result.status === 'sent' ? new Date().toISOString() : (booking.emailDelivery?.sentAt || '') };
   return result;
 }
@@ -1103,6 +1138,10 @@ async function deliverPaidOrderTickets(orderId, reason = 'payment') {
 function orderEmailRecipient(order) {
   return String(order?.customer?.email || order?.guestEmail || '').trim().toLowerCase();
 }
+function orderEmailChannel(order) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  return items.length && items.every(item => item.type === 'event-ticket') ? 'events' : 'orders';
+}
 function orderEmailItemsHTML(order) {
   return (order.items || []).map(item => {
     const qty = Math.max(1, Number(item.qty) || 1);
@@ -1136,7 +1175,8 @@ async function deliverOrderConfirmation(orderId, reason = 'payment') {
     to:orderEmailRecipient(order),
     subject:`Commande ARTY ${order.id} confirmée`,
     html:buildOrderConfirmationEmailHTML(order),
-    idempotencyKey:`order-confirmation-${order.id}`
+    idempotencyKey:`order-confirmation-${order.id}`,
+    replyTo:orderEmailChannel(order)
   });
   db = readDB();
   const saved = (db.orders || []).find(item => String(item.id) === String(orderId));
@@ -1167,6 +1207,7 @@ async function deliverOrderStatusEmail(orderId, status, reason = 'status-update'
     to:orderEmailRecipient(order),
     subject:`${copy.title} — ${order.id}`,
     idempotencyKey:`order-status-${order.id}-${status}-${hashToken(JSON.stringify(tracking)).slice(0,12)}-${order.updatedAt}`,
+    replyTo:orderEmailChannel(order),
     html:emailShell({
       title:copy.title,
       intro:copy.intro,
@@ -1177,21 +1218,68 @@ async function deliverOrderStatusEmail(orderId, status, reason = 'status-update'
     })
   });
 }
+function buildOrderAdminEmailHTML(order) {
+  const customer = order.customer || {};
+  const address = order.address || {};
+  const hasShipping = (order.items || []).some(item => item.type !== 'event-ticket');
+  const shipping = hasShipping
+    ? `<div style="margin:20px 0;padding:16px;border-radius:14px;background:#f6f2ec"><strong>Livraison</strong><br>${escapeEmailHTML(address.line1 || '')}<br>${escapeEmailHTML([address.city,address.province,address.postal].filter(Boolean).join(', '))}<br>${escapeEmailHTML(address.country || '')}${address.notes?`<br><br><strong>Instructions :</strong> ${escapeEmailHTML(address.notes)}`:''}</div>`
+    : '<p><strong>Commande numérique :</strong> billets d’événement, aucune livraison requise.</p>';
+  return emailShell({
+    title:'Nouvelle commande payée',
+    intro:`La commande ${order.id} est prête à être traitée.`,
+    content:`<p><strong>Client</strong><br>${escapeEmailHTML(customer.name || '')}<br>${escapeEmailHTML(customer.email || order.guestEmail || '')}${customer.phone?`<br>${escapeEmailHTML(customer.phone)}`:''}</p><div style="margin:20px 0">${orderEmailItemsHTML(order)}</div><div style="display:flex;justify-content:space-between;padding:16px;border-radius:14px;background:#eefafa;font-size:18px"><strong>Total payé</strong><strong>$${money(order.total).toFixed(2)} CAD</strong></div>${shipping}`,
+    ctaLabel:'Ouvrir les commandes',
+    ctaUrl:`${normalizePublicUrl()}/#/admin`,
+    footer:`Notification interne ARTY pour la commande ${order.id}.`
+  });
+}
+async function deliverOrderAdminNotification(orderId) {
+  let db = readDB();
+  const order = (db.orders || []).find(item => String(item.id) === String(orderId));
+  if (!order || order.paymentStatus !== 'paid') return { status:'not_paid' };
+  const previous = order.emailDelivery?.admin || {};
+  if (previous.status === 'sent') return previous;
+  const channel = orderEmailChannel(order);
+  const result = await sendTransactionalEmail({
+    to:businessEmailAddress(channel),
+    subject:`Nouvelle commande payée — ${order.id}`,
+    html:buildOrderAdminEmailHTML(order),
+    idempotencyKey:`order-admin-paid-${order.id}`,
+    replyTo:validEmail(orderEmailRecipient(order)) ? orderEmailRecipient(order) : channel
+  });
+  db = readDB();
+  const saved = (db.orders || []).find(item => String(item.id) === String(orderId));
+  if (saved) {
+    saved.emailDelivery = saved.emailDelivery && typeof saved.emailDelivery === 'object' ? saved.emailDelivery : {};
+    saved.emailDelivery.admin = { status:result.status, recipient:businessEmailAddress(channel), providerId:result.id || '', error:result.error || '', sentAt:result.status === 'sent' ? new Date().toISOString() : '' };
+    writeDB(db);
+  }
+  return result;
+}
 async function deliverPaidOrderCommunications(orderId, reason = 'payment') {
   const confirmation = await deliverOrderConfirmation(orderId, reason);
   const tickets = await deliverPaidOrderTickets(orderId, reason);
+  const admin = await deliverOrderAdminNotification(orderId);
   return {
     status:tickets.tickets.length ? tickets.status : confirmation.status,
     confirmationStatus:confirmation.status,
     ticketStatus:tickets.status,
+    adminStatus:admin.status,
     tickets:tickets.tickets
   };
+}
+function supportEmailChannel(request) {
+  if (request?.orderId || ['commande','livraison','paiement'].includes(String(request?.topic || '').toLowerCase())) return 'orders';
+  if (String(request?.topic || '').toLowerCase() === 'événement') return 'events';
+  return 'support';
 }
 function sendSupportReplyEmail(request) {
   return sendTransactionalEmail({
     to:request.customer?.email,
     subject:`Réponse ARTY — ${request.subject}`,
     idempotencyKey:`support-reply-${request.id}-${hashToken(request.adminReply || '').slice(0,16)}`,
+    replyTo:supportEmailChannel(request),
     html:emailShell({
       title:'Notre équipe vous a répondu',
       intro:request.subject,
@@ -1199,6 +1287,39 @@ function sendSupportReplyEmail(request) {
       ctaLabel:'Voir la demande',
       ctaUrl:`${normalizePublicUrl()}/#/profile`,
       footer:`Demande ${request.id}. Vous pouvez répondre à ce courriel ou ouvrir votre compte ARTY.`
+    })
+  });
+}
+function sendSupportRequestReceiptEmail(request) {
+  return sendTransactionalEmail({
+    to:request.customer?.email,
+    subject:`Demande reçue — ${request.id}`,
+    idempotencyKey:`support-receipt-${request.id}`,
+    replyTo:supportEmailChannel(request),
+    html:emailShell({
+      title:'Votre demande est bien reçue',
+      intro:request.subject,
+      content:`<p>Bonjour ${escapeEmailHTML(request.customer?.name || 'Client ARTY')},</p><p>Notre équipe examinera votre message et vous répondra dès que possible.</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(request.message || '').replace(/\n/g,'<br>')}</div>`,
+      ctaLabel:'Voir mes demandes',
+      ctaUrl:`${normalizePublicUrl()}/#/profile`,
+      footer:`Demande ${request.id}. Vous pouvez répondre directement à ce courriel.`
+    })
+  });
+}
+function sendSupportRequestAdminEmail(request) {
+  const channel = supportEmailChannel(request);
+  return sendTransactionalEmail({
+    to:businessEmailAddress(channel),
+    subject:`Nouvelle demande client — ${request.subject}`,
+    idempotencyKey:`support-admin-${request.id}`,
+    replyTo:request.customer?.email,
+    html:emailShell({
+      title:'Nouvelle demande client',
+      intro:`${request.customer?.name || 'Un client'} a contacté ARTY.`,
+      content:`<p><strong>Catégorie :</strong> ${escapeEmailHTML(request.topic || 'autre')}${request.orderId?`<br><strong>Commande :</strong> ${escapeEmailHTML(request.orderId)}`:''}</p><p><strong>Client</strong><br>${escapeEmailHTML(request.customer?.name || '')}<br>${escapeEmailHTML(request.customer?.email || '')}</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(request.message || '').replace(/\n/g,'<br>')}</div>`,
+      ctaLabel:'Ouvrir le service client',
+      ctaUrl:`${normalizePublicUrl()}/#/admin`,
+      footer:`Demande ${request.id}. Répondez à ce courriel pour écrire directement au client.`
     })
   });
 }
@@ -1301,6 +1422,7 @@ function sendEventRequestReceiptEmail(request) {
     to:request.email,
     subject:`Demande d’événement ARTY ${request.reference}`,
     idempotencyKey:`event-request-receipt-${request.id}`,
+    replyTo:'events',
     html:emailShell({
       title:'Votre demande de devis est reçue',
       intro:'Notre équipe examinera votre projet et communiquera avec vous pour confirmer les détails et le prix.',
@@ -1312,12 +1434,13 @@ function sendEventRequestReceiptEmail(request) {
   });
 }
 function sendEventRequestAdminEmail(request) {
-  const recipient = emailReplyToAddress();
+  const recipient = businessEmailAddress('events');
   if (!validEmail(recipient)) return Promise.resolve({ status:'not_configured' });
   return sendTransactionalEmail({
     to:recipient,
     subject:`Nouvelle demande d’événement — ${request.eventType}`,
     idempotencyKey:`event-request-admin-${request.id}`,
+    replyTo:request.email,
     html:emailShell({
       title:'Nouvelle demande d’événement',
       intro:`${request.name} souhaite organiser : ${request.eventType}`,
@@ -1395,6 +1518,7 @@ function sendEventQuotePaymentLinkEmail(request) {
     to:request.email,
     subject:`Votre devis ARTY est prêt — ${request.reference}`,
     idempotencyKey:`event-quote-link-${request.id}-${hashToken(request.paymentLinkUrl || '').slice(0,16)}`,
+    replyTo:'events',
     html:emailShell({
       title:'Votre devis personnalisé est prêt',
       intro:`Nous avons préparé votre proposition pour ${request.eventType}.`,
@@ -1410,6 +1534,7 @@ function sendEventQuotePaidEmail(request) {
     to:request.email,
     subject:`Paiement reçu — devis ${request.reference}`,
     idempotencyKey:`event-quote-paid-${request.id}`,
+    replyTo:'events',
     html:emailShell({
       title:'Paiement reçu',
       intro:'Votre événement ARTY est maintenant confirmé pour la prochaine étape de préparation.',
@@ -1565,7 +1690,59 @@ app.post('/api/event-quotes/:token/confirm', async (req, res) => {
     res.status(500).json({ error:'Impossible de confirmer le paiement: ' + error.message });
   }
 });
-app.post('/api/contact', (req, res) => { const {name,email,message}=req.body; if(!name||!email||!message) return res.status(400).json({error:'Champs requis'}); console.log('Contact:',req.body); res.json({success:true,message:'Merci! Nous vous répondrons bientôt.'}); });
+const CONTACT_CHANNELS = {
+  contact:'Renseignements généraux',
+  support:'Service à la clientèle',
+  orders:'Commandes et livraison',
+  events:'Événements et groupes'
+};
+function contactChannel(value) {
+  const channel = String(value || 'contact').trim().toLowerCase();
+  return Object.prototype.hasOwnProperty.call(CONTACT_CHANNELS, channel) ? channel : 'contact';
+}
+function sendContactReceiptEmail(contact) {
+  return sendTransactionalEmail({
+    to:contact.email,
+    subject:`Votre message à ARTY est bien reçu — ${contact.reference}`,
+    idempotencyKey:`contact-receipt-${contact.id}`,
+    replyTo:contact.channel,
+    html:emailShell({
+      title:'Merci de nous avoir écrit',
+      intro:`Votre message a été transmis à notre équipe ${CONTACT_CHANNELS[contact.channel].toLowerCase()}.`,
+      content:`<p>Bonjour ${escapeEmailHTML(contact.name)},</p><p>Nous vous répondrons dès que possible.</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(contact.message).replace(/\n/g,'<br>')}</div>`,
+      footer:`Référence ${contact.reference}. Vous pouvez répondre directement à ce courriel.`
+    })
+  });
+}
+function sendContactAdminEmail(contact) {
+  return sendTransactionalEmail({
+    to:businessEmailAddress(contact.channel),
+    subject:`Nouveau message — ${CONTACT_CHANNELS[contact.channel]}`,
+    idempotencyKey:`contact-admin-${contact.id}`,
+    replyTo:contact.email,
+    html:emailShell({
+      title:'Nouveau message du site',
+      intro:CONTACT_CHANNELS[contact.channel],
+      content:`<p><strong>Client</strong><br>${escapeEmailHTML(contact.name)}<br>${escapeEmailHTML(contact.email)}</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(contact.message).replace(/\n/g,'<br>')}</div>`,
+      footer:`Référence ${contact.reference}. Répondez à ce courriel pour écrire directement au client.`
+    })
+  });
+}
+app.post('/api/contact', async (req, res) => {
+  const name = String(req.body?.name || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 240);
+  const message = String(req.body?.message || '').trim().slice(0, 3000);
+  const channel = contactChannel(req.body?.channel);
+  if (!name || !validEmail(email) || message.length < 10) return res.status(400).json({ error:'Ajoutez votre nom, un courriel valide et un message détaillé' });
+  const id = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const contact = { id, reference:`MSG-${Date.now().toString(36).toUpperCase()}`, name, email, message, channel };
+  const [customerEmail, adminEmail] = await Promise.all([sendContactReceiptEmail(contact), sendContactAdminEmail(contact)]);
+  if (adminEmail.status !== 'sent') {
+    console.error('Contact email delivery failed:', adminEmail.error || adminEmail.status);
+    return res.status(503).json({ error:'Votre message n’a pas pu être transmis. Écrivez-nous directement à ' + businessEmailAddress(channel) });
+  }
+  res.json({ success:true, message:'Merci! Votre message a été envoyé à la bonne équipe.', reference:contact.reference, emailStatus:customerEmail.status });
+});
 
 
 function normalizeTags(raw) {
