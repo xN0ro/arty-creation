@@ -321,9 +321,26 @@
       <div class="container">
         <div class="text-center fade-up">
           <div class="section-tag">Calendrier</div>
-          <h2 class="section-heading">Événements <span class="accent">à venir</span></h2>
-          <p class="section-sub">Découvrez les prochains événements Arty et réservez vos places en ligne.</p>
+          <h2 class="section-heading">Trouvez votre prochaine <span class="accent">expérience créative</span></h2>
+          <p class="section-sub">Parcourez le calendrier, choisissez une date et réservez vos billets en ligne.</p>
         </div>
+        <div class="party-calendar-shell fade-up">
+          <div class="party-calendar-panel">
+            <div class="party-calendar-toolbar">
+              <div><span>Calendrier des ateliers</span><h3 id="partyCalendarTitle"></h3></div>
+              <div class="party-calendar-controls">
+                <button type="button" onclick="changePartyCalendarMonth(-1)" aria-label="Mois précédent"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+                <button type="button" class="party-calendar-today" onclick="showCurrentPartyCalendarMonth()">Aujourd’hui</button>
+                <button type="button" onclick="changePartyCalendarMonth(1)" aria-label="Mois suivant"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></button>
+              </div>
+            </div>
+            <div class="party-calendar-weekdays" aria-hidden="true"><span>Lun</span><span>Mar</span><span>Mer</span><span>Jeu</span><span>Ven</span><span>Sam</span><span>Dim</span></div>
+            <div class="party-calendar-grid" id="partyCalendarGrid" role="grid" aria-label="Calendrier des événements"></div>
+            <div class="party-calendar-legend"><span><i></i>Date avec événement</span><small>Sélectionnez une date pour voir les détails.</small></div>
+          </div>
+          <aside class="party-calendar-agenda" id="partyCalendarAgenda" aria-live="polite"></aside>
+        </div>
+        <div class="party-upcoming-heading fade-up"><div><span>À découvrir</span><h3>Tous les événements publiés</h3></div><p>Consultez les détails, les disponibilités et réservez votre place.</p></div>
         <div class="events-grid stagger-children" id="partyEventsGrid"></div>
       </div>
     </section>

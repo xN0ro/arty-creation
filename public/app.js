@@ -5,6 +5,7 @@ let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},p
 let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 let siteAnnouncement={enabled:false,message:''},transactionalEmailConfigured=false,ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
 let eventCustomSourceData='',eventCustomTraceData='',eventStudioDesign=null,eventStudioDraftState=null,eventQuoteConfirmation=null,currentEventQuoteToken='',currentEventQuote=null,eventQuoteStripe=null,eventQuoteElements=null,eventQuotePaymentIntentId='';
+let partyCalendarMonth='',partyCalendarSelectedDate='';
 
 document.addEventListener('DOMContentLoaded',async()=>{
   document.addEventListener('mousedown',e=>{
@@ -396,12 +397,117 @@ function renderPartyPage(){
   renderTeamPage();
   initScrollEffects();
 }
+
+function parseCalendarDate(value){
+  const match=String(value||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!match)return null;
+  const date=new Date(Number(match[1]),Number(match[2])-1,Number(match[3]));
+  return Number.isNaN(date.getTime())?null:date;
+}
+function calendarDateKey(date){
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function calendarMonthKey(date){return calendarDateKey(date).slice(0,7)}
+function getDatedPartyEvents(){
+  return allEvents.filter(event=>parseCalendarDate(event.date)).sort((a,b)=>{
+    const dateCompare=String(a.date).localeCompare(String(b.date));
+    return dateCompare||String(a.time||'00:00').localeCompare(String(b.time||'00:00'));
+  });
+}
+function ensurePartyCalendarState(){
+  const events=getDatedPartyEvents();
+  const todayKey=calendarDateKey(new Date());
+  const firstUpcoming=events.find(event=>event.date>=todayKey);
+  const startingEvent=firstUpcoming||events[events.length-1];
+  const initialDate=startingEvent?parseCalendarDate(startingEvent.date):new Date();
+  if(!/^\d{4}-\d{2}$/.test(partyCalendarMonth))partyCalendarMonth=calendarMonthKey(initialDate);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(partyCalendarSelectedDate)){
+    partyCalendarSelectedDate=startingEvent?.date||todayKey;
+  }
+}
+function changePartyCalendarMonth(offset){
+  ensurePartyCalendarState();
+  const [year,month]=partyCalendarMonth.split('-').map(Number);
+  const next=new Date(year,month-1+Number(offset||0),1);
+  partyCalendarMonth=calendarMonthKey(next);
+  const firstEvent=getDatedPartyEvents().find(event=>String(event.date).startsWith(partyCalendarMonth));
+  partyCalendarSelectedDate=firstEvent?.date||`${partyCalendarMonth}-01`;
+  renderPartyCalendar();
+}
+function showCurrentPartyCalendarMonth(){
+  const today=new Date();
+  partyCalendarMonth=calendarMonthKey(today);
+  partyCalendarSelectedDate=calendarDateKey(today);
+  renderPartyCalendar();
+}
+function selectPartyCalendarDate(dateKey){
+  const date=parseCalendarDate(dateKey);if(!date)return;
+  partyCalendarMonth=calendarMonthKey(date);
+  partyCalendarSelectedDate=dateKey;
+  renderPartyCalendar();
+}
+function partyCalendarArrow(direction){
+  const path=direction==='left'?'<path d="m15 18-6-6 6-6"></path>':'<path d="m9 18 6-6-6-6"></path>';
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+}
+function renderPartyCalendarAgenda(eventsByDate){
+  const agenda=document.getElementById('partyCalendarAgenda');if(!agenda)return;
+  const selectedDate=parseCalendarDate(partyCalendarSelectedDate);
+  const events=eventsByDate.get(partyCalendarSelectedDate)||[];
+  const heading=selectedDate?selectedDate.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'}):'Sélectionnez une date';
+  const cards=events.map(event=>{
+    const left=spotsLeft(event);
+    return `<article class="party-calendar-event" onclick="navigate('#/event/${event.id}')">
+      <img src="${safeAttr(event.image||'photoacceuil.jpg')}" alt="${safeAttr(event.title)}" loading="lazy">
+      <div class="party-calendar-event-copy">
+        <span>${safeText(event.time||'Heure à confirmer')} · ${safeText(event.eventType||'Atelier')}</span>
+        <h4>${safeText(event.title)}</h4>
+        <p>${safeText(event.location||'Lieu à confirmer')}</p>
+        <div><strong>$${toMoney(event.price)}</strong><small class="${left<=0?'is-full':''}">${left<=0?'Complet':'Billets disponibles'}</small></div>
+      </div>
+      <span class="party-calendar-event-arrow">${partyCalendarArrow('right')}</span>
+    </article>`;
+  }).join('');
+  agenda.innerHTML=`<div class="party-calendar-agenda-head"><span>Votre sélection</span><h3>${safeText(heading)}</h3><p>${events.length?`${events.length} événement${events.length>1?'s':''} à cette date`:'Aucun événement public à cette date'}</p></div>
+    <div class="party-calendar-agenda-list">${cards||`<div class="party-calendar-no-event"><span>${eventExperienceIcon('calendar')}</span><h4>Cette date est libre</h4><p>Vous pouvez demander un événement privé et nous préparerons une proposition adaptée à votre groupe.</p><button class="btn btn-orange btn-sm" type="button" onclick="navigate('#/event-builder')">Créer mon événement</button></div>`}</div>`;
+}
+function renderPartyCalendar(){
+  const grid=document.getElementById('partyCalendarGrid');
+  const title=document.getElementById('partyCalendarTitle');
+  if(!grid||!title)return;
+  ensurePartyCalendarState();
+  const [year,month]=partyCalendarMonth.split('-').map(Number);
+  const monthStart=new Date(year,month-1,1);
+  title.textContent=monthStart.toLocaleDateString('fr-CA',{month:'long',year:'numeric'});
+  const datedEvents=getDatedPartyEvents();
+  const eventsByDate=new Map();
+  datedEvents.forEach(event=>{
+    if(!eventsByDate.has(event.date))eventsByDate.set(event.date,[]);
+    eventsByDate.get(event.date).push(event);
+  });
+  const mondayOffset=(monthStart.getDay()+6)%7;
+  const firstCell=new Date(year,month-1,1-mondayOffset);
+  const todayKey=calendarDateKey(new Date());
+  const cells=[];
+  for(let index=0;index<42;index++){
+    const date=new Date(firstCell.getFullYear(),firstCell.getMonth(),firstCell.getDate()+index);
+    const key=calendarDateKey(date);
+    const events=eventsByDate.get(key)||[];
+    const outside=date.getMonth()!==month-1;
+    const classes=['party-calendar-day',outside?'is-outside':'',events.length?'has-events':'',key===todayKey?'is-today':'',key===partyCalendarSelectedDate?'is-selected':''].filter(Boolean).join(' ');
+    const eventLabel=events.length?`${events.length} événement${events.length>1?'s':''}`:'Aucun événement';
+    cells.push(`<button type="button" class="${classes}" onclick="selectPartyCalendarDate('${key}')" aria-pressed="${key===partyCalendarSelectedDate?'true':'false'}" aria-label="${safeAttr(date.toLocaleDateString('fr-CA',{day:'numeric',month:'long',year:'numeric'}))}, ${eventLabel}"><span class="party-calendar-day-number">${date.getDate()}</span>${events.length?`<span class="party-calendar-day-event"><i></i><small>${events.length>1?events.length+' événements':'Événement'}</small></span>`:''}</button>`);
+  }
+  grid.innerHTML=cells.join('');
+  renderPartyCalendarAgenda(eventsByDate);
+}
 function renderPartyEvents(){
   const partyGrid=document.getElementById('partyEventsGrid');
   const count=document.getElementById('eventPublishedCount');
   if(!partyGrid)return;
   const sorted=[...allEvents].sort((a,b)=>new Date((a.date||'')+'T'+(a.time||'00:00'))-new Date((b.date||'')+'T'+(b.time||'00:00')));
   if(count)count.textContent=String(sorted.length);
+  renderPartyCalendar();
   partyGrid.innerHTML=sorted.map(ev=>{
     const left=spotsLeft(ev);
     const booked=parseInt(ev.bookedSpots)||0;

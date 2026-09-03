@@ -686,6 +686,60 @@ body.has-site-announcement .page.active{margin-top:44px}
 .event-empty-card{grid-column:1/-1;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:42px;text-align:center;box-shadow:var(--shadow-sm)}
 .event-empty-card h3{font-size:1.3rem;margin-bottom:8px;color:var(--text)}
 .event-empty-card p{color:var(--text-light);margin-bottom:20px}
+.party-calendar-shell{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.72fr);margin:38px 0 34px;border:1px solid rgba(27,154,170,.15);border-radius:30px;background:#fff;box-shadow:0 24px 70px rgba(49,42,33,.09);overflow:hidden}
+.party-calendar-panel{padding:30px}
+.party-calendar-toolbar{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}
+.party-calendar-toolbar>div:first-child>span,.party-calendar-agenda-head>span,.party-upcoming-heading>div>span{display:block;margin-bottom:4px;color:var(--teal);font-size:.68rem;font-weight:900;letter-spacing:1.4px;text-transform:uppercase}
+.party-calendar-toolbar h3{font-size:1.55rem;line-height:1.2;color:var(--text);text-transform:capitalize}
+.party-calendar-controls{display:flex;align-items:center;gap:8px}
+.party-calendar-controls button{display:grid;place-items:center;width:42px;height:42px;border:1px solid var(--border);border-radius:13px;background:#fff;color:var(--text-md);transition:var(--tr)}
+.party-calendar-controls button:hover{border-color:var(--teal);background:var(--teal-pale);color:var(--teal)}
+.party-calendar-controls button svg,.party-calendar-event-arrow svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.party-calendar-controls .party-calendar-today{width:auto;padding:0 14px;font-size:.74rem;font-weight:800}
+.party-calendar-weekdays,.party-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px}
+.party-calendar-weekdays{margin-bottom:7px}
+.party-calendar-weekdays span{padding:4px;text-align:center;color:var(--text-faint);font-size:.64rem;font-weight:900;letter-spacing:.8px;text-transform:uppercase}
+.party-calendar-day{position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:space-between;min-height:82px;padding:10px;border:1px solid transparent;border-radius:14px;background:var(--bg2);color:var(--text-md);text-align:left;transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
+.party-calendar-day:hover{z-index:1;transform:translateY(-2px);border-color:rgba(27,154,170,.35);background:#fff;box-shadow:0 8px 24px rgba(49,42,33,.08)}
+.party-calendar-day.is-outside{opacity:.35;background:transparent}
+.party-calendar-day.is-today{border-color:rgba(232,134,58,.5)}
+.party-calendar-day.is-today .party-calendar-day-number{color:var(--orange)}
+.party-calendar-day.has-events{border-color:rgba(27,154,170,.18);background:linear-gradient(145deg,#fff,var(--teal-pale))}
+.party-calendar-day.is-selected{border-color:var(--teal);background:var(--teal);color:#fff;box-shadow:0 10px 25px rgba(27,154,170,.23)}
+.party-calendar-day-number{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;font-size:.82rem;font-weight:900}
+.party-calendar-day.is-selected .party-calendar-day-number{background:rgba(255,255,255,.18);color:#fff}
+.party-calendar-day-event{display:flex;align-items:center;gap:5px;width:100%;min-width:0}
+.party-calendar-day-event i,.party-calendar-legend i{display:block;width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:var(--orange)}
+.party-calendar-day-event small{overflow:hidden;color:var(--teal);font-size:.59rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+.party-calendar-day.is-selected .party-calendar-day-event small{color:#fff}
+.party-calendar-legend{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding-top:18px;border-top:1px solid var(--border-light);color:var(--text-light);font-size:.7rem}
+.party-calendar-legend span{display:flex;align-items:center;gap:8px;font-weight:800;color:var(--text-md)}
+.party-calendar-agenda{display:flex;flex-direction:column;min-width:0;padding:30px;background:linear-gradient(155deg,#173f46 0%,#1d555d 100%);color:#fff}
+.party-calendar-agenda-head{padding-bottom:20px;border-bottom:1px solid rgba(255,255,255,.13)}
+.party-calendar-agenda-head>span{color:#84e0e9}
+.party-calendar-agenda-head h3{font-size:1.35rem;line-height:1.35;text-transform:capitalize}
+.party-calendar-agenda-head p{margin-top:5px;color:rgba(255,255,255,.65);font-size:.78rem}
+.party-calendar-agenda-list{display:grid;align-content:start;gap:12px;margin-top:18px}
+.party-calendar-event{position:relative;display:grid;grid-template-columns:76px minmax(0,1fr) 24px;gap:12px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:17px;background:rgba(255,255,255,.08);cursor:pointer;transition:var(--tr)}
+.party-calendar-event:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.13)}
+.party-calendar-event>img{width:76px;height:88px;border-radius:12px;object-fit:cover}
+.party-calendar-event-copy{min-width:0}
+.party-calendar-event-copy>span{display:block;color:#84e0e9;font-size:.62rem;font-weight:900;letter-spacing:.5px;text-transform:uppercase}
+.party-calendar-event-copy h4{overflow:hidden;margin:4px 0 3px;color:#fff;font-size:.9rem;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
+.party-calendar-event-copy p{overflow:hidden;color:rgba(255,255,255,.65);font-size:.68rem;text-overflow:ellipsis;white-space:nowrap}
+.party-calendar-event-copy>div{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:9px}
+.party-calendar-event-copy strong{color:#ffc688;font-size:.88rem}
+.party-calendar-event-copy small{color:#9fe7d0;font-size:.6rem;font-weight:800}
+.party-calendar-event-copy small.is-full{color:#ffb9ae}
+.party-calendar-event-arrow{color:rgba(255,255,255,.55)}
+.party-calendar-no-event{display:grid;justify-items:start;align-content:start;padding:22px;border:1px dashed rgba(255,255,255,.2);border-radius:18px;background:rgba(255,255,255,.05)}
+.party-calendar-no-event>span{display:grid;place-items:center;width:44px;height:44px;margin-bottom:16px;border-radius:14px;background:rgba(255,255,255,.1);color:#84e0e9}
+.party-calendar-no-event>span svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8}
+.party-calendar-no-event h4{color:#fff;font-size:1rem}
+.party-calendar-no-event p{margin:7px 0 18px;color:rgba(255,255,255,.65);font-size:.76rem;line-height:1.6}
+.party-upcoming-heading{display:flex;align-items:end;justify-content:space-between;gap:24px;margin:46px 0 18px;padding-bottom:17px;border-bottom:1px solid var(--border)}
+.party-upcoming-heading h3{font-size:1.35rem;color:var(--text)}
+.party-upcoming-heading>p{max-width:460px;color:var(--text-light);font-size:.82rem;text-align:right}
 .event-occasions-section{background:var(--bg2)}
 .private-event-section{background:var(--bg)}
 .private-event-layout{display:grid;grid-template-columns:.9fr 1.1fr;gap:30px;align-items:start;background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:36px;box-shadow:var(--shadow-md)}
@@ -728,7 +782,9 @@ body.has-site-announcement .page.active{margin-top:44px}
 .admin-status-badge{display:inline-flex;padding:5px 10px;border-radius:50px;background:var(--teal-pale);color:var(--teal);font-size:.72rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
 .admin-status-badge.draft{background:var(--bg2);color:var(--text-light)}
 .admin-status-badge.cancelled{background:#FFF0EE;color:#D44}
+@media(max-width:980px){.party-calendar-shell{grid-template-columns:1fr}.party-calendar-agenda{min-height:300px}.party-calendar-agenda-list{grid-template-columns:repeat(2,minmax(0,1fr))}.party-calendar-no-event{grid-column:1/-1}}
 @media(max-width:900px){.event-hero-grid,.private-event-layout,.event-detail-modern{grid-template-columns:1fr}.event-options-grid,.admin-event-dashboard{grid-template-columns:1fr}.event-hero-copy .section-heading,.event-hero-copy .event-intro-highlight,.private-event-copy .section-heading{text-align:center}.event-hero-actions{justify-content:center}.event-includes-box ul{grid-template-columns:1fr}}
+@media(max-width:650px){.party-calendar-shell{margin-left:-8px;margin-right:-8px;border-radius:22px}.party-calendar-panel,.party-calendar-agenda{padding:20px 16px}.party-calendar-toolbar{align-items:flex-start;flex-direction:column}.party-calendar-controls{width:100%}.party-calendar-controls .party-calendar-today{flex:1}.party-calendar-weekdays,.party-calendar-grid{gap:3px}.party-calendar-day{min-height:58px;padding:6px;border-radius:10px}.party-calendar-day-number{width:23px;height:23px;font-size:.72rem}.party-calendar-day-event small{display:none}.party-calendar-day-event i{width:6px;height:6px}.party-calendar-legend{align-items:flex-start;flex-direction:column}.party-calendar-agenda-list{grid-template-columns:1fr}.party-calendar-event{grid-template-columns:66px minmax(0,1fr) 20px}.party-calendar-event>img{width:66px;height:76px}.party-upcoming-heading{align-items:flex-start;flex-direction:column}.party-upcoming-heading>p{text-align:left}}
 
 /* CART + CHECKOUT FINAL FIX */
 .navbar .container{gap:12px}
