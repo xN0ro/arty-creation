@@ -1292,7 +1292,7 @@ function eventRequestEmailSummary(request) {
   const solution = request.servicePath === 'inventory'
     ? (selected || 'Sélection à confirmer')
     : request.servicePath === 'custom'
-      ? `${escapeEmailHTML(request.customKit?.sizeLabel || 'Format à confirmer')} · ${Math.max(1, Number(request.customKit?.quantity) || request.guests || 1)} kit(s)`
+      ? `${escapeEmailHTML(request.customKit?.productLabel || request.customKit?.sizeLabel || 'Format à confirmer')} · ${Math.max(1, Number(request.customKit?.quantity) || request.guests || 1)} kit(s)`
       : escapeEmailHTML(request.expertBrief || request.message || 'Concept à discuter avec le client');
   return `<div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec;line-height:1.7"><strong>${escapeEmailHTML(request.eventType)}</strong><br>${request.preferredDate ? escapeEmailHTML(request.preferredDate) : 'Date à confirmer'} · ${request.guests} personne${request.guests > 1 ? 's' : ''}<br>${escapeEmailHTML(request.location || 'Lieu à confirmer')}<br><br><strong>${escapeEmailHTML(path)}</strong><br>${solution}</div>`;
 }
@@ -1344,7 +1344,7 @@ function publicEventQuoteView(request) {
     servicePath:request.servicePath || 'expert',
     servicePathLabel:eventRequestPathLabel(request.servicePath),
     inventoryItems:(request.inventoryItems || []).map(item => ({ name:item.name, quantity:item.quantity, image:item.image || '' })),
-    customKit:request.servicePath === 'custom' ? { sizeLabel:customKit.sizeLabel || '', quantity:customKit.quantity || request.guests || 1, notes:customKit.notes || '' } : null,
+    customKit:request.servicePath === 'custom' ? { productLabel:customKit.productLabel || '', sizeLabel:customKit.sizeLabel || '', orientation:customKit.orientation || '', quantity:customKit.quantity || request.guests || 1, notes:customKit.notes || '' } : null,
     expertBrief:request.servicePath === 'expert' ? request.expertBrief || '' : '',
     quoteDescription:request.quoteDescription || '',
     quoteAmount:money(request.quoteAmount || 0),
@@ -1460,12 +1460,19 @@ app.post('/api/event-requests', async (req, res) => {
   const customKit = servicePath === 'custom' ? {
     size:String(rawCustom.size || '').trim().slice(0, 40),
     sizeLabel:String(rawCustom.sizeLabel || '').trim().slice(0, 100),
+    productType:['canvas','bag'].includes(String(rawCustom.productType || '')) ? String(rawCustom.productType) : 'canvas',
+    productLabel:String(rawCustom.productLabel || rawCustom.sizeLabel || '').trim().slice(0, 140),
+    orientation:String(rawCustom.orientation || '').trim().slice(0, 40),
     quantity:Math.max(1, Math.min(1000, parseInt(rawCustom.quantity) || guests)),
     notes:String(rawCustom.notes || '').trim().slice(0, 1800),
+    imageCount:Math.max(0, Math.min(6, parseInt(rawCustom.imageCount) || 0)),
+    textCount:Math.max(0, Math.min(50, parseInt(rawCustom.textCount) || 0)),
+    elementCount:Math.max(1, Math.min(100, parseInt(rawCustom.elementCount) || 1)),
+    paintedPreview:cleanEventRequestImage(rawCustom.paintedPreview),
     sourceImage:cleanEventRequestImage(rawCustom.sourceImage),
     traceImage:cleanEventRequestImage(rawCustom.traceImage)
   } : null;
-  if (servicePath === 'custom' && (!customKit.sourceImage || !customKit.traceImage)) return res.status(400).json({ error:'Ajoutez une photo valide pour le kit personnalisé' });
+  if (servicePath === 'custom' && (!customKit.sourceImage || !customKit.traceImage)) return res.status(400).json({ error:'Terminez la création personnalisée dans le Studio ARTY' });
   const expertBrief = servicePath === 'expert' ? String(body.expertBrief || body.message || '').trim().slice(0, 3000) : '';
   if (servicePath === 'expert' && expertBrief.length < 10) return res.status(400).json({ error:'Décrivez brièvement le concept que vous souhaitez créer' });
   const id = Date.now();
