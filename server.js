@@ -825,9 +825,74 @@ function ticketEmailIsConfigured() { return transactionalEmailIsConfigured(); }
 function emailDate(value = new Date()) {
   return new Date(value).toLocaleString('fr-CA', { dateStyle:'long', timeStyle:'short', timeZone:process.env.ARTY_TIME_ZONE || 'America/Toronto' });
 }
-function emailShell({ title, intro = '', content = '', ctaLabel = '', ctaUrl = '', footer = 'Vous recevez ce courriel parce qu’une action a été effectuée sur le site ARTY.' }) {
-  const action = ctaLabel && ctaUrl ? `<div style="margin:26px 0;text-align:center"><a href="${escapeEmailHTML(ctaUrl)}" style="display:inline-block;padding:13px 24px;border-radius:999px;background:#e8863a;color:#fff;text-decoration:none;font-weight:800">${escapeEmailHTML(ctaLabel)}</a></div>` : '';
-  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY CRÉATION</div><h1 style="margin:12px 0 4px;font-size:28px">${escapeEmailHTML(title)}</h1>${intro?`<p style="margin:0;opacity:.94;line-height:1.6">${escapeEmailHTML(intro)}</p>`:''}</div><div style="padding:28px;background:#fffdf9;border-radius:0 0 22px 22px"><div style="font-size:15px;line-height:1.7;color:#4f463d">${content}</div>${action}<p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #e8e2d9;font-size:12px;line-height:1.6;color:#75695c">${escapeEmailHTML(footer)}</p></div></div></body></html>`;
+function emailPanel(content, tone = 'neutral') {
+  const palettes = {
+    teal:{ background:'#eef9fa', border:'#c9e8eb', accent:'#168b9c' },
+    orange:{ background:'#fff4e8', border:'#f3d3b3', accent:'#d97328' },
+    neutral:{ background:'#f8f5f0', border:'#e9e1d7', accent:'#5e5144' },
+    success:{ background:'#edf8f2', border:'#c8e8d5', accent:'#247a4d' }
+  };
+  const palette = palettes[tone] || palettes.neutral;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border-collapse:separate;border:1px solid ${palette.border};border-radius:16px;background:${palette.background}"><tr><td style="padding:18px 20px;color:${palette.accent};font-size:14px;line-height:1.7">${content}</td></tr></table>`;
+}
+function emailTextPanel(value, tone = 'neutral') {
+  return emailPanel(escapeEmailHTML(value || '').replace(/\n/g,'<br>'), tone);
+}
+function emailAmountSummary(label, value) {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;border-collapse:separate;border-radius:16px;background:#173f46"><tr><td class="arty-total-label" style="padding:18px 20px;color:#d7f4f5;font-size:13px;font-weight:700;letter-spacing:.3px">${escapeEmailHTML(label)}</td><td class="arty-total-value" align="right" style="padding:18px 20px;color:#ffffff;font-size:20px;font-weight:800;white-space:nowrap">${escapeEmailHTML(value)}</td></tr></table>`;
+}
+function emailShell({ title, intro = '', content = '', ctaLabel = '', ctaUrl = '', footer = 'Vous recevez ce courriel parce qu’une action a été effectuée sur le site ARTY.', preheader = '' }) {
+  const siteUrl = normalizePublicUrl();
+  const logoUrl = `${siteUrl}/logoarty.png`;
+  const supportEmail = businessEmailAddress('support');
+  const preview = escapeEmailHTML(preheader || intro || title);
+  const action = ctaLabel && ctaUrl ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px auto"><tr><td align="center" bgcolor="#e98136" style="border-radius:999px"><a href="${escapeEmailHTML(ctaUrl)}" style="display:inline-block;padding:14px 26px;color:#ffffff;font-size:14px;font-weight:800;line-height:1;text-decoration:none">${escapeEmailHTML(ctaLabel)}</a></td></tr></table>` : '';
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light only">
+  <title>${escapeEmailHTML(title)}</title>
+  <style>
+    body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}table,td{mso-table-lspace:0;mso-table-rspace:0}img{-ms-interpolation-mode:bicubic;border:0;outline:none;text-decoration:none}.arty-copy p{margin:0 0 16px}.arty-copy p:last-child{margin-bottom:0}.arty-copy a{color:#168b9c}.arty-copy strong{color:#332b22}
+    @media only screen and (max-width:620px){.arty-shell{width:100%!important}.arty-pad{padding-left:22px!important;padding-right:22px!important}.arty-title{font-size:28px!important}.arty-tagline{display:none!important}.arty-logo{width:104px!important}.arty-footer-links{display:block!important;margin-top:10px!important}.arty-total-label,.arty-total-value{display:block!important;width:auto!important;text-align:left!important;padding-left:18px!important;padding-right:18px!important}.arty-total-label{padding-bottom:4px!important}.arty-total-value{padding-top:4px!important}}
+  </style>
+</head>
+<body style="margin:0;padding:0;background:#f3eee7;font-family:Arial,'Helvetica Neue',sans-serif;color:#332b22">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent">${preview}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f3eee7" style="width:100%;background:#f3eee7">
+    <tr><td align="center" style="padding:34px 14px">
+      <table role="presentation" class="arty-shell" width="680" cellpadding="0" cellspacing="0" style="width:680px;max-width:680px;border-collapse:separate;background:#ffffff;border:1px solid #e7ddd1;border-radius:24px;overflow:hidden;box-shadow:0 18px 48px rgba(51,43,34,.08)">
+        <tr><td height="6" style="height:6px;background:#e98136;font-size:0;line-height:0">&nbsp;</td></tr>
+        <tr><td class="arty-pad" style="padding:18px 38px;background:#fffdf9">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td valign="middle"><a href="${escapeEmailHTML(siteUrl)}" style="text-decoration:none"><img class="arty-logo" src="${escapeEmailHTML(logoUrl)}" width="118" alt="ARTY Création" style="display:block;width:118px;max-width:100%;height:auto"></a></td>
+            <td class="arty-tagline" align="right" valign="middle" style="color:#168b9c;font-size:10px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase">Créez. Partagez. Célébrez.</td>
+          </tr></table>
+        </td></tr>
+        <tr><td class="arty-pad" style="padding:36px 40px 34px;background:#173f46;background-image:linear-gradient(135deg,#173f46 0%,#1c6670 100%);color:#ffffff">
+          <div style="margin-bottom:11px;color:#ffc28a;font-size:11px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase">ARTY Création</div>
+          <h1 class="arty-title" style="margin:0;color:#ffffff;font-size:34px;line-height:1.18;letter-spacing:-.5px">${escapeEmailHTML(title)}</h1>
+          ${intro?`<p style="max-width:560px;margin:13px 0 0;color:#d8eef0;font-size:15px;line-height:1.65">${escapeEmailHTML(intro)}</p>`:''}
+        </td></tr>
+        <tr><td class="arty-pad" style="padding:34px 40px 38px;background:#ffffff">
+          <div class="arty-copy" style="color:#5e5144;font-size:15px;line-height:1.75">${content}</div>
+          ${action}
+          <div style="margin-top:28px;padding-top:20px;border-top:1px solid #ece4da;color:#7a6e62;font-size:12px;line-height:1.65">${escapeEmailHTML(footer)}</div>
+        </td></tr>
+        <tr><td class="arty-pad" style="padding:22px 38px;background:#f8f4ee;border-top:1px solid #ece4da">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+            <td valign="top" style="color:#796c5f;font-size:11px;line-height:1.65"><strong style="color:#332b22">ARTY Création</strong><br>Kits créatifs et événements de peinture</td>
+            <td class="arty-footer-links" align="right" valign="top" style="color:#796c5f;font-size:11px;line-height:1.65"><a href="${escapeEmailHTML(siteUrl)}" style="color:#168b9c;text-decoration:none">creationarty.com</a><br><a href="mailto:${escapeEmailHTML(supportEmail)}" style="color:#796c5f;text-decoration:none">${escapeEmailHTML(supportEmail)}</a></td>
+          </tr></table>
+        </td></tr>
+      </table>
+      <div style="padding:18px 10px 0;color:#94877a;font-size:10px;line-height:1.5">© ${new Date().getFullYear()} ARTY Création</div>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 function sendTransactionalEmail({ to, subject, html, idempotencyKey, replyTo = 'info' }) {
   const replyAddress = emailReplyToAddress(replyTo);
@@ -849,6 +914,7 @@ function sendAccountWelcomeEmail(user) {
     html:emailShell({
       title:'Bienvenue chez ARTY',
       intro:'Votre compte a été créé avec succès.',
+      preheader:'Votre compte ARTY est prêt.',
       content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><p>Vous pouvez maintenant consulter vos commandes, retrouver vos billets et contacter notre équipe depuis votre espace client.</p>`,
       ctaLabel:'Accéder à mon compte',
       ctaUrl:profileUrl,
@@ -866,7 +932,8 @@ function sendLoginAlertEmail(user) {
     html:emailShell({
       title:'Nouvelle connexion',
       intro:'Une connexion à votre compte ARTY vient d’être effectuée.',
-      content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><div style="padding:16px;border-radius:14px;background:#eefafa"><strong>Date et heure</strong><br>${escapeEmailHTML(emailDate())}</div><p>Si c’était bien vous, aucune action n’est nécessaire.</p>`,
+      preheader:'Alerte de sécurité pour votre compte ARTY.',
+      content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p>${emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Date et heure</strong>${escapeEmailHTML(emailDate())}`,'teal')}<p>Si c’était bien vous, aucune action n’est nécessaire.</p>`,
       ctaLabel:'Sécuriser mon compte',
       ctaUrl:resetUrl,
       footer:'Si vous ne reconnaissez pas cette connexion, modifiez immédiatement votre mot de passe.'
@@ -883,6 +950,7 @@ function sendPasswordResetEmail(user, token) {
     html:emailShell({
       title:'Réinitialiser votre mot de passe',
       intro:'Nous avons reçu une demande de nouveau mot de passe.',
+      preheader:'Votre lien sécurisé de réinitialisation ARTY.',
       content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><p>Ce lien est valide pendant <strong>30 minutes</strong> et ne peut être utilisé qu’une seule fois.</p>`,
       ctaLabel:'Créer un nouveau mot de passe',
       ctaUrl:resetUrl,
@@ -899,6 +967,7 @@ function sendPasswordChangedEmail(user) {
     html:emailShell({
       title:'Mot de passe modifié',
       intro:'La sécurité de votre compte a été mise à jour.',
+      preheader:'Confirmation de modification de votre mot de passe ARTY.',
       content:`<p>Bonjour ${escapeEmailHTML(user.name)},</p><p>Votre mot de passe a été modifié le <strong>${escapeEmailHTML(emailDate())}</strong>.</p>`,
       ctaLabel:'Accéder au site ARTY',
       ctaUrl:normalizePublicUrl(),
@@ -990,10 +1059,19 @@ function buildTicketEmailHTML(booking, event) {
     const ticketUrl = `${publicUrl}/#/ticket/${encodeURIComponent(ticket.code)}`;
     const admissions = Math.max(1, parseInt(ticket.admissions) || 1);
     const ticketLabel = admissions > 1 ? `Accès pour ${admissions} personnes` : (booking.tickets.length > 1 ? `Billet ${index + 1} sur ${booking.tickets.length}` : 'Accès pour 1 personne');
-    return `<div style="margin:18px 0;padding:22px;border:1px solid #e8e2d9;border-radius:18px;background:#fff"><div style="font-size:12px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:#1695a7">${ticketLabel}</div><div style="margin:5px 0 12px;font-size:18px;font-weight:800;color:#332b22">${escapeEmailHTML(ticket.holderName)}</div><a href="${ticketUrl}" style="display:block;text-align:center"><img src="${barcodeUrl}" width="430" style="display:block;max-width:100%;height:auto;margin:auto" alt="Code-barres du billet ${escapeEmailHTML(ticket.code)}"></a><div style="margin-top:9px;text-align:center;font-family:monospace;font-size:13px;color:#6f6255">${escapeEmailHTML(ticket.code)}</div></div>`;
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;border-collapse:separate;border:1px solid #dce9e9;border-radius:18px;background:#fffdf9;overflow:hidden"><tr><td height="5" style="height:5px;background:#e98136;font-size:0;line-height:0">&nbsp;</td></tr><tr><td style="padding:22px"><div style="color:#168b9c;font-size:11px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase">${escapeEmailHTML(ticketLabel)}</div><div style="margin:6px 0 16px;color:#332b22;font-size:19px;font-weight:800">${escapeEmailHTML(ticket.holderName)}</div><a href="${escapeEmailHTML(ticketUrl)}" style="display:block;text-align:center;text-decoration:none"><img src="${escapeEmailHTML(barcodeUrl)}" width="430" style="display:block;width:430px;max-width:100%;height:auto;margin:0 auto" alt="Code-barres du billet ${escapeEmailHTML(ticket.code)}"></a><div style="margin-top:11px;text-align:center;color:#6f6255;font-family:monospace;font-size:12px;letter-spacing:.7px">${escapeEmailHTML(ticket.code)}</div><div style="margin-top:14px;text-align:center"><a href="${escapeEmailHTML(ticketUrl)}" style="color:#168b9c;font-size:12px;font-weight:800;text-decoration:none">Ouvrir ce billet en ligne</a></div></td></tr></table>`;
   }).join('');
   const eventDate = event?.date ? new Date(`${event.date}T00:00:00`).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) : 'Date à confirmer';
-  return `<!doctype html><html lang="fr"><body style="margin:0;background:#f6f2ec;font-family:Arial,sans-serif;color:#332b22"><div style="max-width:680px;margin:auto;padding:30px 18px"><div style="padding:28px;border-radius:22px 22px 0 0;background:linear-gradient(135deg,#e8863a,#1695a7);color:#fff"><div style="font-size:14px;font-weight:800;letter-spacing:2px">ARTY</div><h1 style="margin:12px 0 4px;font-size:28px">Votre billet est prêt</h1><p style="margin:0;opacity:.92">Présentez le code-barres à votre arrivée.</p></div><div style="padding:26px;background:#fffdf9;border-radius:0 0 22px 22px"><p style="margin-top:0">Bonjour ${escapeEmailHTML(booking.name)},</p><h2 style="margin-bottom:8px;font-size:22px">${escapeEmailHTML(event?.title || 'Événement ARTY')}</h2><div style="padding:15px;border-radius:14px;background:#eefafa;line-height:1.7;color:#4f463d"><strong>${escapeEmailHTML(eventDate)}</strong><br>${escapeEmailHTML(event?.time || 'Heure à confirmer')}${event?.location?`<br>${escapeEmailHTML(event.location)}`:''}<br>Accès pour ${booking.guests} personne${booking.guests > 1 ? 's' : ''}</div>${ticketBlocks}<p style="margin:22px 0 5px;font-size:13px;line-height:1.6;color:#75695c">Conservez ce courriel et présentez le billet à l’entrée. Le code est unique et valide pour le nombre de personnes indiqué.</p></div></div></body></html>`;
+  const eventDetails = `<strong style="display:block;margin-bottom:5px;color:#332b22;font-size:17px">${escapeEmailHTML(event?.title || 'Événement ARTY')}</strong><span style="color:#168b9c;font-weight:800">${escapeEmailHTML(eventDate)}</span><br>${escapeEmailHTML(event?.time || 'Heure à confirmer')}${event?.location?`<br>${escapeEmailHTML(event.location)}`:''}<br><strong>Accès pour ${Math.max(1,Number(booking.guests)||1)} personne${Number(booking.guests)>1?'s':''}</strong>`;
+  return emailShell({
+    title:'Votre billet est prêt',
+    intro:'Présentez le code-barres à votre arrivée à l’événement.',
+    preheader:`Billet pour ${event?.title || 'votre événement ARTY'}`,
+    content:`<p>Bonjour ${escapeEmailHTML(booking.name)},</p>${emailPanel(eventDetails,'teal')}${ticketBlocks}<p style="color:#75695c;font-size:13px">Conservez ce courriel. Chaque code est unique et valide pour le nombre de personnes indiqué sur le billet.</p>`,
+    ctaLabel:'Voir mes billets',
+    ctaUrl:booking.userId?`${publicUrl}/#/profile`:((booking.tickets||[])[0]?`${publicUrl}/#/ticket/${encodeURIComponent(booking.tickets[0].code)}`:publicUrl),
+    footer:'Besoin d’aide pour votre billet? Répondez directement à ce courriel et notre équipe événements vous aidera.'
+  });
 }
 function sendResendEmail(payload, idempotencyKey) {
   if (process.env.ARTY_EMAIL_MODE === 'log') return Promise.resolve({ status: 'sent', id: `log-${Date.now()}` });
@@ -1143,21 +1221,23 @@ function orderEmailChannel(order) {
   return items.length && items.every(item => item.type === 'event-ticket') ? 'events' : 'orders';
 }
 function orderEmailItemsHTML(order) {
-  return (order.items || []).map(item => {
+  const rows = (order.items || []).map(item => {
     const qty = Math.max(1, Number(item.qty) || 1);
     const lineTotal = Number(item.lineTotal ?? ((Number(item.price) || 0) * qty));
     const quantityLabel = item.type === 'event-ticket' ? `Accès pour ${qty} personne${qty > 1 ? 's' : ''}` : `Quantité : ${qty}`;
-    return `<div style="display:flex;justify-content:space-between;gap:18px;padding:14px 0;border-bottom:1px solid #e8e2d9"><div><strong style="color:#332b22">${escapeEmailHTML(item.name || 'Article ARTY')}</strong><br><span style="font-size:13px;color:#75695c">${escapeEmailHTML(quantityLabel)}</span></div><strong style="white-space:nowrap;color:#332b22">$${money(lineTotal).toFixed(2)}</strong></div>`;
+    return `<tr><td style="padding:14px 0;border-bottom:1px solid #ece4da;color:#332b22;font-size:14px;line-height:1.5"><strong>${escapeEmailHTML(item.name || 'Article ARTY')}</strong><br><span style="color:#7a6e62;font-size:12px">${escapeEmailHTML(quantityLabel)}</span></td><td align="right" valign="top" style="padding:14px 0 14px 16px;border-bottom:1px solid #ece4da;color:#332b22;font-size:14px;font-weight:800;white-space:nowrap">$${money(lineTotal).toFixed(2)}</td></tr>`;
   }).join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">${rows}</table>`;
 }
 function buildOrderConfirmationEmailHTML(order) {
   const address = order.address || {};
   const hasShipping = (order.items || []).some(item => item.type !== 'event-ticket');
-  const addressBlock = hasShipping ? `<div style="margin-top:22px;padding:16px;border-radius:14px;background:#f6f2ec"><strong>Adresse de livraison</strong><br>${escapeEmailHTML(address.line1 || '')}<br>${escapeEmailHTML([address.city,address.province,address.postal].filter(Boolean).join(', '))}<br>${escapeEmailHTML(address.country || '')}</div>` : '';
+  const addressBlock = hasShipping ? emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Adresse de livraison</strong>${escapeEmailHTML(address.line1 || '')}<br>${escapeEmailHTML([address.city,address.province,address.postal].filter(Boolean).join(', '))}<br>${escapeEmailHTML(address.country || '')}`,'neutral') : '';
   return emailShell({
     title:'Commande confirmée',
     intro:`Votre paiement pour la commande ${order.id} a été confirmé.`,
-    content:`<p>Bonjour ${escapeEmailHTML(order.customer?.name || 'Client ARTY')},</p><div style="margin:20px 0">${orderEmailItemsHTML(order)}</div><div style="display:flex;justify-content:space-between;padding:16px;border-radius:14px;background:#eefafa;font-size:18px"><strong>Total payé</strong><strong>$${money(order.total).toFixed(2)} CAD</strong></div>${addressBlock}<p>${hasShipping?'Nous vous écrirons lorsque votre commande sera expédiée.':'Votre billet est envoyé dans un courriel séparé et reste aussi disponible dans votre compte.'}</p>`,
+    preheader:`Confirmation de la commande ${order.id}`,
+    content:`<p>Bonjour ${escapeEmailHTML(order.customer?.name || 'Client ARTY')},</p>${emailPanel(`<span style="color:#7a6e62;font-size:12px;text-transform:uppercase;letter-spacing:1px">Numéro de commande</span><br><strong style="color:#332b22;font-size:18px">${escapeEmailHTML(order.id)}</strong>`,'orange')}<div style="margin:20px 0">${orderEmailItemsHTML(order)}</div>${emailAmountSummary('Total payé',`$${money(order.total).toFixed(2)} CAD`)}${addressBlock}<p>${hasShipping?'Nous vous écrirons dès que votre commande sera expédiée.':'Votre billet est envoyé dans un courriel séparé et reste aussi disponible dans votre compte.'}</p>`,
     ctaLabel:order.userId ? 'Voir mes commandes' : 'Visiter ARTY',
     ctaUrl:order.userId ? `${normalizePublicUrl()}/#/profile` : normalizePublicUrl(),
     footer:`Conservez ce courriel comme confirmation de la commande ${order.id}.`
@@ -1202,7 +1282,7 @@ async function deliverOrderStatusEmail(orderId, status, reason = 'status-update'
   const copy = orderStatusEmailCopy(status);
   if (!order || !copy || !validEmail(orderEmailRecipient(order))) return { status:'not_needed' };
   const tracking = order.tracking || {};
-  const trackingBlock = status === 'expédiée' ? `<div style="margin:20px 0;padding:16px;border-radius:14px;background:#eefafa"><strong>Suivi de livraison</strong>${tracking.carrier?`<br>Transporteur : ${escapeEmailHTML(tracking.carrier)}`:''}${tracking.number?`<br>Numéro : ${escapeEmailHTML(tracking.number)}`:''}${tracking.estimatedDelivery?`<br>Livraison estimée : ${escapeEmailHTML(tracking.estimatedDelivery)}`:''}</div>` : '';
+  const trackingBlock = status === 'expédiée' ? emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Suivi de livraison</strong>${tracking.carrier?`Transporteur : ${escapeEmailHTML(tracking.carrier)}<br>`:''}${tracking.number?`Numéro : ${escapeEmailHTML(tracking.number)}<br>`:''}${tracking.estimatedDelivery?`Livraison estimée : ${escapeEmailHTML(tracking.estimatedDelivery)}`:''}`,'teal') : '';
   return sendTransactionalEmail({
     to:orderEmailRecipient(order),
     subject:`${copy.title} — ${order.id}`,
@@ -1211,7 +1291,8 @@ async function deliverOrderStatusEmail(orderId, status, reason = 'status-update'
     html:emailShell({
       title:copy.title,
       intro:copy.intro,
-      content:`<p>Bonjour ${escapeEmailHTML(order.customer?.name || 'Client ARTY')},</p><p>Commande <strong>${escapeEmailHTML(order.id)}</strong></p>${trackingBlock}`,
+      preheader:`Mise à jour de la commande ${order.id}`,
+      content:`<p>Bonjour ${escapeEmailHTML(order.customer?.name || 'Client ARTY')},</p>${emailPanel(`<span style="color:#7a6e62;font-size:12px;text-transform:uppercase;letter-spacing:1px">Commande</span><br><strong style="color:#332b22;font-size:18px">${escapeEmailHTML(order.id)}</strong>`,'orange')}${trackingBlock}`,
       ctaLabel:tracking.url && /^https?:\/\//i.test(tracking.url) ? 'Suivre mon colis' : (order.userId ? 'Voir ma commande' : 'Visiter ARTY'),
       ctaUrl:tracking.url && /^https?:\/\//i.test(tracking.url) ? tracking.url : (order.userId ? `${normalizePublicUrl()}/#/profile` : normalizePublicUrl()),
       footer:'Pour toute question, répondez à ce courriel et indiquez votre numéro de commande.'
@@ -1223,12 +1304,13 @@ function buildOrderAdminEmailHTML(order) {
   const address = order.address || {};
   const hasShipping = (order.items || []).some(item => item.type !== 'event-ticket');
   const shipping = hasShipping
-    ? `<div style="margin:20px 0;padding:16px;border-radius:14px;background:#f6f2ec"><strong>Livraison</strong><br>${escapeEmailHTML(address.line1 || '')}<br>${escapeEmailHTML([address.city,address.province,address.postal].filter(Boolean).join(', '))}<br>${escapeEmailHTML(address.country || '')}${address.notes?`<br><br><strong>Instructions :</strong> ${escapeEmailHTML(address.notes)}`:''}</div>`
-    : '<p><strong>Commande numérique :</strong> billets d’événement, aucune livraison requise.</p>';
+    ? emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Livraison</strong>${escapeEmailHTML(address.line1 || '')}<br>${escapeEmailHTML([address.city,address.province,address.postal].filter(Boolean).join(', '))}<br>${escapeEmailHTML(address.country || '')}${address.notes?`<br><br><strong>Instructions :</strong> ${escapeEmailHTML(address.notes)}`:''}`,'neutral')
+    : emailPanel('<strong>Commande numérique</strong><br>Billets d’événement, aucune livraison requise.','teal');
   return emailShell({
     title:'Nouvelle commande payée',
     intro:`La commande ${order.id} est prête à être traitée.`,
-    content:`<p><strong>Client</strong><br>${escapeEmailHTML(customer.name || '')}<br>${escapeEmailHTML(customer.email || order.guestEmail || '')}${customer.phone?`<br>${escapeEmailHTML(customer.phone)}`:''}</p><div style="margin:20px 0">${orderEmailItemsHTML(order)}</div><div style="display:flex;justify-content:space-between;padding:16px;border-radius:14px;background:#eefafa;font-size:18px"><strong>Total payé</strong><strong>$${money(order.total).toFixed(2)} CAD</strong></div>${shipping}`,
+    preheader:`Nouvelle commande payée ${order.id}`,
+    content:`${emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Client</strong>${escapeEmailHTML(customer.name || '')}<br>${escapeEmailHTML(customer.email || order.guestEmail || '')}${customer.phone?`<br>${escapeEmailHTML(customer.phone)}`:''}`,'orange')}<div style="margin:20px 0">${orderEmailItemsHTML(order)}</div>${emailAmountSummary('Total payé',`$${money(order.total).toFixed(2)} CAD`)}${shipping}`,
     ctaLabel:'Ouvrir les commandes',
     ctaUrl:`${normalizePublicUrl()}/#/admin`,
     footer:`Notification interne ARTY pour la commande ${order.id}.`
@@ -1283,7 +1365,8 @@ function sendSupportReplyEmail(request) {
     html:emailShell({
       title:'Notre équipe vous a répondu',
       intro:request.subject,
-      content:`<p>Bonjour ${escapeEmailHTML(request.customer?.name || 'Client ARTY')},</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#eefafa">${escapeEmailHTML(request.adminReply || '').replace(/\n/g,'<br>')}</div>`,
+      preheader:`Réponse à votre demande ${request.id}.`,
+      content:`<p>Bonjour ${escapeEmailHTML(request.customer?.name || 'Client ARTY')},</p>${emailTextPanel(request.adminReply,'teal')}`,
       ctaLabel:'Voir la demande',
       ctaUrl:`${normalizePublicUrl()}/#/profile`,
       footer:`Demande ${request.id}. Vous pouvez répondre à ce courriel ou ouvrir votre compte ARTY.`
@@ -1299,7 +1382,8 @@ function sendSupportRequestReceiptEmail(request) {
     html:emailShell({
       title:'Votre demande est bien reçue',
       intro:request.subject,
-      content:`<p>Bonjour ${escapeEmailHTML(request.customer?.name || 'Client ARTY')},</p><p>Notre équipe examinera votre message et vous répondra dès que possible.</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(request.message || '').replace(/\n/g,'<br>')}</div>`,
+      preheader:`Confirmation de votre demande ${request.id}.`,
+      content:`<p>Bonjour ${escapeEmailHTML(request.customer?.name || 'Client ARTY')},</p><p>Notre équipe examinera votre message et vous répondra dès que possible.</p>${emailTextPanel(request.message,'neutral')}`,
       ctaLabel:'Voir mes demandes',
       ctaUrl:`${normalizePublicUrl()}/#/profile`,
       footer:`Demande ${request.id}. Vous pouvez répondre directement à ce courriel.`
@@ -1316,7 +1400,8 @@ function sendSupportRequestAdminEmail(request) {
     html:emailShell({
       title:'Nouvelle demande client',
       intro:`${request.customer?.name || 'Un client'} a contacté ARTY.`,
-      content:`<p><strong>Catégorie :</strong> ${escapeEmailHTML(request.topic || 'autre')}${request.orderId?`<br><strong>Commande :</strong> ${escapeEmailHTML(request.orderId)}`:''}</p><p><strong>Client</strong><br>${escapeEmailHTML(request.customer?.name || '')}<br>${escapeEmailHTML(request.customer?.email || '')}</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(request.message || '').replace(/\n/g,'<br>')}</div>`,
+      preheader:`Nouvelle demande ${request.id} à traiter.`,
+      content:`${emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Client</strong>${escapeEmailHTML(request.customer?.name || '')}<br>${escapeEmailHTML(request.customer?.email || '')}<br><br><strong>Catégorie :</strong> ${escapeEmailHTML(request.topic || 'autre')}${request.orderId?`<br><strong>Commande :</strong> ${escapeEmailHTML(request.orderId)}`:''}`,'orange')}${emailTextPanel(request.message,'neutral')}`,
       ctaLabel:'Ouvrir le service client',
       ctaUrl:`${normalizePublicUrl()}/#/admin`,
       footer:`Demande ${request.id}. Répondez à ce courriel pour écrire directement au client.`
@@ -1415,7 +1500,7 @@ function eventRequestEmailSummary(request) {
     : request.servicePath === 'custom'
       ? `${escapeEmailHTML(request.customKit?.productLabel || request.customKit?.sizeLabel || 'Format à confirmer')} · ${Math.max(1, Number(request.customKit?.quantity) || request.guests || 1)} kit(s)`
       : escapeEmailHTML(request.expertBrief || request.message || 'Concept à discuter avec le client');
-  return `<div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec;line-height:1.7"><strong>${escapeEmailHTML(request.eventType)}</strong><br>${request.preferredDate ? escapeEmailHTML(request.preferredDate) : 'Date à confirmer'} · ${request.guests} personne${request.guests > 1 ? 's' : ''}<br>${escapeEmailHTML(request.location || 'Lieu à confirmer')}<br><br><strong>${escapeEmailHTML(path)}</strong><br>${solution}</div>`;
+  return emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22;font-size:17px">${escapeEmailHTML(request.eventType)}</strong>${request.preferredDate ? escapeEmailHTML(request.preferredDate) : 'Date à confirmer'} · ${request.guests} personne${request.guests > 1 ? 's' : ''}<br>${escapeEmailHTML(request.location || 'Lieu à confirmer')}<br><br><span style="color:#168b9c;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase">Solution choisie</span><br><strong>${escapeEmailHTML(path)}</strong><br>${solution}`,'teal');
 }
 function sendEventRequestReceiptEmail(request) {
   return sendTransactionalEmail({
@@ -1426,6 +1511,7 @@ function sendEventRequestReceiptEmail(request) {
     html:emailShell({
       title:'Votre demande de devis est reçue',
       intro:'Notre équipe examinera votre projet et communiquera avec vous pour confirmer les détails et le prix.',
+      preheader:`Demande d’événement ${request.reference} reçue.`,
       content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}<p>Aucun paiement n’a été demandé. Un lien de paiement sécurisé pourra vous être envoyé seulement après votre accord sur le devis.</p>`,
       ctaLabel:'Voir les événements ARTY',
       ctaUrl:`${normalizePublicUrl()}/#/party`,
@@ -1444,7 +1530,8 @@ function sendEventRequestAdminEmail(request) {
     html:emailShell({
       title:'Nouvelle demande d’événement',
       intro:`${request.name} souhaite organiser : ${request.eventType}`,
-      content:`${eventRequestEmailSummary(request)}<p><strong>Client</strong><br>${escapeEmailHTML(request.name)}<br>${escapeEmailHTML(request.email)}${request.phone ? `<br>${escapeEmailHTML(request.phone)}` : ''}</p>`,
+      preheader:`Nouvelle demande ${request.reference} à traiter.`,
+      content:`${eventRequestEmailSummary(request)}${emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Client</strong>${escapeEmailHTML(request.name)}<br>${escapeEmailHTML(request.email)}${request.phone ? `<br>${escapeEmailHTML(request.phone)}` : ''}`,'orange')}`,
       ctaLabel:'Ouvrir l’administration',
       ctaUrl:`${normalizePublicUrl()}/#/admin`,
       footer:`Référence ${request.reference}. Les images et les détails complets sont disponibles dans l’administration ARTY.`
@@ -1522,7 +1609,8 @@ function sendEventQuotePaymentLinkEmail(request) {
     html:emailShell({
       title:'Votre devis personnalisé est prêt',
       intro:`Nous avons préparé votre proposition pour ${request.eventType}.`,
-      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}${request.quoteDescription ? `<div style="margin:18px 0;padding:18px;border-left:4px solid #1695a7;background:#eefafa">${escapeEmailHTML(request.quoteDescription).replace(/\n/g,'<br>')}</div>` : ''}<div style="display:flex;justify-content:space-between;padding:16px;border-radius:14px;background:#f6f2ec;font-size:18px"><strong>Montant du devis</strong><strong>$${money(request.quoteAmount).toFixed(2)} CAD</strong></div><p>Utilisez le bouton ci-dessous pour consulter le devis et effectuer le paiement sécurisé.</p>`,
+      preheader:`Votre devis ${request.reference} est prêt.`,
+      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}${request.quoteDescription ? emailTextPanel(request.quoteDescription,'neutral') : ''}${emailAmountSummary('Montant du devis',`$${money(request.quoteAmount).toFixed(2)} CAD`)}<p>Utilisez le bouton ci-dessous pour consulter le devis et effectuer le paiement sécurisé.</p>`,
       ctaLabel:'Consulter et payer le devis',
       ctaUrl:request.paymentLinkUrl,
       footer:`Référence ${request.reference}. Le lien est personnel et expire le ${new Date(request.paymentLinkExpiresAt).toLocaleDateString('fr-CA')}.`
@@ -1538,7 +1626,8 @@ function sendEventQuotePaidEmail(request) {
     html:emailShell({
       title:'Paiement reçu',
       intro:'Votre événement ARTY est maintenant confirmé pour la prochaine étape de préparation.',
-      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p><p>Nous avons reçu votre paiement de <strong>$${money(request.quoteAmount).toFixed(2)} CAD</strong> pour <strong>${escapeEmailHTML(request.eventType)}</strong>.</p><p>Notre équipe communiquera avec vous pour finaliser la production, la livraison et les détails de l’événement.</p>`,
+      preheader:`Paiement confirmé pour ${request.reference}.`,
+      content:`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${emailAmountSummary('Paiement reçu',`$${money(request.quoteAmount).toFixed(2)} CAD`)}${emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">${escapeEmailHTML(request.eventType)}</strong>Référence ${escapeEmailHTML(request.reference)}`,'success')}<p>Notre équipe communiquera avec vous pour finaliser la production, la livraison et les détails de l’événement.</p>`,
       ctaLabel:'Visiter ARTY',
       ctaUrl:normalizePublicUrl(),
       footer:`Confirmation de paiement pour la demande ${request.reference}.`
@@ -1709,7 +1798,8 @@ function sendContactReceiptEmail(contact) {
     html:emailShell({
       title:'Merci de nous avoir écrit',
       intro:`Votre message a été transmis à notre équipe ${CONTACT_CHANNELS[contact.channel].toLowerCase()}.`,
-      content:`<p>Bonjour ${escapeEmailHTML(contact.name)},</p><p>Nous vous répondrons dès que possible.</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(contact.message).replace(/\n/g,'<br>')}</div>`,
+      preheader:`Votre message ${contact.reference} est bien reçu.`,
+      content:`<p>Bonjour ${escapeEmailHTML(contact.name)},</p><p>Nous vous répondrons dès que possible.</p>${emailTextPanel(contact.message,'neutral')}`,
       footer:`Référence ${contact.reference}. Vous pouvez répondre directement à ce courriel.`
     })
   });
@@ -1723,7 +1813,8 @@ function sendContactAdminEmail(contact) {
     html:emailShell({
       title:'Nouveau message du site',
       intro:CONTACT_CHANNELS[contact.channel],
-      content:`<p><strong>Client</strong><br>${escapeEmailHTML(contact.name)}<br>${escapeEmailHTML(contact.email)}</p><div style="margin:18px 0;padding:18px;border-radius:14px;background:#f6f2ec">${escapeEmailHTML(contact.message).replace(/\n/g,'<br>')}</div>`,
+      preheader:`Nouveau message ${contact.reference}.`,
+      content:`${emailPanel(`<strong style="display:block;margin-bottom:5px;color:#332b22">Client</strong>${escapeEmailHTML(contact.name)}<br>${escapeEmailHTML(contact.email)}`,'orange')}${emailTextPanel(contact.message,'neutral')}`,
       footer:`Référence ${contact.reference}. Répondez à ce courriel pour écrire directement au client.`
     })
   });
