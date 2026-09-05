@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Arty! — Kits de Peinture & Événements Créatifs</title>
+  <meta name="description" content="Kits de peinture créatifs, tutoriels et événements ARTY. Découvrez nos activités et créez à votre rythme.">
+  <script src="i18n-en.js"></script>
+  <script src="i18n-core.js"></script>
+  <script src="i18n-client.js"></script>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="logoarty.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -36,6 +40,7 @@
       <a href="#/" data-nav="contact">CONTACT</a>
     </div>
     <div class="nav-auth" id="navAuth"></div>
+    <div id="languageControl"></div>
     <div class="nav-hamburger" id="hamburger" onclick="toggleMobile()"><span></span><span></span><span></span></div>
   </div>
 </nav>
@@ -349,7 +354,7 @@
       <div class="container">
         <div class="text-center fade-up">
           <div class="section-tag">Occasions</div>
-          <h2 class="section-heading">Pour quelles <span class="accent">occasions</span> ?</h2>
+          <h2 class="section-heading">Pour quelles <span class="accent">occasions ?</span></h2>
           <p class="section-sub">Trouvez le bon format : atelier public, fête privée, activité familiale ou événement spécial.</p>
         </div>
         <div class="occasions-grid stagger-children" id="occasionsGrid">
@@ -390,7 +395,7 @@
 <div class="page" id="page-tutorials">
   <div class="section-pad" style="padding-top:120px;background:var(--bg)">
     <div class="container">
-      <div class="text-center fade-up"><div class="section-tag">Apprenez à Peindre</div><h2 class="section-heading">Nos <span class="accent">Tutoriels</span> Vidéo</h2><p class="section-sub">Chaque kit inclut un tutoriel vidéo. Regardez, suivez et créez votre chef-d'œuvre à votre rythme.</p></div>
+      <div class="text-center fade-up"><div class="section-tag">Apprenez à Peindre</div><h2 class="section-heading">Nos <span class="accent">Tutoriels Vidéo</span></h2><p class="section-sub">Chaque kit inclut un tutoriel vidéo. Regardez, suivez et créez votre chef-d'œuvre à votre rythme.</p></div>
       <div class="tutorials-grid stagger-children" id="tutorialsGrid"></div>
     </div>
   </div>
@@ -462,7 +467,7 @@
       <div class="container">
         <div>
           <p class="admin-eyebrow">Centre de gestion Arty</p>
-          <h2>Admin Dashboard</h2>
+          <h2>Tableau de bord</h2>
           <span class="admin-header-sub">Ventes, inventaire, commandes, livraisons, événements et service à la clientèle.</span>
         </div>
         <button class="btn btn-ghost btn-sm" onclick="navigate('#/')">← Retour au site</button>
@@ -585,5 +590,6 @@
 <div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="goToCheckout()">Continuer →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
 <div class="toast" id="toast"></div>
 <script src="app.js"></script>
+<script src="i18n-admin.js"></script>
 </body>
 </html>
