@@ -1843,5 +1843,22 @@
   "occasions ?": "occasions?",
   "autre": "other",
   "livraison": "shipping",
-  "Achetez-en un, obtenez-en un gratuit": "Buy one, get one free"
+  "Achetez-en un, obtenez-en un gratuit": "Buy one, get one free",
+  "Menu de navigation": "Navigation menu",
+  "Fermer le menu": "Close menu",
+  "Fermer les filtres": "Close filters",
+  "Panier, {0} article{1}": "Cart, {0} item{1}",
+  "Modifier l’élément": "Edit item",
+  "Ajuster la création à l’écran": "Fit design to screen",
+  "Ajuster": "Fit",
+  "Pincez pour zoomer": "Pinch to zoom",
+  "Créer": "Create",
+  "Tracé": "Outline",
+  "Suivant": "Next",
+  "Terminé": "Done",
+  "Outils": "Tools",
+  "Suivant {0}": "Next {0}",
+  "{0}Ajuster": "{0}Fit",
+  "Terminé {0}": "Done {0}",
+  "Dupliquer": "Duplicate"
 };});

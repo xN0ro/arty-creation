@@ -2,13 +2,14 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Arty! — Kits de Peinture & Événements Créatifs</title>
   <meta name="description" content="Kits de peinture créatifs, tutoriels et événements ARTY. Découvrez nos activités et créez à votre rythme.">
   <script src="i18n-en.js"></script>
   <script src="i18n-core.js"></script>
   <script src="i18n-client.js"></script>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="mobile.css">
   <link rel="icon" href="logoarty.png">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://js.stripe.com/v3/"></script>
@@ -18,6 +19,8 @@
 <nav class="navbar" id="navbar">
   <div class="container">
     <a class="nav-logo" href="#/" onclick="navigate('#/');return false"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Création</span></a>
+    <div class="nav-drawer" id="navDrawer">
+      <div class="mobile-menu-head"><strong>Menu</strong><button type="button" onclick="closeMobileNavigation(true)" aria-label="Fermer le menu">×</button></div>
     <div class="nav-links" id="navLinks">
       <a href="#/" data-nav="home">ACCUEIL</a>
       <div class="nav-item nav-has-submenu">
@@ -40,8 +43,10 @@
       <a href="#/" data-nav="contact">CONTACT</a>
     </div>
     <div class="nav-auth" id="navAuth"></div>
+    </div>
+    <button type="button" class="mobile-cart-button" id="mobileCartButton" onclick="openCart()" aria-label="Panier" hidden><span id="mobileCartCount">0</span></button>
     <div id="languageControl"></div>
-    <div class="nav-hamburger" id="hamburger" onclick="toggleMobile()"><span></span><span></span><span></span></div>
+    <button type="button" class="nav-hamburger" id="hamburger" onclick="toggleMobile()" aria-label="Menu" aria-controls="navDrawer" aria-expanded="false"><span></span><span></span><span></span></button>
   </div>
 </nav>
 
@@ -236,7 +241,7 @@
         <aside class="catalog-sidebar" id="catalogSidebar">
           <div class="catalog-sidebar-head">
             <div><span class="section-tag mini-tag">Filtres</span><h3>Affiner les produits</h3></div>
-            <button class="catalog-close" onclick="toggleCatalogFilters()">×</button>
+            <button type="button" class="catalog-close" onclick="toggleCatalogFilters()" aria-label="Fermer les filtres">×</button>
           </div>
 
           <div class="catalog-filter-group">
@@ -589,6 +594,10 @@
 <div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
 <div class="cart-sidebar" id="cartSidebar"><div class="cart-header"><h3>Panier</h3><button class="modal-close" onclick="closeCart()">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter"><div class="cart-total"><span>Total</span><span id="cartTotal">$0</span></div><button class="btn btn-orange" style="width:100%;justify-content:center" onclick="goToCheckout()">Continuer →</button><button class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:8px" onclick="clearCart()">Vider</button></div></div>
 <div class="toast" id="toast"></div>
+<button type="button" class="mobile-backdrop" id="mobileMenuBackdrop" onclick="closeMobileNavigation(true)" aria-label="Fermer le menu" tabindex="-1" hidden></button>
+<button type="button" class="mobile-backdrop" id="mobileFilterBackdrop" onclick="closeMobileFilters()" aria-label="Fermer les filtres" tabindex="-1" hidden></button>
+<script src="mobile-gestures.js"></script>
+<script src="mobile.js"></script>
 <script src="app.js"></script>
 <script src="i18n-admin.js"></script>
 </body>
