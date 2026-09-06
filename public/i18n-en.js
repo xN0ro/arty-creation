@@ -1860,5 +1860,21 @@
   "Suivant {0}": "Next {0}",
   "{0}Ajuster": "{0}Fit",
   "Terminé {0}": "Done {0}",
-  "Dupliquer": "Duplicate"
+  "Dupliquer": "Duplicate",
+  "Peindre n’a jamais été aussi simple… et aussi beau.": "Painting has never been so simple… or so beautiful.",
+  "Suivez les instructions et peignez à votre rythme. Chaque peinture prend environ 1,5 à 2 heures à compléter. Ce n’est pas une peinture par numéros : vous suivez une image de référence, tout en pouvant personnaliser les couleurs et ajouter votre propre style. Il vous faut seulement un verre d'eau.": "Follow the instructions and paint at your own pace. Each painting takes about 1.5 to 2 hours to complete. This isn’t paint by numbers: you follow a reference image while making the colours and style your own. All you need is a glass of water.",
+  "Se relaxer en solo": "Relax on your own",
+  "Toile à peindre": "Canvas for painting",
+  "Peinture acrylique": "Acrylic paint",
+  "Palette de mélange et bâtonnet": "Mixing palette and stick",
+  "Guide d’instructions étape par étape": "Step-by-step instruction guide",
+  "Tutoriel vidéo": "Video tutorial",
+  "Chevalet en option.": "Optional easel.",
+  "Nos mini-kits sont prêts à peindre : les contours sont déjà tracés sur la toile.": "Our mini kits are ready to paint: the outlines are already traced on the canvas.",
+  "Événements artistiques pour": "Art events for",
+  "toutes les occasions": "every occasion",
+  "Fêtes privées / activités d’équipe / événements de groupe.": "Private parties / team activities / group events.",
+  "Réservez votre place à un événement Arty, célébrez une occasion spéciale ou créez une activité artistique sur mesure pour votre entreprise. Vous imaginez, Arty crée l’expérience.": "Book your spot at an Arty event, celebrate a special occasion, or create a custom art activity for your company. You imagine it, Arty creates the experience.",
+  "🧘 Relaxez-vous en solo": "🧘 Relax on your own",
+  "Peindre devient une pause douce, créative et relaxante, à savourer à votre rythme.": "Painting becomes a gentle, creative, relaxing break to enjoy at your own pace."
 };});
