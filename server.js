@@ -22,8 +22,10 @@ app.use('/api', localeMiddleware);
 // ========== DATABASE STORAGE ==========
 // Render's regular filesystem is ephemeral, so use a persistent disk path in production.
 // In Render, create a Persistent Disk and set ARTY_DATA_DIR to the disk mount path, for example /var/data.
+// Keep this addition when loading an existing persistent database, without replacing its admins.
+const VERIFIED_ADMIN_EMAILS = ['info@creationarty.com'];
 const DEFAULT_DB = {
-  adminEmails: [],
+  adminEmails: [...VERIFIED_ADMIN_EMAILS],
   googleClientId: '',
   categories: [],
   kits: [],
@@ -144,7 +146,7 @@ function normalizeDB(db = {}) {
   return {
     ...DEFAULT_DB,
     ...db,
-    adminEmails: Array.isArray(db.adminEmails) ? db.adminEmails : [],
+    adminEmails: [...new Set([...(Array.isArray(db.adminEmails) ? db.adminEmails : []), ...VERIFIED_ADMIN_EMAILS].map(email => String(email).trim().toLowerCase()))],
     categories: Array.isArray(db.categories) ? db.categories : [],
     kits: Array.isArray(db.kits) ? db.kits.map(({ tags, badges, difficulty, ...kit }) => kit) : [],
     events: Array.isArray(db.events) ? db.events : [],
@@ -370,6 +372,12 @@ app.get('/api/bundles', (req, res) => res.json(readDB().bundles || []));
 app.get('/api/bundles/:id', (req, res) => { const b = (readDB().bundles||[]).find(b=>b.id===parseInt(req.params.id)); b ? res.json(b) : res.status(404).json({error:I18n.t('Non trouvé')}); });
 
 // ========== AUTH ==========
+function canPromoteAdmin(db, user) {
+  const email = String(user.email || '').trim().toLowerCase();
+  if (!(db.adminEmails || []).includes(email)) return false;
+  // Typing the business address into public registration does not prove ownership.
+  return !VERIFIED_ADMIN_EMAILS.includes(email) || user.role === 'admin' || Boolean(user.emailVerifiedAt || user.googleLinkedAt || user.provider === 'google');
+}
 function normalizeAccountAddress(raw = {}, existing = {}) {
   const value = raw && typeof raw === 'object' ? raw : {};
   return {
@@ -413,7 +421,7 @@ app.post('/api/users/register', async (req, res) => {
     db.users = db.users || [];
     if (db.users.find(u => String(u.email || '').toLowerCase() === email)) return res.status(400).json({ error: I18n.t('Courriel déjà utilisé') });
     const hashed = await bcrypt.hash(password, 10);
-    const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(email);
+    const isAdmin = canPromoteAdmin(db, { email, provider: 'local' });
     const user = { locale:req.locale, id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', linkedProviders:['local'], picture: '', phone: '', defaultAddress: normalizeAccountAddress(), createdAt: new Date().toISOString() };
     db.users.push(user); writeDB(db);
     const token = createToken(user);
@@ -430,6 +438,7 @@ app.post('/api/users/login', async (req, res) => {
     const user = (db.users || []).find(u => String(u.email || '').toLowerCase() === email && u.provider === 'local');
     if (!user) return res.status(401).json({ error: I18n.t('Courriel ou mot de passe invalide') });
     if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: I18n.t('Courriel ou mot de passe invalide') });
+    if (canPromoteAdmin(db, user)) user.role = 'admin';
     user.locale = req.locale; writeDB(db);
     const token = createToken(user);
     const emailResult = await sendLoginAlertEmail(user);
@@ -449,12 +458,19 @@ app.post('/api/users/google', async (req, res) => {
       user = { id: Date.now(), name:g.name, email:g.email, password:'', role:isAdmin?'admin':'user', provider:'google', linkedProviders:['google'], picture:g.picture||'', phone:'', defaultAddress:normalizeAccountAddress(), createdAt:new Date().toISOString(), googleLinkedAt:new Date().toISOString() };
       db.users.push(user);
     } else {
+      if (isAdmin && VERIFIED_ADMIN_EMAILS.includes(g.email) && user.role !== 'admin' && user.provider === 'local' && !user.emailVerifiedAt && !user.googleLinkedAt) {
+        // An unverified signup may belong to someone else. The mailbox owner can set
+        // their own local password through the emailed reset link after Google sign-in.
+        user.password = '';
+        db.sessions = (db.sessions || []).filter(session => session.userId !== user.id);
+      }
       user.role = isAdmin ? 'admin' : (user.role || 'user');
       user.name = user.name || g.name;
       user.picture = user.picture || g.picture || '';
       user.linkedProviders = Array.from(new Set([...(user.linkedProviders || [user.provider || 'local']), 'google']));
       user.googleLinkedAt = user.googleLinkedAt || new Date().toISOString();
     }
+    user.emailVerifiedAt = user.emailVerifiedAt || new Date().toISOString();
     user.locale = req.locale; writeDB(db);
     const token = createToken(user);
     const emailResult = isNewAccount ? await sendAccountWelcomeEmail(user) : await sendLoginAlertEmail(user);
@@ -517,6 +533,8 @@ app.post('/api/users/reset-password', async (req, res) => {
     if (!user) return res.status(400).json({ error:I18n.t('Compte introuvable') });
     user.password = await bcrypt.hash(password, 10);
     reset.usedAt = new Date().toISOString();
+    user.emailVerifiedAt = user.emailVerifiedAt || reset.usedAt;
+    if (canPromoteAdmin(db, user)) user.role = 'admin';
     db.passwordResetTokens = (db.passwordResetTokens || []).filter(item => item.userId !== user.id || item.tokenHash === tokenHash);
     db.sessions = (db.sessions || []).filter(item => item.userId !== user.id);
     writeDB(db);
