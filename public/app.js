@@ -539,37 +539,43 @@ function renderPartyEvents(){
   if(!sorted.length)partyGrid.innerHTML=I18n.html`<div class="event-empty-card"><h3>Aucun événement publié pour le moment</h3><p>Vous pouvez quand même demander un événement privé pour un anniversaire, mariage, fête ou activité familiale.</p><button class="btn btn-orange" onclick="scrollToEventRequest()">Demander un événement →</button></div>`;
 }
 // ===== TEAM PAGE =====
+const TEAM_ACTIVITY_OPTIONS = [
+  {title:'Peinture individuelle sur toile',price:35,canvas:'Toile de 11 × 14 po déjà tracée'},
+  {title:'Grande toile collaborative',price:150,perGroup:true,canvas:'Toile collaborative de 24 × 30 po',easel:true},
+  {title:'Peinture sur tissu et accessoires',price:39,subtitle:'Sacs, tabliers et casquettes'},
+  {title:'Expérience de peinture sur verre',price:39},
+  {title:'Peinture et décoration sur bois',price:35},
+  {title:'Peinture, décorations florales et ornements en plâtre',price:39}
+];
 function renderTeamPage(){
-  const activities = [
-    {
-      icon:'🎨',
-      title:I18n.t('Peinture sur toile'),
-      subtitle:I18n.t('Kits de peinture pour équipes'),
-      description:I18n.t('Une activité artistique simple et amusante où chaque participant crée sa propre œuvre, avec tout le matériel livré directement à votre bureau.')
-    },
-    {
-      icon:'👜',
-      title:I18n.t('Peinture sur tissu et bois'),
-      subtitle:I18n.t('Activité créative à faire ensemble'),
-      description:I18n.t('Personnalisez des objets en tissu ou en bois dans une ambiance collaborative, parfaite pour les team buildings et les journées de reconnaissance.')
-    },
-    {
-      icon:'🌸',
-      title:I18n.t('Compositions avec fleurs séchées'),
-      subtitle:I18n.t('Atelier décoratif personnalisé'),
-      description:I18n.t('Création d’articles décoratifs avec fleurs séchées, comme des supports-bougies, bracelets, couronnes florales, cartes de vœux et autres petits objets personnalisés.')
-    }
-  ];
-  document.getElementById('teamGrid').innerHTML = activities.map(a=>`
-    <div class="team-card team-activity-card">
-      <div class="team-activity-icon">${a.icon}</div>
+  const grid=document.getElementById('teamGrid');if(!grid)return;
+  grid.innerHTML=TEAM_ACTIVITY_OPTIONS.map((activity,index)=>{
+    const inclusions=[
+      ...(activity.perGroup?[activity.canvas]:[]),
+      'Tout le matériel est inclus',
+      ...(activity.easel?['Un grand chevalet est fourni']:[]),
+      'Minimum de 8 participants',
+      activity.perGroup?'Durée prévue : de 2 h à 2 h 30':'Durée prévue : de 1 h 30 à 2 h',
+      ...(!activity.perGroup&&activity.canvas?[activity.canvas]:[]),
+      'Thématique personnalisée en collaboration avec le groupe',
+      ...(!activity.perGroup?['Deux options : vidéo préenregistrée ou animateur sur place']:[])
+    ];
+    return I18n.html`<article class="team-card team-option-card">
       <div class="team-card-body">
-        <div class="team-card-sub">${a.subtitle}</div>
-        <h3>${a.title}</h3>
-        <p>${a.description}</p>
+        <span class="team-option-label">${safeText(I18n.t('Option {0}',[index+1]))}</span>
+        <h3>${safeText(I18n.t(activity.title))}</h3>
+        ${activity.subtitle?`<p class="team-option-subtitle">${safeText(I18n.t(activity.subtitle))}</p>`:''}
+        <p class="team-option-price"><strong>${I18n.currency(activity.price)}</strong><span>${safeText(I18n.t(activity.perGroup?'par groupe, plus taxes':'par personne, plus taxes'))}</span></p>
+        <ul class="team-option-inclusions">${inclusions.map(text=>`<li>${safeText(I18n.t(text))}</li>`).join('')}</ul>
+        <button type="button" class="btn btn-orange" onclick="selectTeamActivity(${index})">Demander une soumission</button>
       </div>
-    </div>`).join('');
+    </article>`;
+  }).join('');
   initScrollEffects();
+}
+function selectTeamActivity(index){
+  const activity=TEAM_ACTIVITY_OPTIONS[index];if(!activity)return;
+  prefillPrivateEventType(activity.title);
 }
 
 // ===== TUTORIALS PAGE =====

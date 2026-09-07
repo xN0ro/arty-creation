@@ -1660,3 +1660,36 @@ body.design-studio-open{overflow:hidden!important;background:#e9edef}body.design
 .english-choice-fields input{display:block;width:100%;margin-top:5px}
 @media(max-width:1100px){.navbar .container{gap:8px}.nav-links{gap:14px}.nav-auth{gap:8px}.nav-links>a,.nav-main-link{font-size:13px}}
 @media(max-width:768px){#languageControl{margin-left:auto}.language-switch button{padding:8px;min-height:38px}.design-studio-topbar>.language-switch{margin-left:auto}.admin-english-content{padding:16px}.english-choice-fields{flex-direction:column}}
+
+/* Homepage copy and the supplied portrait kit photograph. */
+.hero-text .hero-tagline,.hero-desc strong{font-family:var(--font-b);font-size:1.1475rem;font-weight:800;color:var(--black);letter-spacing:normal;text-transform:none;line-height:1.75}
+.hero-desc strong{display:block;margin-top:8px}
+.home-collection-intro{max-width:none}
+.event-occasions-intro{max-width:900px;color:var(--text-md)}
+.event-occasions-intro strong{font-weight:700}
+.event-options-grid .event-option-card{display:flex;flex-direction:column;align-items:center}
+.event-options-grid .event-option-card .btn{margin-top:auto;max-width:100%;white-space:normal}
+.event-options-grid .event-option-card p{margin-bottom:20px}
+.catalog-visual-hero.catalog-kit-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;height:auto;min-height:440px;background:var(--bg2)}
+.catalog-visual-hero.catalog-kit-hero>img{position:static;grid-column:2;grid-row:1;display:block;width:100%;height:clamp(420px,45vw,560px);object-fit:contain;object-position:center}
+.catalog-kit-hero .catalog-visual-copy{grid-column:1;grid-row:1;width:100%;height:auto;padding:36px clamp(22px,4vw,60px);background:none}
+.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,3.5vw,3.6rem)}
+.catalog-kit-hero .catalog-visual-copy h1 span{display:block;white-space:nowrap}
+@media(max-width:760px){.catalog-visual-hero.catalog-kit-hero{grid-template-columns:minmax(0,1fr);min-height:0}.catalog-visual-hero.catalog-kit-hero>img{grid-column:1;grid-row:2;height:auto;max-height:none}.catalog-kit-hero .catalog-visual-copy{padding:26px 22px}.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,8vw,2.5rem)}}
+@media(max-width:680px){.hero-text .hero-tagline,.hero-desc strong{font-size:1.125rem}}
+
+/* Six corporate activities, with the details supplied by ARTY. */
+.team-activities-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+.team-option-card{border-radius:16px}
+.team-option-card .team-card-body{display:flex;flex-direction:column;height:100%;padding:28px}
+.team-option-label{display:block;color:var(--teal);font-size:1rem;font-weight:700;margin-bottom:12px}
+.team-option-card h3{font-size:1.2rem;line-height:1.35;color:var(--text);margin-bottom:10px}
+.team-option-card .team-option-subtitle{font-size:1rem;color:var(--text-md);margin-bottom:8px}
+.team-option-card .team-option-price{display:flex;flex-direction:column;gap:2px;margin:8px 0 22px;color:var(--text-md);font-size:1rem}
+.team-option-price strong{font-size:2rem;line-height:1.2;color:var(--orange);font-weight:800}
+.team-option-inclusions{list-style:none;display:grid;gap:12px;margin:0 0 26px;padding:0;color:var(--text-md);font-size:1rem;line-height:1.5}
+.team-option-inclusions li{position:relative;padding-left:16px}
+.team-option-inclusions li::before{content:'•';position:absolute;left:0;color:var(--teal)}
+.team-option-card .btn{width:100%;margin-top:auto;white-space:normal;font-size:1rem}
+@media(max-width:1050px){.team-activities-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.team-activities-grid{grid-template-columns:minmax(0,1fr)}.team-option-card .team-card-body{padding:22px}}
