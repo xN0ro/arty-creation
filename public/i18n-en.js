@@ -1906,5 +1906,17 @@
   "Deux options : vidéo préenregistrée ou animateur sur place": "Two options: prerecorded video or an on-site instructor",
   "par groupe, plus taxes": "per group, plus tax",
   "par personne, plus taxes": "per person, plus tax",
-  "Demander une soumission": "Request a quote"
+  "Demander une soumission": "Request a quote",
+  "Créez votre propre kit personnalisé, avec votre propre photo ou une photo de votre choix.": "Create your own personalized kit using your own photo or a photo of your choice.",
+  "Kit de peinture Arty avec une fenêtre bleue et un tournesol, croquis, pinceaux et peintures": "Arty painting kit with a blue window and sunflower, sketch, brushes and paints",
+  "Table préparée pour un événement Arty avec chevalets, toiles et matériel de peinture": "Table set for an Arty event with easels, canvases and painting supplies",
+  "Découvrez nos prochains Art Brunch et Paint & Sip, et réservez votre place.": "Discover our upcoming Art Brunch and Paint & Sip events, and book your spot.",
+  "Voir nos options": "Explore our",
+  "d’événements privés": "private event options",
+  "Événements à réserver": "Events available to book",
+  "Toile de 9 × 12 po déjà tracée": "Pre-traced 9 × 12 in canvas",
+  "Thématique personnalisée": "Personalized theme",
+  "Sacs, tabliers ou casquettes, au choix": "Your choice of bags, aprons or caps",
+  "Peinture sur ornements en plâtre": "Painting plaster ornaments",
+  "Événement privé : {0}": "Private event: {0}"
 };});

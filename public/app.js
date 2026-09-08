@@ -199,6 +199,7 @@ function handlePartySection(hash){
   if(!section)return;
   setTimeout(()=>{
     if(section==='calendar')scrollToPartyEvents();
+    if(section==='occasions')document.getElementById('eventOccasions')?.scrollIntoView({behavior:'smooth',block:'start'});
     if(section==='private')navigate('#/event-builder');
     if(section==='team')scrollToTeamEvents();
   },240);
@@ -402,6 +403,7 @@ function renderEventPage(id){
 function renderPartyPage(){
   renderPartyEvents();
   renderTeamPage();
+  renderPrivateEventOptions();
   initScrollEffects();
 }
 
@@ -538,6 +540,33 @@ function renderPartyEvents(){
   }).join('');
   if(!sorted.length)partyGrid.innerHTML=I18n.html`<div class="event-empty-card"><h3>Aucun événement publié pour le moment</h3><p>Vous pouvez quand même demander un événement privé pour un anniversaire, mariage, fête ou activité familiale.</p><button class="btn btn-orange" onclick="scrollToEventRequest()">Demander un événement →</button></div>`;
 }
+// ===== PRIVATE EVENT OPTIONS =====
+const PRIVATE_EVENT_OPTIONS = [
+  {title:'Peinture individuelle sur toile',price:30,inclusions:['Tout le matériel est inclus','Toile de 9 × 12 po déjà tracée','Thématique personnalisée','Deux options : vidéo préenregistrée ou animateur sur place']},
+  {title:'Grande toile collaborative',price:120,perGroup:true,inclusions:['Toile collaborative de 24 × 30 po','Tout le matériel est inclus','Un grand chevalet est fourni']},
+  {title:'Peinture sur tissu et accessoires',price:30,subtitle:'Sacs, tabliers ou casquettes, au choix',inclusions:['Tout le matériel est inclus','Thématique personnalisée','Deux options : vidéo préenregistrée ou animateur sur place']},
+  {title:'Peinture sur ornements en plâtre',price:30,inclusions:['Tout le matériel est inclus','Thématique personnalisée','Deux options : vidéo préenregistrée ou animateur sur place']}
+];
+function renderPrivateEventOptions(){
+  const grid=document.getElementById('privateOptionsGrid');
+  if(!grid)return;
+  grid.innerHTML=PRIVATE_EVENT_OPTIONS.map((activity,index)=>I18n.html`<article class="team-card team-option-card private-option-card">
+    <div class="team-card-body">
+      <span class="team-option-label">${safeText(I18n.t('Option {0}',[index+1]))}</span>
+      <h3>${safeText(I18n.t(activity.title))}</h3>
+      ${activity.subtitle?`<p class="team-option-subtitle">${safeText(I18n.t(activity.subtitle))}</p>`:''}
+      <p class="team-option-price"><strong>${I18n.currency(activity.price)}</strong><span>${safeText(I18n.t(activity.perGroup?'par groupe, plus taxes':'par personne, plus taxes'))}</span></p>
+      <ul class="team-option-inclusions">${activity.inclusions.map(text=>`<li>${safeText(I18n.t(text))}</li>`).join('')}</ul>
+      <button type="button" class="btn btn-orange" onclick="selectPrivateEventOption(${index})">Demander une soumission</button>
+    </div>
+  </article>`).join('');
+}
+function selectPrivateEventOption(index){
+  const activity=PRIVATE_EVENT_OPTIONS[index];
+  if(!activity)return;
+  prefillPrivateEventType(I18n.t('Événement privé : {0}',[I18n.t(activity.title)]));
+}
+
 // ===== TEAM PAGE =====
 const TEAM_ACTIVITY_OPTIONS = [
   {title:'Peinture individuelle sur toile',price:35,canvas:'Toile de 11 × 14 po déjà tracée'},

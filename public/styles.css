@@ -1670,12 +1670,12 @@ body.design-studio-open{overflow:hidden!important;background:#e9edef}body.design
 .event-options-grid .event-option-card{display:flex;flex-direction:column;align-items:center}
 .event-options-grid .event-option-card .btn{margin-top:auto;max-width:100%;white-space:normal}
 .event-options-grid .event-option-card p{margin-bottom:20px}
-.catalog-visual-hero.catalog-kit-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;height:auto;min-height:440px;background:var(--bg2)}
-.catalog-visual-hero.catalog-kit-hero>img{position:static;grid-column:2;grid-row:1;display:block;width:100%;height:clamp(420px,45vw,560px);object-fit:contain;object-position:center}
-.catalog-kit-hero .catalog-visual-copy{grid-column:1;grid-row:1;width:100%;height:auto;padding:36px clamp(22px,4vw,60px);background:none}
-.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,3.5vw,3.6rem)}
+.catalog-visual-hero.catalog-kit-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;height:auto;min-height:0;max-width:1040px;margin-inline:auto;background:var(--bg2)}
+.catalog-visual-hero.catalog-kit-hero>img{position:static;grid-column:2;grid-row:1;display:block;width:100%;height:clamp(240px,26vw,340px);object-fit:contain;object-position:center}
+.catalog-kit-hero .catalog-visual-copy{grid-column:1;grid-row:1;width:100%;height:auto;padding:24px clamp(22px,3vw,40px);background:none}
+.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,3vw,3rem)}
 .catalog-kit-hero .catalog-visual-copy h1 span{display:block;white-space:nowrap}
-@media(max-width:760px){.catalog-visual-hero.catalog-kit-hero{grid-template-columns:minmax(0,1fr);min-height:0}.catalog-visual-hero.catalog-kit-hero>img{grid-column:1;grid-row:2;height:auto;max-height:none}.catalog-kit-hero .catalog-visual-copy{padding:26px 22px}.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,8vw,2.5rem)}}
+@media(max-width:760px){.catalog-visual-hero.catalog-kit-hero{grid-template-columns:minmax(0,1fr);min-height:0}.catalog-visual-hero.catalog-kit-hero>img{grid-column:1;grid-row:2;height:auto;max-height:280px}.catalog-kit-hero .catalog-visual-copy{padding:26px 22px}.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,8vw,2.5rem)}}
 @media(max-width:680px){.hero-text .hero-tagline,.hero-desc strong{font-size:1.125rem}}
 
 /* Six corporate activities, with the details supplied by ARTY. */
@@ -1693,3 +1693,20 @@ body.design-studio-open{overflow:hidden!important;background:#e9edef}body.design
 .team-option-card .btn{width:100%;margin-top:auto;white-space:normal;font-size:1rem}
 @media(max-width:1050px){.team-activities-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:680px){.team-activities-grid{grid-template-columns:minmax(0,1fr)}.team-option-card .team-card-body{padding:22px}}
+
+/* Event photography and compact private-event options. */
+.event-hero-visual{display:flex;justify-content:center;min-width:0}
+.event-hero-visual .event-hero-photo{display:block;aspect-ratio:1147/1372;max-width:420px;height:auto;object-fit:contain}
+.event-theme-highlight{color:var(--orange)}
+#eventOccasions,#privateEventOptions,#partyEvents,#teamEvents{scroll-margin-top:110px}
+.private-options-section{padding-top:12px;padding-bottom:36px}
+.private-options-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;align-items:stretch}
+.private-option-card .team-card-body{padding:22px 18px}
+.private-option-card h3{font-size:1.08rem}
+.private-option-card .team-option-price{margin:8px 0 16px}
+.private-option-card .team-option-price strong{font-size:1.8rem}
+.private-option-card .team-option-inclusions{font-size:.95rem;gap:9px;margin-bottom:20px}
+.private-option-card .btn{font-size:.9rem;min-height:44px}
+.published-events-section{padding-top:24px;padding-bottom:36px}
+@media(max-width:1050px){.private-options-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.private-options-grid{grid-template-columns:minmax(0,1fr)}.event-hero-visual .event-hero-photo{max-width:360px}}
