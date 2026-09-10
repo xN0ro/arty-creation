@@ -500,7 +500,6 @@ body.has-site-announcement .page.active{margin-top:44px}
 /* TEAM PAGE CUSTOM */
 .team-intro-main{font-size:1.05rem;color:var(--text-md);font-weight:500;max-width:980px;margin-bottom:16px}
 .team-animation-note{display:inline-block;margin:0 auto 42px;padding:12px 22px;border-radius:50px;background:var(--orange-pale);color:var(--orange);font-weight:800;border:1px solid rgba(232,134,58,.18)}
-.team-activities-grid{margin-top:12px}
 .team-activity-card{padding:30px;text-align:left;position:relative;overflow:visible}
 .team-activity-card:hover{border-color:var(--teal)}
 .team-activity-icon{width:66px;height:66px;border-radius:20px;background:var(--teal-pale);display:flex;align-items:center;justify-content:center;font-size:2rem;margin-bottom:4px;border:1px solid rgba(27,154,170,.14)}
@@ -982,7 +981,6 @@ body.has-site-announcement .page.active{margin-top:44px}
 .team-events-layout .section-heading{text-align:left;margin-bottom:12px}
 .team-events-layout .section-sub{margin:0;max-width:780px;text-align:left}
 .team-events-layout .btn{flex:0 0 auto;white-space:nowrap}
-.team-activities-grid{margin-top:24px}
 .team-activity-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-xl);padding:28px;box-shadow:var(--shadow-sm);transition:var(--tr)}
 .team-activity-card:hover{transform:translateY(-5px);box-shadow:var(--shadow-md);border-color:var(--teal)}
 .team-activity-icon{font-size:2.3rem;margin-bottom:12px}
@@ -1678,8 +1676,7 @@ body.design-studio-open{overflow:hidden!important;background:#e9edef}body.design
 @media(max-width:760px){.catalog-visual-hero.catalog-kit-hero{grid-template-columns:minmax(0,1fr);min-height:0}.catalog-visual-hero.catalog-kit-hero>img{grid-column:1;grid-row:2;height:auto;max-height:280px}.catalog-kit-hero .catalog-visual-copy{padding:26px 22px}.catalog-kit-hero .catalog-visual-copy h1{font-size:clamp(2rem,8vw,2.5rem)}}
 @media(max-width:680px){.hero-text .hero-tagline,.hero-desc strong{font-size:1.125rem}}
 
-/* Six corporate activities, with the details supplied by ARTY. */
-.team-activities-grid{grid-template-columns:repeat(3,minmax(0,1fr));align-items:stretch}
+/* Shared event offer cards. */
 .team-option-card{border-radius:16px}
 .team-option-card .team-card-body{display:flex;flex-direction:column;height:100%;padding:28px}
 .team-option-label{display:block;color:var(--teal);font-size:1rem;font-weight:700;margin-bottom:12px}
@@ -1691,22 +1688,38 @@ body.design-studio-open{overflow:hidden!important;background:#e9edef}body.design
 .team-option-inclusions li{position:relative;padding-left:16px}
 .team-option-inclusions li::before{content:'•';position:absolute;left:0;color:var(--teal)}
 .team-option-card .btn{width:100%;margin-top:auto;white-space:normal;font-size:1rem}
-@media(max-width:1050px){.team-activities-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:680px){.team-activities-grid{grid-template-columns:minmax(0,1fr)}.team-option-card .team-card-body{padding:22px}}
 
-/* Event photography and compact private-event options. */
+/* Event photography and editable event options. */
 .event-hero-visual{display:flex;justify-content:center;min-width:0}
 .event-hero-visual .event-hero-photo{display:block;aspect-ratio:1147/1372;max-width:420px;height:auto;object-fit:contain}
 .event-theme-highlight{color:var(--orange)}
-#eventOccasions,#privateEventOptions,#partyEvents,#teamEvents{scroll-margin-top:110px}
-.private-options-section{padding-top:12px;padding-bottom:36px}
-.private-options-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;align-items:stretch}
-.private-option-card .team-card-body{padding:22px 18px}
-.private-option-card h3{font-size:1.08rem}
-.private-option-card .team-option-price{margin:8px 0 16px}
-.private-option-card .team-option-price strong{font-size:1.8rem}
-.private-option-card .team-option-inclusions{font-size:.95rem;gap:9px;margin-bottom:20px}
-.private-option-card .btn{font-size:.9rem;min-height:44px}
+#eventOccasions,#partyEvents,#groupEventOptions{scroll-margin-top:110px}
 .published-events-section{padding-top:24px;padding-bottom:36px}
-@media(max-width:1050px){.private-options-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:600px){.private-options-grid{grid-template-columns:minmax(0,1fr)}.event-hero-visual .event-hero-photo{max-width:360px}}
+
+.event-offers-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:stretch}
+.event-offers-grid .team-option-card{min-width:0;overflow-wrap:anywhere}
+.event-offer-description{white-space:pre-line}
+.event-offers-empty{grid-column:1/-1;padding:24px;border:1px solid var(--border);border-radius:16px;background:var(--white);text-align:center}
+.event-offers-empty p{font-size:1rem;margin-bottom:16px}
+.admin-event-options-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;align-items:start}
+.admin-event-options-layout .admin-form-card{min-width:0}
+.admin-event-options-layout label,.admin-event-options-layout input,.admin-event-options-layout textarea,.admin-event-options-layout select{font-size:1rem}
+.admin-event-options-layout textarea{min-height:100px;resize:vertical}
+.admin-event-options-layout .admin-help{font-size:.9rem;line-height:1.5;margin-bottom:18px}
+.event-option-language{border:0;padding:0;margin:0 0 20px;min-width:0}
+.event-option-language legend{font-weight:700;font-size:1rem;margin-bottom:14px;color:var(--teal)}
+.event-option-editor-actions,.admin-event-option-actions{display:flex;gap:10px;flex-wrap:wrap}
+.event-option-editor-actions .btn,.admin-event-option-actions .btn{min-height:44px;white-space:normal}
+.admin-event-options-list{display:grid;gap:16px}
+.admin-event-option-row{border:1px solid var(--border);border-radius:16px;background:var(--white);padding:22px;min-width:0;overflow-wrap:anywhere}
+.admin-event-option-row h4{font-size:1.1rem;margin:8px 0}
+.admin-event-option-row p{font-size:1rem;margin-bottom:14px}
+.event-option-status{font-size:.9rem;color:var(--teal);font-weight:700}
+.event-option-publish{display:flex;gap:10px;align-items:center;font-size:1rem;margin:16px 0}
+.event-option-publish input{width:20px;height:20px;flex-shrink:0}
+@media(max-width:1000px){.admin-event-options-layout{grid-template-columns:minmax(0,1fr)}.event-offers-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:680px){.event-offers-grid{grid-template-columns:minmax(0,1fr)}.admin-event-options-layout .form-row{grid-template-columns:minmax(0,1fr)}}
+
+#eventOptionForm{scroll-margin-top:110px}
+@media(max-width:680px){.team-option-card .team-card-body{padding:22px}}
+@media(max-width:600px){.event-hero-visual .event-hero-photo{max-width:360px}}

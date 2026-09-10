@@ -37,7 +37,7 @@ function orderView(order, language = I18n.language()) {
 function response(req, payload) {
   const route = req.path.replace(/^\/api(?=\/)/,'');
   if (req.method !== 'GET' || route.startsWith('/admin/')) return payload;
-  if (/^\/(kits|categories|events|team-activities|bundles|bundle-deals)(\/[^/]+)?$/.test(route)) return catalog(payload, req.locale);
+  if (/^\/(kits|categories|events|event-options|team-activities|bundles|bundle-deals)(\/[^/]+)?$/.test(route)) return catalog(payload, req.locale);
   if (route === '/announcement') return catalog(payload, req.locale);
   if (route === '/config') return { ...payload, announcement:catalog(payload.announcement,req.locale) };
   if (route === '/orders/mine' && Array.isArray(payload)) return payload.map(item => orderView(item,req.locale));

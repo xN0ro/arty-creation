@@ -36,7 +36,7 @@
           <a href="#/party">Tous les événements</a>
           <a href="#/party?section=calendar">Calendrier public</a>
           <a href="#/event-builder">Créer un événement</a>
-          <a href="#/party?section=team">Entreprise / équipe</a>
+          <a href="#/party?section=options">Événements privés et entreprises</a>
         </div>
       </div>
       <a href="#/tutorials">TUTORIELS</a>
@@ -375,32 +375,22 @@
       </div>
     </section>
 
-    <section class="section-pad private-options-section" id="privateEventOptions">
-      <div class="container">
-        <div class="text-center fade-up">
-          <h2 class="section-heading">Voir nos options <span class="accent">d’événements privés</span></h2>
-        </div>
-        <div class="team-grid private-options-grid stagger-children" id="privateOptionsGrid"></div>
-      </div>
-    </section>
-
     <section class="section-pad published-events-section" aria-label="Événements à réserver">
       <div class="container">
         <div class="events-grid stagger-children" id="partyEventsGrid"></div>
       </div>
     </section>
 
-    <section class="section-pad team-events-section" id="teamEvents">
+    <section class="section-pad team-events-section" id="groupEventOptions">
       <div class="container">
         <div class="team-events-layout fade-up">
           <div>
-            <div class="section-tag">Entreprise & équipe</div>
-            <h2 class="section-heading">Activités créatives <span class="accent">pour entreprises</span></h2>
-            <p class="section-sub team-intro-main">Arty transforme vos team buildings, réunions et journées de reconnaissance en expériences créatives, uniques et mémorables. Les kits peuvent être livrés au bureau et l’animation peut se faire en présentiel ou avec vidéos préenregistrées.</p>
+            <h2 class="section-heading">Événements privés <span class="accent">et entreprises</span></h2>
+            <p class="section-sub">Une expérience créative pour vos fêtes, vos groupes et vos équipes. Choisissez une option ou demandez une activité sur mesure.</p>
           </div>
-          <button class="btn btn-orange" onclick="prefillPrivateEventType('Activité d’entreprise')">Créer une demande de devis</button>
+          <button class="btn btn-orange" onclick="navigate('#/event-builder')">Créer mon événement</button>
         </div>
-        <div class="team-grid team-activities-grid stagger-children" id="teamGrid"></div>
+        <div class="team-grid event-offers-grid stagger-children" id="eventOptionsGrid"></div>
       </div>
     </section>
 
@@ -510,6 +500,7 @@
         <button class="admin-tab" onclick="switchAdminTab('orders',this)">Commandes & remboursements</button>
         <button class="admin-tab" onclick="switchAdminTab('support',this)">Service à la clientèle</button>
         <button class="admin-tab" onclick="switchAdminTab('events',this)">Événements et billets</button>
+        <button class="admin-tab" onclick="switchAdminTab('eventOptions',this)">Options d’événements</button>
         <button class="admin-tab" onclick="switchAdminTab('categories',this)">Catégories</button>
         <button class="admin-tab" onclick="switchAdminTab('announcement',this)">Annonce du site</button>
       </div>
@@ -520,6 +511,7 @@
       <div id="adminOrdersPanel" style="display:none"></div>
       <div id="adminSupportPanel" style="display:none"></div>
       <div id="adminEventsPanel" style="display:none"></div>
+      <div id="adminEventOptionsPanel" style="display:none"></div>
       <div id="adminCategoriesPanel" style="display:none"></div>
       <div id="adminAnnouncementPanel" style="display:none"></div>
     </div>
@@ -560,7 +552,7 @@
     <div class="footer-grid">
       <div class="footer-brand"><a href="#/" class="nav-logo"><img src="logoarty.png" alt="Arty!" class="nav-logo-img"><span class="nav-logo-text">Création</span></a><p>Kits de peinture créatifs, tutoriels et événements qui libèrent votre artiste intérieur.</p></div>
       <div><h4>Boutique</h4><ul><li><a href="#/paintings">Tous les kits</a></li><li><a href="#/studio">Studio de création</a></li><li><a href="#/checkout">Panier / commande</a></li></ul></div>
-      <div><h4>Événements</h4><ul><li><a href="#/party">Tous les événements</a></li><li><a href="#/party?section=calendar">Calendrier public</a></li><li><a href="#/event-builder">Créer un événement</a></li><li><a href="#/party?section=team">Entreprise / équipe</a></li></ul></div>
+      <div><h4>Événements</h4><ul><li><a href="#/party">Tous les événements</a></li><li><a href="#/party?section=calendar">Calendrier public</a></li><li><a href="#/event-builder">Créer un événement</a></li><li><a href="#/party?section=options">Événements privés et entreprises</a></li></ul></div>
       <div><h4>Informations</h4><ul><li><a href="#/tutorials">Tutoriels</a></li><li><a href="#/privacy">Confidentialité</a></li><li><a href="#/policies">Politiques d'achat</a></li><li><a href="#/" onclick="scrollToSection('contact')">Contact</a></li></ul></div>
     </div>
     <div class="footer-bottom"><span>&copy; 2026 Arty!</span><span><a href="#/privacy">Confidentialité</a> · <a href="#/policies">Politiques</a></span></div>
@@ -616,6 +608,7 @@
 <script src="mobile-gestures.js"></script>
 <script src="mobile.js"></script>
 <script src="app.js"></script>
+<script src="event-options.js"></script>
 <script src="i18n-admin.js"></script>
 </body>
 </html>

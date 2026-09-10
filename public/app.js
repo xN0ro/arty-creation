@@ -1,5 +1,5 @@
 /* Arty! — Application v3 */
-let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],teamActivities=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
+let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
 let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,ticketPaymentsConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventName:'',guests:10,date:'',eventTime:'',address:{line1:'',city:'',province:'QC',postal:'',country:'Canada'},hostName:'',email:'',phone:'',notes:'',contactPreference:'email',servicePath:'inventory',selected:{},customKit:{size:'moyen',quantity:10,notes:''},expertBrief:''};
 let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded',async()=>{
   const c=localStorage.getItem('arty_cart'); if(c) cart=JSON.parse(c);
   try{const r=await artyFetch('/api/config');const cfg=await r.json();googleClientId=cfg.googleClientId||'';paymentProvider=cfg.paymentProvider||'not_connected';stripeMode=cfg.stripeMode||'test';stripePublishableKey=cfg.stripePublishableKey||'';stripeConfigured=!!cfg.stripeConfigured;ticketPaymentsConfigured=!!cfg.ticketPaymentsConfigured;transactionalEmailConfigured=!!cfg.emailConfigured;ticketEmailConfigured=!!cfg.ticketEmailConfigured;siteAnnouncement=cfg.announcement||siteAnnouncement}catch{}
   if(authToken&&currentUser){try{const r=await artyFetch('/api/users/me',{headers:authH()});if(!r.ok)throw 0;currentUser=await r.json();localStorage.setItem('arty_user',JSON.stringify(currentUser))}catch{logout(1)}}
-  await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles(),loadBundleDealRules()]);
+  await Promise.all([loadKits(),loadCategories(),loadEvents(),loadEventOptions(),loadBundles(),loadBundleDealRules()]);
   localizeCart();initNavbar();updateAuthUI();updateCartUI();renderSiteAnnouncement();initGoogleSignIn();initAuthValidation();
   window.addEventListener('hashchange',handleRoute);handleRoute();
 });
@@ -33,7 +33,7 @@ function toMoney(v){return Number(v||0).toFixed(2)}
 // ===== ROUTER =====
 let artyLastRouteAdmin=false;
 async function handleRoute(){
-  if(artyLastRouteAdmin&&location.hash!=='#/admin')await Promise.all([loadKits(),loadCategories(),loadEvents(),loadBundles()]);
+  if(artyLastRouteAdmin&&location.hash!=='#/admin')await Promise.all([loadKits(),loadCategories(),loadEvents(),loadEventOptions(),loadBundles()]);
   artyLastRouteAdmin=location.hash==='#/admin';
   const h=window.location.hash||'#/';
   closeMobileNavigation();closeMobileFilters();
@@ -172,7 +172,6 @@ function updateAuthUI(){
 async function loadKits(){try{allKits=await(await artyFetch('/api/kits')).json()}catch{allKits=[]}}
 async function loadCategories(){try{allCategories=await(await artyFetch(location.hash==='#/admin'?'/api/admin/categories':'/api/categories',{headers:authH()})).json()}catch{allCategories=[]}}
 async function loadEvents(){try{allEvents=await(await artyFetch('/api/events')).json()}catch{allEvents=[]}}
-async function loadTeam(){try{teamActivities=await(await artyFetch('/api/team-activities')).json()}catch{teamActivities=[]}}
 async function loadBundles(){try{allBundles=await(await artyFetch('/api/bundles')).json()}catch{allBundles=[]}}
 async function loadBundleDealRules(){try{bundleDealRules=await(await artyFetch('/api/bundle-deals')).json()}catch{bundleDealRules=[]}}
 async function loadAdminEvents(){try{adminEvents=await(await artyFetch('/api/admin/events',{headers:authH()})).json()}catch{adminEvents=[]}}
@@ -192,7 +191,7 @@ function eventIncludes(ev){
 }
 function scrollToPartyEvents(){document.getElementById('partyEvents')?.scrollIntoView({behavior:'smooth',block:'start'})}
 function scrollToEventRequest(){navigate('#/event-builder')}
-function scrollToTeamEvents(){document.getElementById('teamEvents')?.scrollIntoView({behavior:'smooth',block:'start'})}
+function scrollToTeamEvents(){document.getElementById('groupEventOptions')?.scrollIntoView({behavior:'smooth',block:'start'})}
 function handlePartySection(hash){
   const q=hash.split('?')[1]||'';
   const section=new URLSearchParams(q).get('section');
@@ -201,7 +200,7 @@ function handlePartySection(hash){
     if(section==='calendar')scrollToPartyEvents();
     if(section==='occasions')document.getElementById('eventOccasions')?.scrollIntoView({behavior:'smooth',block:'start'});
     if(section==='private')navigate('#/event-builder');
-    if(section==='team')scrollToTeamEvents();
+    if(section==='team'||section==='options')scrollToTeamEvents();
   },240);
 }
 function prefillPrivateEventType(type){
@@ -402,8 +401,7 @@ function renderEventPage(id){
 // ===== PARTY PAGE EVENTS =====
 function renderPartyPage(){
   renderPartyEvents();
-  renderTeamPage();
-  renderPrivateEventOptions();
+  renderEventOptions();
   initScrollEffects();
 }
 
@@ -540,73 +538,6 @@ function renderPartyEvents(){
   }).join('');
   if(!sorted.length)partyGrid.innerHTML=I18n.html`<div class="event-empty-card"><h3>Aucun événement publié pour le moment</h3><p>Vous pouvez quand même demander un événement privé pour un anniversaire, mariage, fête ou activité familiale.</p><button class="btn btn-orange" onclick="scrollToEventRequest()">Demander un événement →</button></div>`;
 }
-// ===== PRIVATE EVENT OPTIONS =====
-const PRIVATE_EVENT_OPTIONS = [
-  {title:'Peinture individuelle sur toile',price:30,inclusions:['Tout le matériel est inclus','Toile de 9 × 12 po déjà tracée','Thématique personnalisée','Deux options : vidéo préenregistrée ou animateur sur place']},
-  {title:'Grande toile collaborative',price:120,perGroup:true,inclusions:['Toile collaborative de 24 × 30 po','Tout le matériel est inclus','Un grand chevalet est fourni']},
-  {title:'Peinture sur tissu et accessoires',price:30,subtitle:'Sacs, tabliers ou casquettes, au choix',inclusions:['Tout le matériel est inclus','Thématique personnalisée','Deux options : vidéo préenregistrée ou animateur sur place']},
-  {title:'Peinture sur ornements en plâtre',price:30,inclusions:['Tout le matériel est inclus','Thématique personnalisée','Deux options : vidéo préenregistrée ou animateur sur place']}
-];
-function renderPrivateEventOptions(){
-  const grid=document.getElementById('privateOptionsGrid');
-  if(!grid)return;
-  grid.innerHTML=PRIVATE_EVENT_OPTIONS.map((activity,index)=>I18n.html`<article class="team-card team-option-card private-option-card">
-    <div class="team-card-body">
-      <span class="team-option-label">${safeText(I18n.t('Option {0}',[index+1]))}</span>
-      <h3>${safeText(I18n.t(activity.title))}</h3>
-      ${activity.subtitle?`<p class="team-option-subtitle">${safeText(I18n.t(activity.subtitle))}</p>`:''}
-      <p class="team-option-price"><strong>${I18n.currency(activity.price)}</strong><span>${safeText(I18n.t(activity.perGroup?'par groupe, plus taxes':'par personne, plus taxes'))}</span></p>
-      <ul class="team-option-inclusions">${activity.inclusions.map(text=>`<li>${safeText(I18n.t(text))}</li>`).join('')}</ul>
-      <button type="button" class="btn btn-orange" onclick="selectPrivateEventOption(${index})">Demander une soumission</button>
-    </div>
-  </article>`).join('');
-}
-function selectPrivateEventOption(index){
-  const activity=PRIVATE_EVENT_OPTIONS[index];
-  if(!activity)return;
-  prefillPrivateEventType(I18n.t('Événement privé : {0}',[I18n.t(activity.title)]));
-}
-
-// ===== TEAM PAGE =====
-const TEAM_ACTIVITY_OPTIONS = [
-  {title:'Peinture individuelle sur toile',price:35,canvas:'Toile de 11 × 14 po déjà tracée'},
-  {title:'Grande toile collaborative',price:150,perGroup:true,canvas:'Toile collaborative de 24 × 30 po',easel:true},
-  {title:'Peinture sur tissu et accessoires',price:39,subtitle:'Sacs, tabliers et casquettes'},
-  {title:'Expérience de peinture sur verre',price:39},
-  {title:'Peinture et décoration sur bois',price:35},
-  {title:'Peinture, décorations florales et ornements en plâtre',price:39}
-];
-function renderTeamPage(){
-  const grid=document.getElementById('teamGrid');if(!grid)return;
-  grid.innerHTML=TEAM_ACTIVITY_OPTIONS.map((activity,index)=>{
-    const inclusions=[
-      ...(activity.perGroup?[activity.canvas]:[]),
-      'Tout le matériel est inclus',
-      ...(activity.easel?['Un grand chevalet est fourni']:[]),
-      'Minimum de 8 participants',
-      activity.perGroup?'Durée prévue : de 2 h à 2 h 30':'Durée prévue : de 1 h 30 à 2 h',
-      ...(!activity.perGroup&&activity.canvas?[activity.canvas]:[]),
-      'Thématique personnalisée en collaboration avec le groupe',
-      ...(!activity.perGroup?['Deux options : vidéo préenregistrée ou animateur sur place']:[])
-    ];
-    return I18n.html`<article class="team-card team-option-card">
-      <div class="team-card-body">
-        <span class="team-option-label">${safeText(I18n.t('Option {0}',[index+1]))}</span>
-        <h3>${safeText(I18n.t(activity.title))}</h3>
-        ${activity.subtitle?`<p class="team-option-subtitle">${safeText(I18n.t(activity.subtitle))}</p>`:''}
-        <p class="team-option-price"><strong>${I18n.currency(activity.price)}</strong><span>${safeText(I18n.t(activity.perGroup?'par groupe, plus taxes':'par personne, plus taxes'))}</span></p>
-        <ul class="team-option-inclusions">${inclusions.map(text=>`<li>${safeText(I18n.t(text))}</li>`).join('')}</ul>
-        <button type="button" class="btn btn-orange" onclick="selectTeamActivity(${index})">Demander une soumission</button>
-      </div>
-    </article>`;
-  }).join('');
-  initScrollEffects();
-}
-function selectTeamActivity(index){
-  const activity=TEAM_ACTIVITY_OPTIONS[index];if(!activity)return;
-  prefillPrivateEventType(activity.title);
-}
-
 // ===== TUTORIALS PAGE =====
 function renderTutorialsPage(){
   const kitsWithVideo = allKits.filter(k=>k.videoUrl && k.videoUrl.trim());
@@ -2306,14 +2237,14 @@ async function updateProfile(event){
 // Customer support and shipment tools in the administration area.
 async function loadAdminSupportRequests(){try{const r=await artyFetch('/api/admin/support-requests',{headers:authH()});if(!r.ok)throw new Error();adminSupportRequests=await r.json()}catch{adminSupportRequests=[]}}
 async function loadAdminData(){
-  try{await Promise.all([loadAdminEvents(),loadAdminBookings(),loadEventRequests(),loadAdminOrders(),loadAdminAnalytics(),loadAdminDiscounts(),loadAdminRefunds(),loadAdminAnnouncement(),loadAdminKits(),loadAdminProductTemplates(),loadAdminSupportRequests(),loadCategories()]);document.getElementById('statRevenue').textContent=`${I18n.currency(toMoney(adminAnalyticsPro?.revenue||0))}`;document.getElementById('statOrders').textContent=adminAnalyticsPro?.ordersCount??(adminOrders||[]).length;document.getElementById('statKits').textContent=allKits.length;document.getElementById('statLowInventory').textContent=adminAnalyticsPro?.lowInventoryCount??0}catch(e){console.warn(e)}
-  renderAdminDashboard();renderAdminKits();renderAdminInventory();renderAdminDiscounts();renderAdminOrders();renderAdminCategories();renderAdminEvents();renderAdminAnnouncement();renderAdminSupportRequests();
+  try{await Promise.all([loadAdminEvents(),loadAdminEventOptions(),loadAdminBookings(),loadEventRequests(),loadAdminOrders(),loadAdminAnalytics(),loadAdminDiscounts(),loadAdminRefunds(),loadAdminAnnouncement(),loadAdminKits(),loadAdminProductTemplates(),loadAdminSupportRequests(),loadCategories()]);document.getElementById('statRevenue').textContent=`${I18n.currency(toMoney(adminAnalyticsPro?.revenue||0))}`;document.getElementById('statOrders').textContent=adminAnalyticsPro?.ordersCount??(adminOrders||[]).length;document.getElementById('statKits').textContent=allKits.length;document.getElementById('statLowInventory').textContent=adminAnalyticsPro?.lowInventoryCount??0}catch(e){console.warn(e)}
+  renderAdminDashboard();renderAdminKits();renderAdminInventory();renderAdminDiscounts();renderAdminOrders();renderAdminCategories();renderAdminEvents();renderAdminAnnouncement();renderAdminSupportRequests();renderAdminEventOptions();
 }
 function switchAdminTab(tab,button){
   closeAdminOrderDetail();
   document.querySelectorAll('.admin-tab').forEach(item=>item.classList.remove('active'));if(button)button.classList.add('active');
-  ['adminDashboardPanel','adminKitsPanel','adminInventoryPanel','adminDiscountsPanel','adminOrdersPanel','adminEventsPanel','adminCategoriesPanel','adminAnnouncementPanel','adminBundleDealsPanel','adminSupportPanel'].forEach(id=>{const panel=document.getElementById(id);if(panel)panel.style.display='none'});
-  const map={dashboard:'adminDashboardPanel',kits:'adminKitsPanel',inventory:'adminInventoryPanel',discounts:'adminDiscountsPanel',orders:'adminOrdersPanel',events:'adminEventsPanel',categories:'adminCategoriesPanel',announcement:'adminAnnouncementPanel',bundleDeals:'adminBundleDealsPanel',support:'adminSupportPanel'};const panel=document.getElementById(map[tab]||map.dashboard);if(panel)panel.style.display='block';if(tab==='support')renderAdminSupportRequests();if(tab==='announcement')renderAdminAnnouncement();if(tab==='bundleDeals')renderAdminBundleDeals();
+  ['adminDashboardPanel','adminKitsPanel','adminInventoryPanel','adminDiscountsPanel','adminOrdersPanel','adminEventsPanel','adminEventOptionsPanel','adminCategoriesPanel','adminAnnouncementPanel','adminBundleDealsPanel','adminSupportPanel'].forEach(id=>{const panel=document.getElementById(id);if(panel)panel.style.display='none'});
+  const map={dashboard:'adminDashboardPanel',kits:'adminKitsPanel',inventory:'adminInventoryPanel',discounts:'adminDiscountsPanel',orders:'adminOrdersPanel',events:'adminEventsPanel',eventOptions:'adminEventOptionsPanel',categories:'adminCategoriesPanel',announcement:'adminAnnouncementPanel',bundleDeals:'adminBundleDealsPanel',support:'adminSupportPanel'};const panel=document.getElementById(map[tab]||map.dashboard);if(panel)panel.style.display='block';if(tab==='support')renderAdminSupportRequests();if(tab==='announcement')renderAdminAnnouncement();if(tab==='bundleDeals')renderAdminBundleDeals();
 }
 function renderAdminSupportRequests(){
   const panel=document.getElementById('adminSupportPanel');if(!panel)return;

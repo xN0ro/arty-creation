@@ -116,7 +116,7 @@ async function setArtyLanguage(language) {
   const previous=I18n.language(),scroll={x:window.scrollX,y:window.scrollY};
   const forms=snapshotLanguageForms(),filterState={...catalogFilters};
   const productDraft=document.getElementById('aKitName')?collectAdminProductRows():null;
-  const editIds=['editKitId','editEvId','editCatId','editDiscountId','editBundleDealId'].map(id=>[id,document.getElementById(id)?.value]);
+  const editIds=['editKitId','editEvId','editCatId','editDiscountId','editBundleDealId','eventOptionEditId'].map(id=>[id,document.getElementById(id)?.value]);
   const expanded=Array.from(document.querySelectorAll('details[open][id]')).map(el=>el.id);
   const activeModal=document.querySelector('.modal-overlay.active')?.id;
   const authTab=['login','register','forgotPassword','resetPassword'].find(name=>document.getElementById(name+'Form')?.style.display==='block')||'login';
@@ -124,7 +124,7 @@ async function setArtyLanguage(language) {
   try {
     try{localStorage.setItem('arty_language',language);}catch{}
     const url=new URL(location.href);url.searchParams.set('lang',language);history.replaceState(null,'',url);
-    await Promise.all([loadKits(),loadCategories(),loadEvents(),loadTeam(),loadBundles(),loadBundleDealRules(),loadLanguageAnnouncement()]);
+    await Promise.all([loadKits(),loadCategories(),loadEvents(),loadEventOptions(),loadBundles(),loadBundleDealRules(),loadLanguageAnnouncement()]);
     localizeCart();
     const hash=location.hash||'#/';
     if(hash==='#/checkout'&&stripeElements){translatePaymentCopy(document.getElementById('checkoutPageContent'),previous);stripeElements.update({locale:language});}
@@ -133,7 +133,7 @@ async function setArtyLanguage(language) {
       await handleRoute();
       if(hash.startsWith('#/paintings')){catalogFilters=filterState;syncCatalogInputs();renderKitsGrid();}
       if(hash==='#/admin'){
-        for(const [id,value] of editIds)if(value){({editKitId:editKit,editEvId:editEv,editCatId:editCat,editDiscountId:editDiscount,editBundleDealId:editBundleDeal}[id])?.(value);}
+        for(const [id,value] of editIds)if(value){({editKitId:editKit,editEvId:editEv,editCatId:editCat,editDiscountId:editDiscount,editBundleDealId:editBundleDeal,eventOptionEditId:editAdminEventOption}[id])?.(value);}
         if(productDraft){setAdminProductRows('images',productDraft.images);setAdminProductRows('includes',productDraft.includes);setAdminProductRows('sizes',productDraft.sizeOptions);setAdminProductRows('addons',productDraft.addOns);}
       }
     }

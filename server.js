@@ -31,6 +31,7 @@ const DEFAULT_DB = {
   kits: [],
   events: [],
   teamActivities: [],
+  eventOptions: [],
   bundles: [],
   users: [],
   orders: [],
@@ -151,6 +152,7 @@ function normalizeDB(db = {}) {
     kits: Array.isArray(db.kits) ? db.kits.map(({ tags, badges, difficulty, ...kit }) => kit) : [],
     events: Array.isArray(db.events) ? db.events : [],
     teamActivities: Array.isArray(db.teamActivities) ? db.teamActivities : [],
+    eventOptions: Array.isArray(db.eventOptions) ? db.eventOptions : [],
     bundles: Array.isArray(db.bundles) ? db.bundles : [],
     users: Array.isArray(db.users) ? db.users : [],
     orders: Array.isArray(db.orders) ? db.orders : [],
@@ -367,6 +369,7 @@ app.get('/api/events', (req, res) => {
     .sort((a,b) => new Date((a.date || '') + 'T' + (a.time || '00:00')) - new Date((b.date || '') + 'T' + (b.time || '00:00')));
   res.json(events);
 });
+require('./event-options')(app, {readDB,writeDB,adminOnly,I18n});
 app.get('/api/team-activities', (req, res) => res.json(readDB().teamActivities || []));
 app.get('/api/bundles', (req, res) => res.json(readDB().bundles || []));
 app.get('/api/bundles/:id', (req, res) => { const b = (readDB().bundles||[]).find(b=>b.id===parseInt(req.params.id)); b ? res.json(b) : res.status(404).json({error:I18n.t('Non trouvé')}); });
