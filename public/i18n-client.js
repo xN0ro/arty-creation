@@ -140,6 +140,7 @@ async function setArtyLanguage(language) {
     updateAuthUI();updateCartUI();renderSiteAnnouncement();
     if(activeModal==='authModal')switchAuthTab({forgotPassword:'forgot',resetPassword:'reset'}[authTab]||authTab);
     restoreLanguageForms(forms);
+    if(hash==='#/admin')refreshCategoryImagePreview();
     if(hash.startsWith('#/product/'))updateProductPrice(hash.split('/')[2]);
     if(activeModal&&activeModal!=='authModal')translatePaymentCopy(document.getElementById(activeModal),previous);
     expanded.forEach(id=>{const el=document.getElementById(id);if(el)el.open=true;});

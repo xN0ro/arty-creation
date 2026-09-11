@@ -1723,3 +1723,11 @@ body.design-studio-open{overflow:hidden!important;background:#e9edef}body.design
 #eventOptionForm{scroll-margin-top:110px}
 @media(max-width:680px){.team-option-card .team-card-body{padding:22px}}
 @media(max-width:600px){.event-hero-visual .event-hero-photo{max-width:360px}}
+
+.category-image-preview{max-width:300px;margin:12px 0;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--bg2)}
+.category-image-preview img{display:block;width:100%;height:180px;object-fit:contain}
+#categoryFormCard .admin-image-upload:focus-within{outline:2px solid var(--teal);outline-offset:3px}
+#categoryFormCard .admin-image-upload:has(input:disabled){opacity:.65;cursor:wait}
+#categoryFormCard [hidden]{display:none!important}
+#categoryFormCard .admin-image-upload span{font-size:1rem}
+#categoryFormCard .admin-image-upload small{font-size:.875rem}

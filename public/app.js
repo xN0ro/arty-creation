@@ -965,10 +965,60 @@ async function updateOrderStatus(id,status){
 
 async function deleteKit(id){if(!confirm(I18n.t('Supprimer ce kit?')))return;await artyFetch(`/api/admin/kits/${id}`,{method:'DELETE',headers:authH()});showToast(I18n.t('Supprimé'),'success');await loadKits();loadAdminData()}
 
-function renderAdminCategories(){document.getElementById('adminCategoriesPanel').innerHTML=I18n.html`<div class="admin-form-card"><h3 id="catFormTitle">Ajouter une Catégorie</h3><input type="hidden" id="editCatId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aCatName"></div><div class="form-group"><label>Type</label><select id="aCatParent"><option value="individual">Individuel</option><option value="group">Groupe</option><option value="none">Autre</option></select></div></div><div class="form-group"><label>Image URL</label><input type="text" id="aCatImg"></div><div style="display:flex;gap:10px"><button class="btn btn-orange" onclick="saveCat()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetCatForm()" style="display:none" id="cancelCat">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Catégorie</th><th>Type</th><th>Actions</th></tr></thead><tbody>${allCategories.map(c=>I18n.html`<tr><td><strong>${safeText(I18n.field(c,'name'))}</strong></td><td>${I18n.t({individual:'Individuel',group:'Groupe',none:'Autre'}[c.parent]||c.parent)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editCat(${c.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteCat(${c.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
-async function saveCat(){const eid=document.getElementById('editCatId').value;const p={name:document.getElementById('aCatName').value,parent:document.getElementById('aCatParent').value,image:document.getElementById('aCatImg').value};if(!p.name)return showToast(I18n.t('Nom requis'),'error');await artyFetch(eid?`/api/admin/categories/${eid}`:'/api/admin/categories',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});showToast(eid?I18n.t('Modifié!'):I18n.t('Ajouté!'),'success');await loadCategories();loadAdminData()}
-function editCat(id){const c=allCategories.find(x=>String(x.id)===String(id));if(!c)return;document.getElementById('editCatId').value=c.id;document.getElementById('aCatName').value=c.name;document.getElementById('aCatParent').value=c.parent;document.getElementById('aCatImg').value=c.image||'';document.getElementById('catFormTitle').textContent=I18n.t('Modifier');document.getElementById('cancelCat').style.display='inline-flex'}
-function resetCatForm(){['editCatId','aCatName','aCatImg'].forEach(id=>document.getElementById(id).value='');document.getElementById('catFormTitle').textContent=I18n.t('Ajouter une Catégorie');document.getElementById('cancelCat').style.display='none'}
+let categoryImageRequest=0,categorySaving=false;
+function renderAdminCategories(){categoryImageRequest++;document.getElementById('adminCategoriesPanel').innerHTML=I18n.html`<div class="admin-form-card" id="categoryFormCard"><h3 id="catFormTitle">Ajouter une Catégorie</h3><input type="hidden" id="editCatId"><div class="form-row"><div class="form-group"><label>Nom</label><input type="text" id="aCatName"></div><div class="form-group"><label>Type</label><select id="aCatParent"><option value="individual">Individuel</option><option value="group">Groupe</option><option value="none">Autre</option></select></div></div><div class="form-group"><label>Image de la catégorie</label><input type="hidden" id="aCatImg"><label class="admin-image-upload"><input type="file" id="aCatImageUpload" accept="image/jpeg,image/png,image/webp,image/avif" onchange="uploadCategoryImage(this)"><span>Téléverser une image</span><small>JPG, PNG, WEBP ou AVIF · maximum 10 Mo par image</small></label><div class="admin-upload-status" id="aCatUploadStatus" aria-live="polite"></div><div class="category-image-preview" id="aCatImagePreview" hidden></div><button type="button" class="btn btn-ghost btn-sm" id="aCatRemoveImage" onclick="removeCategoryImage()" hidden>Retirer l’image</button></div><div style="display:flex;gap:10px"><button class="btn btn-orange" id="saveCatButton" onclick="saveCat()">Sauvegarder</button><button class="btn btn-ghost" onclick="resetCatForm()" style="display:none" id="cancelCat">Annuler</button></div></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Catégorie</th><th>Type</th><th>Actions</th></tr></thead><tbody>${allCategories.map(c=>I18n.html`<tr><td><strong>${safeText(I18n.field(c,'name'))}</strong></td><td>${I18n.t({individual:'Individuel',group:'Groupe',none:'Autre'}[c.parent]||c.parent)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editCat(${c.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteCat(${c.id})">Supprimer</button></div></td></tr>`).join('')}</tbody></table></div>`}
+function refreshCategoryImagePreview(){
+  const url=document.getElementById('aCatImg')?.value||'',preview=document.getElementById('aCatImagePreview'),remove=document.getElementById('aCatRemoveImage');
+  if(preview){preview.hidden=!url;preview.innerHTML=url?I18n.html`<img src="${safeAttr(url)}" alt="Aperçu">`:'';}
+  if(remove)remove.hidden=!url;
+}
+function cancelCategoryImageUpload(){
+  categoryImageRequest++;
+  const input=document.getElementById('aCatImageUpload'),save=document.getElementById('saveCatButton'),status=document.getElementById('aCatUploadStatus');
+  if(input){input.disabled=false;input.value='';}if(save)save.disabled=false;if(status)status.textContent='';
+}
+function removeCategoryImage(){
+  if(categorySaving)return;
+  cancelCategoryImageUpload();document.getElementById('aCatImg').value='';refreshCategoryImagePreview();
+}
+async function uploadCategoryImage(input){
+  const file=input.files?.[0];if(!file||categorySaving)return;
+  if(!['image/jpeg','image/png','image/webp','image/avif'].includes(file.type)){input.value='';showToast(I18n.t('Format accepté: JPG, PNG, WEBP ou AVIF'),'error');return;}
+  if(file.size>10*1024*1024){input.value='';showToast(I18n.t('L’image doit faire moins de 10 Mo'),'error');return;}
+  const request=++categoryImageRequest,status=document.getElementById('aCatUploadStatus'),save=document.getElementById('saveCatButton');
+  const active=()=>request===categoryImageRequest&&document.getElementById('aCatImageUpload')===input;
+  input.disabled=true;save.disabled=true;status.textContent=I18n.t('Téléversement de l’image…');
+  try{
+    const dataUrl=await readAdminImageFile(file);if(!active())return;
+    const response=await artyFetch('/api/admin/product-images',{method:'POST',headers:authH(),body:JSON.stringify({fileName:file.name,dataUrl})});
+    const data=await response.json().catch(()=>({}));if(!active())return;
+    if(!response.ok||typeof data.url!=='string')throw new Error(data.error||I18n.t('Téléversement impossible'));
+    document.getElementById('aCatImg').value=data.url;refreshCategoryImagePreview();
+    status.textContent=I18n.t('Image ajoutée. Cliquez sur Sauvegarder pour enregistrer la catégorie.');
+  }catch(error){if(active()){status.textContent='';showToast(error.message||I18n.t('Téléversement impossible'),'error');}}
+  finally{if(active()){input.disabled=false;input.value='';save.disabled=false;}}
+}
+async function saveCat(){
+  const button=document.getElementById('saveCatButton');if(categorySaving||button.disabled)return;
+  const eid=document.getElementById('editCatId').value,p={name:document.getElementById('aCatName').value.trim(),parent:document.getElementById('aCatParent').value,image:document.getElementById('aCatImg').value};
+  if(!p.name)return showToast(I18n.t('Nom requis'),'error');
+  categorySaving=true;const controls=[...document.getElementById('categoryFormCard').querySelectorAll('input,select,textarea,button')];controls.forEach(control=>control.disabled=true);
+  try{
+    const response=await artyFetch(eid?`/api/admin/categories/${encodeURIComponent(eid)}`:'/api/admin/categories',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});
+    const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||I18n.t('Enregistrement impossible.'));
+    showToast(eid?I18n.t('Modifié!'):I18n.t('Ajouté!'),'success');await loadCategories();renderAdminCategories();
+  }catch(error){showToast(error.message||I18n.t('Enregistrement impossible.'),'error');}
+  finally{categorySaving=false;controls.forEach(control=>control.disabled=false);}
+}
+function editCat(id){
+  if(categorySaving)return;const c=allCategories.find(x=>String(x.id)===String(id));if(!c)return;cancelCategoryImageUpload();
+  document.getElementById('editCatId').value=c.id;document.getElementById('aCatName').value=c.name;document.getElementById('aCatParent').value=c.parent;document.getElementById('aCatImg').value=c.image||'';
+  document.getElementById('catFormTitle').textContent=I18n.t('Modifier');document.getElementById('cancelCat').style.display='inline-flex';refreshCategoryImagePreview();
+}
+function resetCatForm(){
+  if(categorySaving)return;cancelCategoryImageUpload();['editCatId','aCatName','aCatImg'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('catFormTitle').textContent=I18n.t('Ajouter une Catégorie');document.getElementById('cancelCat').style.display='none';refreshCategoryImagePreview();
+}
 async function deleteCat(id){if(!confirm(I18n.t('Supprimer?')))return;await artyFetch(`/api/admin/categories/${id}`,{method:'DELETE',headers:authH()});showToast(I18n.t('Supprimé'),'success');await loadCategories();loadAdminData()}
 
 

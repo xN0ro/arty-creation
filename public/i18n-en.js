@@ -1958,5 +1958,10 @@
   "Choisissez un prix par personne ou par groupe.": "Choose a price per person or per group.",
   "L’ordre d’affichage doit être un nombre entier positif ou nul.": "Display order must be a whole number of zero or more.",
   "Vérifiez la visibilité de l’option.": "Check the option visibility.",
-  "Option introuvable.": "Option not found."
+  "Option introuvable.": "Option not found.",
+  "Image de la catégorie": "Category image",
+  "Téléverser une image": "Upload an image",
+  "Retirer l’image": "Remove image",
+  "Téléversement de l’image…": "Uploading image…",
+  "Image ajoutée. Cliquez sur Sauvegarder pour enregistrer la catégorie.": "Image added. Click Save to save the category."
 };});
