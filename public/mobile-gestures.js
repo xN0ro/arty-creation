@@ -58,3 +58,90 @@
   }
   return {fitZoom,pinch,constrainPan,controller};
 });
+
+/* Admin product copier: copy a complete existing product into a new-product form. */
+if(typeof window!=='undefined'){
+  window.addEventListener('load',()=>{
+    if(typeof renderAdminKits!=='function')return;
+
+    const originalRenderAdminKits=renderAdminKits;
+
+    function existingProductOptionsHTML(selected=''){
+      const products=Array.isArray(allKits)?allKits:[];
+      return I18n.html`<option value="">Choisir un produit à copier</option>${products.map(kit=>`<option value="${safeAttr(kit.id)}" ${String(kit.id)===String(selected)?'selected':''}>${safeText(I18n.field(kit,'name'))}</option>`).join('')}`;
+    }
+
+    function enhanceAdminProductCopyUI(){
+      const panel=document.querySelector('#adminKitsPanel .admin-template-panel');
+      if(!panel)return;
+      const title=panel.querySelector('.admin-template-copy strong');
+      const description=panel.querySelector('.admin-template-copy span');
+      const select=document.getElementById('aKitTemplateSelect');
+      const apply=panel.querySelector('.admin-template-apply');
+      const remove=panel.querySelector('.admin-template-delete');
+      const save=panel.querySelector('.admin-template-save');
+
+      if(title)title.textContent=I18n.t('Copier un produit existant');
+      if(description)description.textContent=I18n.t('Sélectionnez un produit puis copiez toute sa configuration dans cette nouvelle fiche.');
+      if(select){
+        const selected=select.value;
+        select.innerHTML=existingProductOptionsHTML(selected);
+      }
+      if(apply)apply.textContent=I18n.t('Copier le produit');
+      if(remove)remove.style.display='none';
+      if(save)save.style.display='none';
+    }
+
+    productTemplateOptionsHTML=existingProductOptionsHTML;
+    refreshProductTemplateSelect=function(selected=''){
+      const select=document.getElementById('aKitTemplateSelect');
+      if(select)select.innerHTML=existingProductOptionsHTML(selected);
+    };
+
+    applyProductTemplate=function(){
+      const id=document.getElementById('aKitTemplateSelect')?.value;
+      const kit=(Array.isArray(allKits)?allKits:[]).find(item=>String(item.id)===String(id));
+      if(!kit)return showToast(I18n.t('Choisissez un produit à copier'),'error');
+
+      const setValue=(elementId,value)=>{
+        const element=document.getElementById(elementId);
+        if(element)element.value=value??'';
+      };
+
+      setValue('editKitId','');
+      setValue('aKitName',kit.name||'');
+      setValue('aKitPrice',kit.originalPrice??kit.price??'');
+      setValue('aKitCompare',kit.compareAtPrice??'');
+      setValue('aKitDesc',kit.description||'');
+      setValue('aKitShortDesc',kit.shortDesc||'');
+      setValue('aKitCat',kit.categoryId??'');
+      setValue('aKitStockQty',kit.stockQty??'');
+      setValue('aKitLowStock',kit.lowStockThreshold??3);
+
+      const stock=document.getElementById('aKitStock');
+      const featured=document.getElementById('aKitFeatured');
+      if(stock)stock.checked=kit.inStock!==false;
+      if(featured)featured.checked=!!kit.featured;
+
+      setAdminProductRows('images',productImageList(kit));
+      setAdminProductRows('includes',Array.isArray(kit.includes)?kit.includes:[]);
+      setAdminProductRows('sizes',Array.isArray(kit.sizeOptions)?kit.sizeOptions.map(option=>({...option})):[]);
+      setAdminProductRows('addons',Array.isArray(kit.addOns)?kit.addOns.map(option=>({...option})):[]);
+
+      const formTitle=document.getElementById('kitFormTitle');
+      const cancel=document.getElementById('cancelKit');
+      if(formTitle)formTitle.textContent=I18n.t('Ajouter un produit');
+      if(cancel)cancel.style.display='none';
+
+      document.querySelector('#adminKitsPanel .admin-form-card')?.scrollIntoView({behavior:'smooth',block:'start'});
+      showToast(I18n.t('Produit copié. Modifiez les champs nécessaires puis sauvegardez.'),'success');
+    };
+
+    renderAdminKits=function(){
+      originalRenderAdminKits();
+      enhanceAdminProductCopyUI();
+    };
+
+    enhanceAdminProductCopyUI();
+  });
+}
