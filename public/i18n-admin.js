@@ -100,7 +100,8 @@ englishAdminHook('applyProductTemplate',()=>{
   const queue=[
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
     ['studio-admin.js','artyStudioAdminEnhancements'],
-    ['commerce-client.js','artyCommerceEnhancements']
+    ['commerce-client.js','artyCommerceEnhancements'],
+    ['commerce-profile-fix.js','artyCommerceProfileEnhancement']
   ];
   const next=()=>{
     const item=queue.shift();if(!item)return;
