@@ -2,11 +2,12 @@
 
 // Render is configured to start `node server.js`.
 // Keep the original application untouched in core-server.js while loading
-// the Studio + commerce extensions around it.
+// the Studio + commerce + marketing extensions around it.
 const Module = require('module');
 const fs = require('fs');
 const path = require('path');
 const commerceCore = require('./commerce-core');
+const marketingCore = require('./marketing-core');
 const originalResolveFilename = Module._resolveFilename;
 const originalReadFileSync = fs.readFileSync;
 const corePath = path.join(__dirname, 'core-server.js');
@@ -23,6 +24,16 @@ const corePath = path.join(__dirname, 'core-server.js');
   if (qc.total !== 68.97 || qc.shippingTotal !== 9.99 || qc.taxTotal !== 8.98) throw new Error('ARTY commerce sanity check failed for Quebec');
   if (on.total !== 67.79 || on.taxTotal !== 7.8) throw new Error('ARTY commerce sanity check failed for Ontario');
   if (free.shippingTotal !== 0 || free.freeShippingApplied !== true) throw new Error('ARTY commerce sanity check failed for free shipping');
+})();
+
+// Marketing URLs and identifiers are deliberately deterministic because ad,
+// analytics and catalog platforms must all refer to the same content IDs.
+(() => {
+  const cfg = marketingCore.normalizeMarketingConfig({siteUrl:'https://creationarty.com'});
+  const product = {id:42,name:'Été Méditerranéen'};
+  if (marketingCore.entitySlug(cfg,'product',product) !== 'ete-mediterraneen-42') throw new Error('ARTY marketing slug sanity check failed');
+  if (marketingCore.contentId('product',42) !== 'ARTY-PRODUCT-42') throw new Error('ARTY marketing content ID sanity check failed');
+  if (marketingCore.publicUrl(cfg,'product',product) !== 'https://creationarty.com/products/ete-mediterraneen-42') throw new Error('ARTY marketing URL sanity check failed');
 })();
 
 Module._resolveFilename = function(request, parent, isMain, options) {
