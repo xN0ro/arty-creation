@@ -6,6 +6,7 @@ const crypto=require('crypto');
 const Module=require('module');
 const realExpress=require('express');
 const commerceCore=require('./commerce-core');
+const marketingCore=require('./marketing-core');
 
 const DEFAULT_STUDIO_CONFIG={
   version:1,
@@ -41,6 +42,64 @@ function normalizeStudioProduct(raw={},index=0){const type=['canvas','bag','temp
 function normalizeStudioConfig(raw){const source=raw&&typeof raw==='object'?raw:DEFAULT_STUDIO_CONFIG;let products=(Array.isArray(source.products)?source.products:[]).slice(0,40).map(normalizeStudioProduct);if(!products.length)products=DEFAULT_STUDIO_CONFIG.products.map(normalizeStudioProduct);const ids=new Set();products=products.map((product,index)=>{let id=product.id;if(ids.has(id))id=`${id}-${index+1}`;ids.add(id);return{...product,id}});return{version:1,products}}
 function getStudioConfig(){const db=readDb();return normalizeStudioConfig(db.studioConfig||DEFAULT_STUDIO_CONFIG)}
 function getCommerceConfig(){const db=readDb();return commerceCore.normalizeCommerceConfig(db.commerceConfig||commerceCore.DEFAULT_COMMERCE_CONFIG)}
+function getMarketingConfig(){const db=readDb();return marketingCore.normalizeMarketingConfig(db.marketingConfig||marketingCore.DEFAULT_MARKETING_CONFIG)}
+
+function escapeHtml(value){return String(value??'').replace(/[&<>\"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]))}
+function escapeAttr(value){return escapeHtml(value).replace(/'/g,'&#39;')}
+function jsonScript(value){return JSON.stringify(value).replace(/</g,'\\u003c').replace(/-->/g,'--\\u003e')}
+function loadIndexHtml(){return fs.readFileSync(path.join(__dirname,'public','index.html'),'utf8')}
+function requestLanguage(req){return String(req.query?.lang||req.headers['accept-language']||'fr').toLowerCase().startsWith('en')?'en':'fr'}
+function entityCollection(db,kind){if(kind==='event')return db.events||[];if(kind==='collection')return db.categories||[];return db.kits||[]}
+function schemaFor(config,kind,entity,meta){
+  if(kind==='product')return {'@context':'https://schema.org','@type':'Product',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,image:[meta.image],sku:meta.contentId,url:meta.url,offers:{'@type':'Offer',url:meta.url,priceCurrency:'CAD',price:Number(entity.price)||0,availability:entity.inStock===false?'https://schema.org/OutOfStock':'https://schema.org/InStock'}};
+  if(kind==='event'){
+    const startDate=entity.date?`${entity.date}${entity.time?`T${String(entity.time).slice(0,5)}:00`:''}`:undefined;
+    const locationName=text(entity.location||entity.venue||entity.address||'',180);
+    const schema={'@context':'https://schema.org','@type':'Event',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,image:[meta.image],url:meta.url,eventStatus:'https://schema.org/EventScheduled',eventAttendanceMode:'https://schema.org/OfflineEventAttendanceMode',offers:{'@type':'Offer',url:meta.url,priceCurrency:'CAD',price:Number(entity.price)||0,availability:'https://schema.org/InStock'}};
+    if(startDate)schema.startDate=startDate;if(locationName)schema.location={'@type':'Place',name:locationName};return schema;
+  }
+  if(kind==='collection')return {'@context':'https://schema.org','@type':'CollectionPage',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,url:meta.url,image:meta.image};
+  return {'@context':'https://schema.org','@type':'WebSite',name:config.brandName,url:config.siteUrl,description:config.defaultDescription};
+}
+function injectMarketingHead(html,config,kind,entity,meta,landing){
+  let output=html;
+  const title=meta?.title||config.defaultTitle,description=meta?.description||config.defaultDescription,image=meta?.image||marketingCore.absoluteUrl(config,config.defaultSocialImage),url=meta?.url||config.siteUrl;
+  output=output.replace(/<title>[\s\S]*?<\/title>/i,`<title>${escapeHtml(title)}</title>`);
+  output=output.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?\s*>/i,`<meta name="description" content="${escapeAttr(description)}">`);
+  const verification=[config.verification.google?`<meta name="google-site-verification" content="${escapeAttr(config.verification.google)}">`:'',config.verification.facebook?`<meta name="facebook-domain-verification" content="${escapeAttr(config.verification.facebook)}">`:''].join('');
+  const schema=schemaFor(config,kind,entity||{},meta||{title,url,image,description});
+  const extra=`\n  <base href="/">\n  <link rel="canonical" href="${escapeAttr(url)}">\n  <meta property="og:site_name" content="${escapeAttr(config.brandName)}">\n  <meta property="og:type" content="${kind==='product'?'product':kind==='event'?'event':'website'}">\n  <meta property="og:title" content="${escapeAttr(title)}">\n  <meta property="og:description" content="${escapeAttr(description)}">\n  <meta property="og:image" content="${escapeAttr(image)}">\n  <meta property="og:url" content="${escapeAttr(url)}">\n  <meta name="twitter:card" content="summary_large_image">\n  <meta name="twitter:title" content="${escapeAttr(title)}">\n  <meta name="twitter:description" content="${escapeAttr(description)}">\n  <meta name="twitter:image" content="${escapeAttr(image)}">\n  ${verification}\n  <script type="application/ld+json">${jsonScript(schema)}</script>\n  <script>window.__ARTY_MARKETING_LANDING__=${jsonScript(landing||null)};</script>\n`;
+  return output.replace('</head>',`${extra}</head>`);
+}
+function sendMarketingPage(req,res,kind){
+  const db=readDb(),config=getMarketingConfig(),lang=requestLanguage(req);
+  if(kind==='home'){
+    const meta={title:config.defaultTitle,description:config.defaultDescription,image:marketingCore.absoluteUrl(config,config.defaultSocialImage),url:config.siteUrl};
+    return res.type('html').send(injectMarketingHead(loadIndexHtml(),config,'home',{},meta,{kind:'home',url:config.siteUrl}));
+  }
+  const resolved=marketingCore.resolveEntity(config,kind,entityCollection(db,kind),req.params.slug);
+  if(!resolved)return res.status(404).type('html').send('ARTY page not found');
+  const canonicalPath=new URL(resolved.canonicalUrl).pathname;
+  if(req.path!==canonicalPath)return res.redirect(301,`${canonicalPath}${req.originalUrl.includes('?')?'?'+req.originalUrl.split('?').slice(1).join('?'):''}`);
+  const meta=marketingCore.buildPageMeta(config,kind,resolved.entity,lang);
+  const landing={kind,id:resolved.entity.id,slug:resolved.slug,url:meta.url,contentId:meta.contentId};
+  return res.type('html').send(injectMarketingHead(loadIndexHtml(),config,kind,resolved.entity,meta,landing));
+}
+function buildSitemap(){
+  const db=readDb(),config=getMarketingConfig(),urls=[{loc:config.siteUrl,lastmod:''}];
+  [['product',db.kits||[]],['event',db.events||[]],['collection',db.categories||[]]].forEach(([kind,list])=>list.forEach(entity=>urls.push({loc:marketingCore.publicUrl(config,kind,entity),lastmod:text(entity.updatedAt||entity.date||'',30)})));
+  const xml=urls.map(item=>`  <url><loc>${escapeHtml(item.loc)}</loc>${item.lastmod?`<lastmod>${escapeHtml(item.lastmod.slice(0,10))}</lastmod>`:''}</url>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${xml}\n</urlset>`;
+}
+function installMarketingPublicRoutes(app){
+  if(app.__artyMarketingPublicInstalled)return;app.__artyMarketingPublicInstalled=true;
+  app.get('/',(req,res)=>sendMarketingPage(req,res,'home'));
+  app.get('/products/:slug',(req,res)=>sendMarketingPage(req,res,'product'));
+  app.get('/events/:slug',(req,res)=>sendMarketingPage(req,res,'event'));
+  app.get('/collections/:slug',(req,res)=>sendMarketingPage(req,res,'collection'));
+  app.get('/sitemap.xml',(req,res)=>res.type('application/xml').send(buildSitemap()));
+  app.get('/robots.txt',(req,res)=>{const config=getMarketingConfig();res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${config.siteUrl}/sitemap.xml\n`) });
+}
 
 function installExtensionRoutes(app){
   if(app.__artyExtensionsInstalled)return;app.__artyExtensionsInstalled=true;
@@ -50,10 +109,14 @@ function installExtensionRoutes(app){
   app.get('/api/commerce-config',(req,res)=>res.json(getCommerceConfig()));
   app.get('/api/admin/commerce-config',adminOnly,(req,res)=>res.json(getCommerceConfig()));
   app.put('/api/admin/commerce-config',adminOnly,(req,res)=>{const db=readDb(),config=commerceCore.normalizeCommerceConfig(req.body||{});db.commerceConfig=config;writeDb(db);res.json({success:true,config})});
+  app.get('/api/marketing-config',(req,res)=>res.json(getMarketingConfig()));
+  app.get('/api/admin/marketing-config',adminOnly,(req,res)=>res.json(getMarketingConfig()));
+  app.put('/api/admin/marketing-config',adminOnly,(req,res)=>{const db=readDb(),config=marketingCore.normalizeMarketingConfig(req.body||{});db.marketingConfig=config;writeDb(db);res.json({success:true,config})});
 }
 
 function wrappedExpress(...args){
   const app=realExpress(...args),originalUse=app.use.bind(app);let useCount=0;
+  installMarketingPublicRoutes(app);
   app.use=function(...useArgs){const result=originalUse(...useArgs);useCount+=1;if(useCount===4)installExtensionRoutes(app);return result};
   return app;
 }
@@ -65,12 +128,12 @@ function replaceRequired(source,needle,replacement,label){
   return source.replace(needle,replacement);
 }
 function patchServerSource(source){
-  source=replaceRequired(source,"const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');","const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');\nconst commerceCore = require('./commerce-core');",'commerce import');
+  source=replaceRequired(source,"const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');","const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');\nconst commerceCore = require('./commerce-core');\nconst marketingCore = require('./marketing-core');",'commerce and marketing imports');
   source=replaceRequired(source,'function priceOrder(db, items = []) {','function priceOrder(db, items = [], address = {}) {','priceOrder signature');
   source=replaceRequired(source,'return { items: pricedItems, subtotal, discountTotal, discountsApplied, total: money(subtotal - discountTotal) };',"const commerce = commerceCore.calculateCommerceTotals(db.commerceConfig, pricedItems, subtotal, discountTotal, address);\n  return { items: pricedItems, subtotal, discountTotal, discountsApplied, ...commerce, total: commerce.total };",'priceOrder commerce totals');
   source=replaceRequired(source,"  if (needsShipping && (!address || !String(address.line1 || '').trim())) return res.status(400).json({ error: I18n.t('Adresse de livraison requise') });","  const shippingAddressError = commerceCore.validateShippingAddress(db.commerceConfig, address, needsShipping);\n  if (shippingAddressError) return res.status(400).json({ error: I18n.t(shippingAddressError) });",'shipping address validation');
   source=replaceRequired(source,'  const pricing = priceOrder(db, built.items);','  const pricing = priceOrder(db, built.items, address);','order pricing address');
-  source=replaceRequired(source,"    subtotal: pricing.subtotal,\n    discountTotal: pricing.discountTotal,\n    discountsApplied: pricing.discountsApplied,\n    total: pricing.total,","    subtotal: pricing.subtotal,\n    discountTotal: pricing.discountTotal,\n    discountsApplied: pricing.discountsApplied,\n    merchandiseTotal: pricing.merchandiseTotal,\n    shippingTotal: pricing.shippingTotal,\n    shippingBasePrice: pricing.shippingBasePrice,\n    shippingQualifyingSubtotal: pricing.shippingQualifyingSubtotal,\n    freeShippingApplied: pricing.freeShippingApplied,\n    taxTotal: pricing.taxTotal,\n    taxLines: pricing.taxLines,\n    taxProvince: pricing.taxProvince,\n    taxRate: pricing.taxRate,\n    total: pricing.total,",'order commerce fields');
+  source=replaceRequired(source,"    subtotal: pricing.subtotal,\n    discountTotal: pricing.discountTotal,\n    discountsApplied: pricing.discountsApplied,\n    total: pricing.total,","    subtotal: pricing.subtotal,\n    discountTotal: pricing.discountTotal,\n    discountsApplied: pricing.discountsApplied,\n    merchandiseTotal: pricing.merchandiseTotal,\n    shippingTotal: pricing.shippingTotal,\n    shippingBasePrice: pricing.shippingBasePrice,\n    shippingQualifyingSubtotal: pricing.shippingQualifyingSubtotal,\n    freeShippingApplied: pricing.freeShippingApplied,\n    taxTotal: pricing.taxTotal,\n    taxLines: pricing.taxLines,\n    taxProvince: pricing.taxProvince,\n    taxRate: pricing.taxRate,\n    marketingAttribution: marketingCore.normalizeAttribution(req.body?.marketingAttribution),\n    total: pricing.total,",'order commerce and marketing fields');
   const marker='// ========== ORDERS & BOOKINGS ==========';
   const quoteRoute=`// Server-authoritative checkout quote: discounts, shipping and Canadian destination taxes.\napp.post('/api/checkout-quote', optionalAuth, (req, res) => {\n  const db = readDB();\n  const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];\n  const address = req.body?.address && typeof req.body.address === 'object' ? req.body.address : {};\n  if (!rawItems.length) return res.status(400).json({ error: I18n.t('Aucun article') });\n  const built = buildOrderItems(db, rawItems);\n  if (built.error) return res.status(400).json({ error: built.error });\n  const needsShipping = built.items.some(item => item.type !== 'event-ticket');\n  if (needsShipping && String(address.country || 'Canada').trim() && !commerceCore.isCanada(address.country) && commerceCore.normalizeCommerceConfig(db.commerceConfig).shipping.canadaOnly) return res.status(400).json({ error: I18n.t('La livraison est actuellement disponible au Canada seulement') });\n  const pricing = priceOrder(db, built.items, address);\n  res.json({ success:true, subtotal:pricing.subtotal, discountTotal:pricing.discountTotal, merchandiseTotal:pricing.merchandiseTotal, shippingTotal:pricing.shippingTotal, shippingBasePrice:pricing.shippingBasePrice, shippingQualifyingSubtotal:pricing.shippingQualifyingSubtotal, freeShippingApplied:pricing.freeShippingApplied, needsShipping:pricing.needsShipping, taxTotal:pricing.taxTotal, taxLines:pricing.taxLines, taxProvince:pricing.taxProvince, taxRate:pricing.taxRate, total:pricing.total });\n});\n\n${marker}`;
   source=replaceRequired(source,marker,quoteRoute,'checkout quote route');
