@@ -57,7 +57,7 @@ function wrappedExpress(...args){
   app.use=function(...useArgs){const result=originalUse(...useArgs);useCount+=1;if(useCount===4)installExtensionRoutes(app);return result};
   return app;
 }
-Object.assign(wrappedExpress,{static:realExpress.static,Router:realExpress.Router,json:realExpress.json,.urlencoded:realExpress.urlencoded,query:realExpress.query,raw:realExpress.raw,text:realExpress.text});
+Object.assign(wrappedExpress,{static:realExpress.static,Router:realExpress.Router,json:realExpress.json,urlencoded:realExpress.urlencoded,query:realExpress.query,raw:realExpress.raw,text:realExpress.text});
 require.cache[require.resolve('express')].exports=wrappedExpress;
 
 function replaceRequired(source,needle,replacement,label){
