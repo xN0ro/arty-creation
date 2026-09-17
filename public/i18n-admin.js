@@ -98,11 +98,12 @@ englishAdminHook('applyProductTemplate',()=>{
 /* Load admin enhancements in a deterministic order. */
 (() => {
   const queue=[
+    ['marketing-client.js','artyMarketingReadiness'],
+    ['marketing-admin-fix.js','artyMarketingAdminFix'],
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
     ['studio-admin.js','artyStudioAdminEnhancements'],
     ['commerce-client.js','artyCommerceEnhancements'],
-    ['commerce-profile-fix.js','artyCommerceProfileEnhancement'],
-    ['marketing-client.js','artyMarketingReadiness']
+    ['commerce-profile-fix.js','artyCommerceProfileEnhancement']
   ];
   const next=()=>{
     const item=queue.shift();if(!item)return;
