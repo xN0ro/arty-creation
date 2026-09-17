@@ -95,11 +95,18 @@ englishAdminHook('applyProductTemplate',()=>{
   const input=document.getElementById('english-kits-includes');if(template&&input)input.value=(template.translations?.en?.includes||template.includes?.map(item=>I18n.t(item,[],'en'))||[]).join('\n');
 });
 
-/* Load product-editor enhancements after the core admin localization hooks. */
+/* Load admin enhancements in a deterministic order. */
 (() => {
-  if (document.querySelector('script[data-arty-product-admin-enhancements]')) return;
-  const script=document.createElement('script');
-  script.src='product-admin-enhancements.js';
-  script.dataset.artyProductAdminEnhancements='true';
-  document.head.append(script);
+  const queue=[
+    ['product-admin-enhancements.js','artyProductAdminEnhancements'],
+    ['studio-admin.js','artyStudioAdminEnhancements']
+  ];
+  const next=()=>{
+    const item=queue.shift();if(!item)return;
+    const [src,dataKey]=item;
+    if(document.querySelector(`script[data-${dataKey.replace(/[A-Z]/g,m=>'-'+m.toLowerCase())}]`)){next();return}
+    const script=document.createElement('script');
+    script.src=src;script.async=false;script.dataset[dataKey]='true';script.onload=next;script.onerror=next;document.head.append(script);
+  };
+  next();
 })();
