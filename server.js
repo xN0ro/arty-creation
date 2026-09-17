@@ -6,9 +6,24 @@
 const Module = require('module');
 const fs = require('fs');
 const path = require('path');
+const commerceCore = require('./commerce-core');
 const originalResolveFilename = Module._resolveFilename;
 const originalReadFileSync = fs.readFileSync;
 const corePath = path.join(__dirname, 'core-server.js');
+
+// Fail a deployment early if the commerce core ever stops producing the
+// expected destination-tax and free-shipping results.
+(() => {
+  const cfg = commerceCore.DEFAULT_COMMERCE_CONFIG;
+  const item = {id:'1',kitId:1,type:'kit',qty:1,price:50,lineTotal:50};
+  const qc = commerceCore.calculateCommerceTotals(cfg,[item],50,0,{province:'QC',country:'Canada'});
+  const on = commerceCore.calculateCommerceTotals(cfg,[item],50,0,{province:'ON',country:'Canada'});
+  const freeItem = {id:'1',kitId:1,type:'kit',qty:1,price:75,lineTotal:75};
+  const free = commerceCore.calculateCommerceTotals(cfg,[freeItem],75,0,{province:'QC',country:'Canada'});
+  if (qc.total !== 68.97 || qc.shippingTotal !== 9.99 || qc.taxTotal !== 8.98) throw new Error('ARTY commerce sanity check failed for Quebec');
+  if (on.total !== 67.79 || on.taxTotal !== 7.8) throw new Error('ARTY commerce sanity check failed for Ontario');
+  if (free.shippingTotal !== 0 || free.freeShippingApplied !== true) throw new Error('ARTY commerce sanity check failed for free shipping');
+})();
 
 Module._resolveFilename = function(request, parent, isMain, options) {
   if (request === './server' && parent && path.basename(parent.filename || '') === 'app-server.js') {
