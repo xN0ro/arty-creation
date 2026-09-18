@@ -6,6 +6,7 @@ const PERMISSIONS=[
  ['crm_dashboard','Aperçu CRM','CRM overview','Voir le centre d’action, les suivis et les rapports CRM.','View the CRM action centre, follow-ups and reports.'],
  ['customers','Clients','Customers','Consulter et gérer les profils clients, notes et comptes.','View and manage customer profiles, notes and accounts.'],
  ['leads','Prospects & ventes','Leads & sales','Créer, attribuer et gérer les prospects et le pipeline de vente.','Create, assign and manage leads and the sales pipeline.'],
+ ['account_management','Sécurité des comptes','Account security','Désactiver des comptes et envoyer des actions de sécurité.','Disable accounts and send security actions.'],
  ['products','Produits','Products','Créer, modifier et gérer les produits et le Studio.','Create, edit and manage products and Studio settings.'],
  ['inventory','Inventaire','Inventory','Consulter et ajuster les quantités en stock.','View and adjust inventory quantities.'],
  ['promotions','Promotions & rabais','Promotions & discounts','Créer des rabais automatiques et codes promo.','Create automatic discounts and promo codes.'],
