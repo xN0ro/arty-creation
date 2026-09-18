@@ -41,8 +41,12 @@
       <div class="crm-layout"><div class="crm-list"><div class="crm-table-head"><span>${T('Client','Customer')}</span><span>${T('Activité','Activity')}</span><span>${T('Valeur','Value')}</span></div>
       ${rows.map(c=>`<button class="crm-customer-row" onclick="ARTYCRM.openCustomer('${encodeURIComponent(c.email)}')"><span><strong>${esc(c.name)}</strong><small>${esc(c.email)}${c.phone?' · '+esc(c.phone):''}</small><i>${c.hasAccount?T('Compte ARTY','ARTY account'):T('Contact seulement','Contact only')}</i></span><span><b>${c.orderCount} ${T('commande(s)','order(s)')}</b><small>${c.eventRequestCount} ${T('demande(s) événement','event request(s)')} · ${date(c.lastActivity)}</small></span><span><strong>${money(c.lifetimeSpend)}</strong><small>${(c.tags||[]).map(x=>esc(x)).join(' · ')||'—'}</small></span></button>`).join('')||`<div class="crm-empty">${T('Aucun client trouvé.','No customers found.')}</div>`}</div><div class="crm-detail" id="crmCustomerDetail">${T('Sélectionnez un client pour voir son historique.','Select a customer to view their history.')}</div></div>`;
   }
-  async function openCustomer(encoded){
+  async function openCustomer(encoded,from=''){
     const email=decodeURIComponent(encoded);
+    if(from==='crmLeads'){
+      const tab=document.querySelector('[data-crm-customers]');
+      showTab('crmCustomers',tab);
+    }
     try{state.customer=await api('/api/admin/crm/customers/'+encodeURIComponent(email));renderCustomerDetail()}catch(e){showToast(e.message,'error')}
   }
   function timelineLabel(x){return({account:T('Compte créé','Account created'),order:T('Commande','Order'),event_request:T('Demande événement','Event request'),booking:T('Réservation','Booking'),contact:T('Message','Message'),note:T('Note interne','Internal note')})[x.type]||x.type}
