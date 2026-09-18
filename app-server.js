@@ -252,6 +252,43 @@ function installExtensionRoutes(app){
     const lead=crmCore.createManualLead(db,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(400).json({error:crmError(req,'Nom et courriel requis','Name and email are required')});
     const calendarSync=await syncCrmCalendar(db,lead);writeDb(db);res.json({success:true,lead,calendarSync});
   });
+  app.post('/api/admin/crm/leads/:kind/:id/convert-event',adminOnly,(req,res)=>{
+    const db=readDb(),kind=String(req.params.kind||''),id=String(req.params.id||'');
+    if(!['manual','contact','event'].includes(kind))return res.status(400).json({error:crmError(req,'Type de prospect invalide','Invalid lead type')});
+    if(!crmCanAccessLead(db,kind,id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
+    const currentLead=crmCore.buildLeads(db).find(lead=>lead.kind===kind&&String(lead.id)===id);
+    if(!currentLead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
+    if(kind==='event')return res.json({success:true,lead:currentLead,converted:false});
+    const source=crmRawLeadItem(db,kind,id);if(!source)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
+    if(source.convertedEventRequestId){
+      const existing=crmCore.buildLeads(db).find(lead=>lead.kind==='event'&&String(lead.id)===String(source.convertedEventRequestId));
+      if(existing)return res.json({success:true,lead:existing,converted:false});
+    }
+    let eventId=Date.now();while((db.eventRequests||[]).some(item=>String(item.id)===String(eventId)))eventId++;
+    const body=req.body||{},now=new Date().toISOString(),location=text(body.location||'',240),crm=crmCore.crmMeta(source.crm||{});
+    const eventType=text(body.eventType||currentLead.eventType||currentLead.title||'ARTY event',180)||'ARTY event';
+    const request={
+      id:eventId,reference:`EVT-${eventId.toString(36).toUpperCase()}`,locale:source.locale||requestLanguage(req),
+      name:currentLead.name||source.name||'',email:currentLead.email||source.email||'',phone:currentLead.phone||source.phone||'',
+      eventType,preferredDate:text(body.preferredDate||currentLead.preferredDate||'',20),eventTime:'',
+      guests:Math.max(1,Math.min(1000,parseInt(body.guests)||1)),
+      address:{line1:location,city:'',province:'',postal:'',country:'Canada'},location,
+      servicePath:'expert',inventoryItems:[],customKit:null,
+      expertBrief:text(body.brief||currentLead.message||source.message||currentLead.title||'',3000),
+      message:text(source.message||currentLead.message||'',3000),contactPreference:'email',
+      marketingAttribution:source.marketingAttribution||{},
+      status:'contactée',adminNote:crm.adminNote||'',quoteAmount:0,quoteDescription:'',quotePaymentStatus:'not_created',
+      createdAt:source.createdAt||now,updatedAt:now,
+      convertedFromLead:{kind,id},
+      crm:{...crm,status:crm.status==='new'?'contacted':crm.status,updatedBy:crmSessionEmail(req)||'admin',updatedAt:now}
+    };
+    db.eventRequests=Array.isArray(db.eventRequests)?db.eventRequests:[];
+    db.eventRequests.push(request);
+    source.convertedEventRequestId=eventId;source.convertedAt=now;source.updatedAt=now;
+    writeDb(db);
+    const lead=crmCore.buildLeads(db).find(item=>item.kind==='event'&&String(item.id)===String(eventId));
+    res.json({success:true,lead,converted:true});
+  });
   app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,async(req,res)=>{
     const db=readDb();if(!crmCanAccessLead(db,req.params.kind,req.params.id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
     const body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
