@@ -2022,6 +2022,9 @@ function normalizeEventPayload(body, existing = {}) {
   payload.duration = body.duration || existing.duration || I18n.t('2 heures');
   payload.price = parseFloat(body.price) || 0;
   payload.maxSpots = parseInt(body.maxSpots) || existing.maxSpots || 20;
+  payload.showMaxCapacity = body.showMaxCapacity === undefined
+    ? !!existing.showMaxCapacity
+    : (body.showMaxCapacity === true || body.showMaxCapacity === 'true');
   payload.bookedSpots = parseInt(existing.bookedSpots) || 0;
   payload.location = body.location || '';
   payload.image = body.image || '';
