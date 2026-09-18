@@ -325,7 +325,7 @@ function cleanExpiredSessions(db) {
   return db.sessions.length !== before;
 }
 
-const ADMIN_PERMISSION_KEYS = ['dashboard','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
+const ADMIN_PERMISSION_KEYS = ['dashboard','crm_dashboard','customers','leads','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
 
 function normalizeStaffPermissions(value) {
   const allowed = new Set(ADMIN_PERMISSION_KEYS);
@@ -362,6 +362,9 @@ function adminPermissionRequirement(req) {
   const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/^\/api\/admin\/?/,'');
   const method = String(req.method || 'GET').toUpperCase();
   if (path.startsWith('access-grants')) return '__owner';
+  if (path.startsWith('crm/customers')) return 'customers';
+  if (path.startsWith('crm/leads')) return 'leads';
+  if (path.startsWith('crm')) return 'crm_dashboard';
   if (path === 'stats' || path === 'analytics') return 'dashboard';
   if (path === 'storage') return 'settings';
   if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
@@ -448,6 +451,11 @@ function getSession(req) {
   }
   const user = (db.users || []).find(item => item.id === session.userId) || (db.users || []).find(item => String(item.email || '').trim().toLowerCase() === String(session.email || '').trim().toLowerCase());
   if (!user) return session;
+  if (user.accountDisabledAt) {
+    db.sessions = (db.sessions || []).filter(s => s.tokenHash !== tokenHash);
+    writeDB(db);
+    return null;
+  }
   return { ...session, email:user.email, role:effectiveAccountRole(db,user), permissions:effectiveAccountPermissions(db,user) };
 }
 
@@ -563,7 +571,8 @@ function publicUserAccount(user, db = null) {
     linkedProviders: Array.isArray(user.linkedProviders) ? user.linkedProviders : [user.provider || 'local'],
     phone: String(user.phone || ''),
     defaultAddress: normalizeAccountAddress(user.defaultAddress),
-    createdAt: user.createdAt || ''
+    createdAt: user.createdAt || '',
+    lastLoginAt: user.lastLoginAt || ''
   };
 }
 function cleanExpiredPasswordResets(db) {
@@ -602,9 +611,10 @@ app.post('/api/users/login', async (req, res) => {
     const user = (db.users || []).find(u => String(u.email || '').toLowerCase() === email && u.provider === 'local');
     if (!user) return res.status(401).json({ error: I18n.t('Courriel ou mot de passe invalide') });
     if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: I18n.t('Courriel ou mot de passe invalide') });
+    if (user.accountDisabledAt) return res.status(403).json({ error:I18n.t('Ce compte est temporairement désactivé. Contactez ARTY pour obtenir de l’aide.') });
     if (canPromoteAdmin(db, user)) user.role = 'admin';
     else syncUserAccessRole(db, user);
-    user.locale = req.locale; writeDB(db);
+    user.locale = req.locale; user.lastLoginAt = new Date().toISOString(); writeDB(db);
     const token = createToken(user);
     const emailResult = await sendLoginAlertEmail(user);
     res.json({ success: true, token, user: publicUserAccount(user), emailStatus:emailResult.status });
@@ -637,7 +647,9 @@ app.post('/api/users/google', async (req, res) => {
       user.linkedProviders = Array.from(new Set([...(user.linkedProviders || [user.provider || 'local']), 'google']));
       user.googleLinkedAt = user.googleLinkedAt || new Date().toISOString();
     }
+    if (user.accountDisabledAt) return res.status(403).json({ error:I18n.t('Ce compte est temporairement désactivé. Contactez ARTY pour obtenir de l’aide.') });
     user.emailVerifiedAt = user.emailVerifiedAt || new Date().toISOString();
+    user.lastLoginAt = new Date().toISOString();
     syncUserAccessRole(db, user);
     if (staffGrant && !staffGrant.acceptedAt) staffGrant.acceptedAt = new Date().toISOString();
     user.locale = req.locale; writeDB(db);
@@ -775,10 +787,57 @@ app.delete('/api/admin/access-grants/:id', fullAdminOnly, (req,res) => {
   const [removed]=db.adminAccessGrants.splice(index,1);const user=(db.users||[]).find(item=>String(item.email||'').trim().toLowerCase()===String(removed.email||'').trim().toLowerCase());if(user&&user.role==='staff')user.role='user';
   writeDB(db);res.json({success:true});
 });
+app.patch('/api/admin/crm/customers/:email/account', adminOnly, (req,res) => {
+  const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
+  if(req.body?.name!==undefined)user.name=String(req.body.name||'').replace(/\s+/g,' ').trim().slice(0,100);
+  if(req.body?.phone!==undefined)user.phone=String(req.body.phone||'').replace(/\s+/g,' ').trim().slice(0,30);
+  if(['fr','en'].includes(req.body?.locale))user.locale=req.body.locale;
+  user.updatedAt=new Date().toISOString();writeDB(db);res.json({success:true,user:publicUserAccount(user,db)});
+});
+app.post('/api/admin/crm/customers/:email/disable', adminOnly, (req,res) => {
+  const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
+  if(user.role==='admin'||(db.adminEmails||[]).map(v=>String(v).toLowerCase()).includes(email))return res.status(400).json({error:I18n.t('Un compte propriétaire ne peut pas être désactivé ici')});
+  const disabled=req.body?.disabled!==false,now=new Date().toISOString();
+  user.accountDisabledAt=disabled?now:'';user.accountDisabledBy=disabled?(req.session.email||'admin'):'';user.updatedAt=now;
+  if(disabled)db.sessions=(db.sessions||[]).filter(s=>s.userId!==user.id);
+  writeDB(db);res.json({success:true,disabled,disabledAt:user.accountDisabledAt||''});
+});
+app.post('/api/admin/crm/customers/:email/password-reset', adminOnly, async (req,res) => {
+  const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
+  if(user.provider!=='local'&&!String(user.linkedProviders||[]).includes('local'))return res.status(400).json({error:I18n.t('Ce compte utilise Google pour la connexion')});
+  cleanExpiredPasswordResets(db);const rawToken=crypto.randomBytes(32).toString('hex'),now=new Date();
+  db.passwordResetTokens=db.passwordResetTokens||[];db.passwordResetTokens.push({tokenHash:hashToken(rawToken),userId:user.id,createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+30*60*1000).toISOString(),usedAt:''});
+  writeDB(db);const result=await sendPasswordResetEmail(user,rawToken);res.json({success:true,emailStatus:result.status});
+});
+app.post('/api/admin/crm/customers/:email/resend-welcome', adminOnly, async (req,res) => {
+  const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
+  const result=await sendAccountWelcomeEmail(user);res.json({success:true,emailStatus:result.status});
+});
 app.get('/api/admin/categories', adminOnly, (req,res) => res.json(readDB().categories || []));
 app.get('/api/admin/announcement', adminOnly, (req,res) => res.json(readDB().announcement || {}));
 
 app.get('/api/users/me', auth, (req, res) => { const db=readDB(); const u=db.users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:I18n.t('Non trouvé')}); res.json(publicUserAccount(u,db)); });
+app.get('/api/users/marketing-preferences', auth, (req,res) => {
+  const db=readDB(),user=(db.users||[]).find(u=>u.id===req.session.userId);
+  if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
+  const key=String(user.email||'').trim().toLowerCase(),meta=(db.crmCustomers&&db.crmCustomers[key])||{};
+  res.json({preferredLanguage:['fr','en'].includes(meta.preferredLanguage)?meta.preferredLanguage:I18n.normalize(user.locale),marketingConsent:meta.marketingConsent===true,marketingConsentAt:meta.marketingConsentAt||''});
+});
+app.put('/api/users/marketing-preferences', auth, (req,res) => {
+  const db=readDB(),user=(db.users||[]).find(u=>u.id===req.session.userId);
+  if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
+  const key=String(user.email||'').trim().toLowerCase(),now=new Date().toISOString();
+  db.crmCustomers=db.crmCustomers&&typeof db.crmCustomers==='object'&&!Array.isArray(db.crmCustomers)?db.crmCustomers:{};
+  const existing=db.crmCustomers[key]||{},next={...existing,updatedAt:now,updatedBy:key};
+  if(['fr','en'].includes(req.body?.preferredLanguage)){next.preferredLanguage=req.body.preferredLanguage;user.locale=req.body.preferredLanguage}
+  if(req.body?.marketingConsent!==undefined){next.marketingConsent=req.body.marketingConsent===true;next.marketingConsentAt=now;next.marketingConsentSource='account'}
+  db.crmCustomers[key]=next;writeDB(db);
+  res.json({success:true,preferredLanguage:next.preferredLanguage||I18n.normalize(user.locale),marketingConsent:next.marketingConsent===true,marketingConsentAt:next.marketingConsentAt||''});
+});
 app.put('/api/users/me', auth, async (req, res) => {
   const db = readDB(); const idx = db.users.findIndex(u=>u.id===req.session.userId); if(idx===-1) return res.status(404).json({error:I18n.t('Non trouvé')});
   const {name,currentPassword,newPassword,phone,defaultAddress} = req.body;
@@ -1175,7 +1234,7 @@ function sendStaffAccessInviteEmail(grant, token) {
   const siteUrl = normalizePublicUrl();
   const inviteUrl = `${siteUrl}/api/staff-invite/accept?token=${encodeURIComponent(token)}`;
   const permissionLabels = {
-    dashboard:'Dashboard & analytics', products:'Products', inventory:'Inventory', promotions:'Promotions',
+    dashboard:'Dashboard & analytics', crm_dashboard:'CRM overview', customers:'Customers', leads:'Leads & sales', products:'Products', inventory:'Inventory', promotions:'Promotions',
     orders:'Orders & refunds', support:'Customer support', events:'Events & tickets', categories:'Categories',
     marketing:'Marketing', settings:'Site settings'
   };
@@ -2065,7 +2124,7 @@ app.post('/api/event-requests', async (req, res) => {
     expertBrief,
     message:String(body.notes || body.message || '').trim().slice(0, 3000),
     contactPreference:['email','phone'].includes(body.contactPreference) ? body.contactPreference : 'email',
-    marketingAttribution: body.marketingAttribution && typeof body.marketingAttribution === 'object' ? body.marketingAttribution : {},
+    marketingAttribution: marketingCore.normalizeAttribution(body.marketingAttribution),
     status:'nouvelle',
     adminNote:'',
     quoteAmount:0,
@@ -2200,7 +2259,7 @@ app.post('/api/contact', async (req, res) => {
     email,
     message,
     channel,
-    marketingAttribution:req.body?.marketingAttribution && typeof req.body.marketingAttribution === 'object' ? req.body.marketingAttribution : {},
+    marketingAttribution:marketingCore.normalizeAttribution(req.body?.marketingAttribution),
     createdAt:new Date().toISOString(),
     crm:{status:'new',nextFollowUp:'',owner:'',tags:[],adminNote:'',updatedAt:new Date().toISOString()}
   };
