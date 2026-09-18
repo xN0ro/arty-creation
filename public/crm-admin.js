@@ -375,7 +375,7 @@ async function refreshLeadAfterAction(kind,id){
   const refreshed=state.leads.find(x=>x.kind===kind&&String(x.id)===String(id));if(refreshed)state.editingLead={...refreshed};
   renderLeads();
 }
-function emailLead(){const l=state.editingLead;if(l?.email)window.location.href='mailto:'+encodeURIComponent(l.email)}
+function emailLead(){const l=state.editingLead;if(!l?.email)return;const subject='ARTY — '+(l.reference||l.title||T('Suivi','Follow-up'));window.open('https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(l.email)+'&su='+encodeURIComponent(subject),'_blank','noopener')}
 function callLead(){const l=state.editingLead;if(l?.phone)window.location.href='tel:'+String(l.phone).replace(/[^+0-9]/g,'')}
 function openLeadCalendar(){const l=state.editingLead,url=l?.calendar?.htmlLink||'https://calendar.google.com/calendar/u/0/r';window.open(url,'_blank','noopener')}
 function openSecureQuote(){const url=state.editingLead?.paymentLinkUrl;if(url)window.open(url,'_blank','noopener')}
@@ -411,7 +411,7 @@ function renderLeadEditor(){
       <label class="wide">${T('Note interne','Internal note')}<textarea id="leadAdminNote" rows="4">${esc(l.adminNote||'')}</textarea></label>
       ${manual?`<label class="wide">${T('Détails','Details')}<textarea id="leadMessage" rows="3">${esc(l.message||'')}</textarea></label>`:''}
     </div>
-    <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="ARTYCRM.closeLeadEditor()">${T('Annuler','Cancel')}</button><button class="btn btn-orange" onclick="ARTYCRM.saveLeadEditor()">${isNew?T('Créer le prospect','Create lead'):T('Enregistrer','Save')}</button></div>`;
+    <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="${isNew?'ARTYCRM.closeLeadEditor()':'ARTYCRM.renderLeadActions()'}">${isNew?T('Annuler','Cancel'):T('Retour','Back')}</button><button class="btn btn-orange" onclick="ARTYCRM.saveLeadEditor()">${isNew?T('Créer le prospect','Create lead'):T('Enregistrer','Save')}</button></div>`;
   document.getElementById('leadStatus')?.addEventListener('change',e=>{const row=host.querySelector('.crm-lost-field');if(row)row.style.display=e.target.value==='lost'?'':'none'});
 }
 async function saveLeadEditor(){
@@ -433,7 +433,9 @@ async function saveLeadEditor(){
     const result=isNew?await api('/api/admin/crm/leads',{method:'POST',body:JSON.stringify(body)}):await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify(body)});
     const calendarState=result?.calendarSync?.action;
     const message=calendarState==='error'?T('Prospect enregistré; synchronisation Google Calendar à vérifier','Lead saved; Google Calendar sync needs attention'):isNew?T('Prospect créé','Lead created'):T('Prospect mis à jour','Lead updated');
-    showToast(message,calendarState==='error'?'warning':'success');closeLeadEditor();await Promise.all([loadLeads(),loadOverview(),loadCustomers()]);renderLeads();
+    showToast(message,calendarState==='error'?'warning':'success');
+    if(isNew){closeLeadEditor();await Promise.all([loadLeads(),loadOverview(),loadCustomers()]);renderLeads()}
+    else{await refreshLeadAfterAction(l.kind,l.id);renderLeadActions()}
   }catch(e){showToast(e.message,'error')}
 }
 function dragStart(event,kind,idEncoded){state.dragLead={kind,id:decodeURIComponent(idEncoded)};event.dataTransfer.effectAllowed='move'}
