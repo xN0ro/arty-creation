@@ -169,7 +169,32 @@ function updateAuthUI(){
 }
 
 // ===== DATA =====
-async function loadKits(){try{allKits=await(await artyFetch('/api/kits')).json()}catch{allKits=[]}}
+async function loadKits(){
+  const previous=Array.isArray(allKits)?allKits:[];
+  let lastError=null;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const response=await artyFetch('/api/kits',{cache:'no-store'});
+      if(!response.ok)throw new Error(`Products request failed (${response.status})`);
+      const data=await response.json();
+      if(!Array.isArray(data))throw new Error('Invalid products response');
+      allKits=data;
+      try{sessionStorage.setItem('arty_kits_cache',JSON.stringify(data))}catch{}
+      return allKits;
+    }catch(error){
+      lastError=error;
+      if(attempt<2)await new Promise(resolve=>setTimeout(resolve,180*(attempt+1)));
+    }
+  }
+  if(previous.length){allKits=previous;console.warn('Using previously loaded products after refresh failure',lastError);return allKits}
+  try{
+    const cached=JSON.parse(sessionStorage.getItem('arty_kits_cache')||'[]');
+    if(Array.isArray(cached)&&cached.length){allKits=cached;console.warn('Using cached products after network failure',lastError);return allKits}
+  }catch{}
+  allKits=[];
+  console.warn('Could not load products',lastError);
+  return allKits;
+}
 async function loadCategories(){try{allCategories=await(await artyFetch(location.hash==='#/admin'?'/api/admin/categories':'/api/categories',{headers:authH()})).json()}catch{allCategories=[]}}
 async function loadEvents(){try{allEvents=await(await artyFetch('/api/events')).json()}catch{allEvents=[]}}
 async function loadBundles(){try{allBundles=await(await artyFetch('/api/bundles')).json()}catch{allBundles=[]}}
@@ -1223,12 +1248,61 @@ function productServiceIcon(type){
   };
   return `<span class="product-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${paths[type]||paths.guide}</svg></span>`;
 }
-function renderProductPage(id){
-  const kit=allKits.find(k=>String(k.id)===String(id));const c=document.getElementById('productPageContent');
-  if(!kit){c.innerHTML=I18n.html('<div class="empty-state" style="padding:60px 0"><p>Kit non trouvé</p></div>');return}
+function productPageCopy(){
+  const en=I18n.language?.()==='en';
+  return en
+    ?{loading:'Loading this creation…',loadingSub:'We are preparing the product details.',errorTitle:'This product could not be loaded.',errorText:'Please try again. Your cart and selections are safe.',retry:'Try again',back:'Back to all kits'}
+    :{loading:'Chargement de cette création…',loadingSub:'Nous préparons les détails du produit.',errorTitle:'Impossible de charger ce produit.',errorText:'Veuillez réessayer. Votre panier et vos sélections sont conservés.',retry:'Réessayer',back:'Retour à tous les kits'};
+}
+function productLoadingHTML(){
+  const copy=productPageCopy();
+  return `<div class="product-load-state" role="status" aria-live="polite"><div class="product-load-spinner" aria-hidden="true"></div><h2>${safeText(copy.loading)}</h2><p>${safeText(copy.loadingSub)}</p><div class="product-load-skeleton"><span></span><span></span><span></span></div></div>`;
+}
+function productLoadErrorHTML(id){
+  const copy=productPageCopy();
+  return `<div class="product-load-state product-load-error" role="alert"><div class="product-load-error-icon" aria-hidden="true">!</div><h2>${safeText(copy.errorTitle)}</h2><p>${safeText(copy.errorText)}</p><div class="product-load-actions"><button class="btn btn-orange" onclick="retryProductPage(${Number(id)||0})">${safeText(copy.retry)}</button><button class="btn btn-ghost" onclick="navigate('#/paintings')">${safeText(copy.back)}</button></div></div>`;
+}
+async function fetchProductById(id){
+  const existing=allKits.find(k=>String(k.id)===String(id));
+  if(existing)return existing;
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      const response=await artyFetch(`/api/kits/${encodeURIComponent(id)}`,{cache:'no-store'});
+      if(response.ok){
+        const product=await response.json();
+        if(product&&String(product.id)===String(id)){
+          const index=allKits.findIndex(item=>String(item.id)===String(id));
+          if(index>=0)allKits[index]=product;else allKits.push(product);
+          return product;
+        }
+      }
+      if(response.status===404)break;
+    }catch{}
+    if(attempt<2)await new Promise(resolve=>setTimeout(resolve,180*(attempt+1)));
+  }
+  await loadKits();
+  return allKits.find(k=>String(k.id)===String(id))||null;
+}
+async function retryProductPage(id){
+  const c=document.getElementById('productPageContent');
+  if(c)c.innerHTML=productLoadingHTML();
+  await renderProductPage(id,{force:true});
+}
+async function renderProductPage(id,{force=false}={}){
+  const c=document.getElementById('productPageContent');
+  if(!c)return;
+  let kit=allKits.find(k=>String(k.id)===String(id));
+  if(!kit||force){
+    c.innerHTML=productLoadingHTML();
+    if(force){
+      allKits=allKits.filter(k=>String(k.id)!==String(id));
+    }
+    kit=await fetchProductById(id);
+  }
+  if(!kit){c.innerHTML=productLoadErrorHTML(id);return}
   const cat=allCategories.find(ct=>String(ct.id)===String(kit.categoryId));
   const images=productImageList(kit),sizes=Array.isArray(kit.sizeOptions)?kit.sizeOptions:[],addOns=Array.isArray(kit.addOns)?kit.addOns:[],included=Array.isArray(kit.includes)?kit.includes:[];
-  const thumbs=images.length>1?I18n.html`<div class="product-thumbs" aria-label="Photos du produit">${images.map((img,index)=>I18n.html`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" data-alt="${safeAttr(kit.name)} — photo ${index+1}" onclick="switchProductImage(this)" aria-label="Afficher la photo ${index+1}" aria-pressed="${index===0?'true':'false'}"><img src="${safeAttr(img)}" alt=""></button>`).join('')}</div>`:'';
+  const thumbs=images.length>1?I18n.html`<div class="product-thumbs" aria-label="Photos du produit">${images.map((img,index)=>I18n.html`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" data-alt="${safeAttr(kit.name)} — photo ${index+1}" onclick="switchProductImage(this)" aria-label="Afficher la photo ${index+1}" aria-pressed="${index===0?'true':'false'}"><img src="${safeAttr(img)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='logoarty.png'"></button>`).join('')}</div>`:'';
   const sizeOptions=sizes.length?I18n.html`<div class="product-option-group"><div class="product-option-heading"><div><span>Choisissez votre format</span><small>Sélection obligatoire</small></div></div><div class="product-size-grid">${sizes.map((option,index)=>`<label class="product-size-option"><input type="radio" name="productSize" value="${safeAttr(option.id)}" ${index===0?'checked':''} onchange="updateProductPrice(${kit.id})"><span><strong>${safeText(option.label)}</strong><small>${productChoicePrice(option.priceDelta)}</small></span></label>`).join('')}</div></div>`:'';
   const addOnOptions=addOns.length?I18n.html`<div class="product-option-group"><div class="product-option-heading"><div><span>Personnalisez votre kit</span><small>Options facultatives</small></div></div><div class="product-addon-list">${addOns.map(option=>`<label class="product-addon-option"><input class="product-addon-input" type="checkbox" value="${safeAttr(option.id)}" onchange="updateProductPrice(${kit.id})"><span class="product-addon-check" aria-hidden="true">✓</span><span class="product-addon-copy"><strong>${safeText(option.label)}</strong>${option.description?`<small>${safeText(option.description)}</small>`:''}</span><b>${productChoicePrice(option.priceDelta)}</b></label>`).join('')}</div></div>`:'';
   const regular=Number(kit.originalPrice??kit.price)||0,price=getKitDisplayPrice(kit),inStock=kit.inStock!==false;
@@ -1237,7 +1311,7 @@ function renderProductPage(id){
     <button class="product-back" onclick="navigate('#/paintings')">← Retour aux kits</button>
     <div class="product-layout product-layout-pro">
       <section class="product-gallery product-gallery-pro">
-        <div class="product-main-media"><img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" alt="${safeAttr(kit.name)} — photo 1">${images.length>1?I18n.html`<span class="product-photo-count" id="productPhotoCount">Photo 1 sur ${images.length}</span>`:''}</div>
+        <div class="product-main-media"><img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" alt="${safeAttr(kit.name)} — photo 1" decoding="async" fetchpriority="high" onerror="this.onerror=null;this.src='logoarty.png'">${images.length>1?I18n.html`<span class="product-photo-count" id="productPhotoCount">Photo 1 sur ${images.length}</span>`:''}</div>
         ${thumbs}
       </section>
       <section class="product-info product-info-pro">
