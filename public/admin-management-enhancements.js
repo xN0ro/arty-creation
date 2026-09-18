@@ -14,7 +14,7 @@
   const clean = value => String(value ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const categoryIds = kit => {
-    const ids = Array.isArray(kit?.categoryIds) ? kit.categoryIds : [];
+    const ids = Array.isArray(kit?.categoryIds) ? [...kit.categoryIds] : [];
     if (kit?.categoryId !== undefined && kit?.categoryId !== null && !ids.map(String).includes(String(kit.categoryId))) ids.unshift(kit.categoryId);
     return ids.filter(value => value !== undefined && value !== null && value !== '').map(String);
   };
