@@ -38,6 +38,7 @@ test('manual leads join the same customer and preserve assignment fields',()=>{
   assert.equal(lead.expectedValue,1200);
   const marie=crm.buildCustomerIndex(db).find(c=>c.email==='marie@example.com');
   assert.equal(marie.leadCount,2);
+  assert.ok(marie.owners.includes('sales@example.com'));
 });
 
 test('lead stage changes keep an audit history and won value',()=>{
