@@ -98,5 +98,6 @@ test('customer reply reopens an answered support ticket for the team',async()=>{
 test('support preset cannot access CRM pages without CRM permissions',async()=>{
   const agent=await login('support@example.test');
   assert.equal((await request('/admin/support-requests',{token:agent.data.token})).status,200);
+  assert.equal((await request('/admin/support/team',{token:agent.data.token})).status,200);
   assert.equal((await request('/admin/crm/leads',{token:agent.data.token})).status,403);
 });
