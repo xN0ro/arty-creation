@@ -7,6 +7,7 @@ const Module=require('module');
 const realExpress=require('express');
 const commerceCore=require('./commerce-core');
 const marketingCore=require('./marketing-core');
+const crmCore=require('./crm-core');
 
 const DEFAULT_STUDIO_CONFIG={
   version:1,
@@ -25,7 +26,7 @@ function readDb(){try{return JSON.parse(fs.readFileSync(resolveDbPath(),'utf8'))
 function writeDb(db){const file=resolveDbPath(),dir=path.dirname(file);if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const tmp=`${file}.${process.pid}.${Date.now()}.ext.tmp`;fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,file)}
 function hashToken(token){return crypto.createHash('sha256').update(String(token||'')).digest('hex')}
 function extensionGrant(db,email){const normalized=String(email||'').trim().toLowerCase();return(db.adminAccessGrants||[]).find(grant=>grant.active!==false&&String(grant.email||'').trim().toLowerCase()===normalized&&(grant.emailVerifiedAt||grant.acceptedAt))||null}
-function extensionPermission(req){const path=String(req.originalUrl||req.url||'').split('?')[0];if(path.includes('/marketing-config'))return'marketing';if(path.includes('/commerce-config'))return'settings';if(path.includes('/studio-config'))return'products';return''}
+function extensionPermission(req){const path=String(req.originalUrl||req.url||'').split('?')[0];if(path.includes('/admin/crm'))return'dashboard';if(path.includes('/marketing-config'))return'marketing';if(path.includes('/commerce-config'))return'settings';if(path.includes('/studio-config'))return'products';return''}
 function adminOnly(req,res,next){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
   if(!token)return res.status(401).json({error:'Non authentifié'});
@@ -121,6 +122,13 @@ function installExtensionRoutes(app){
   app.get('/api/marketing-config',(req,res)=>res.json(getMarketingConfig()));
   app.get('/api/admin/marketing-config',adminOnly,(req,res)=>res.json(getMarketingConfig()));
   app.put('/api/admin/marketing-config',adminOnly,(req,res)=>{const db=readDb(),config=marketingCore.normalizeMarketingConfig(req.body||{});db.marketingConfig=config;writeDb(db);res.json({success:true,config})});
+  app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(readDb())));
+  app.get('/api/admin/crm/customers',adminOnly,(req,res)=>res.json(crmCore.buildCustomerIndex(readDb())));
+  app.get('/api/admin/crm/customers/:email',adminOnly,(req,res)=>{const detail=crmCore.customerDetail(readDb(),req.params.email);if(!detail)return res.status(404).json({error:'Customer not found'});res.json(detail)});
+  app.put('/api/admin/crm/customers/:email/tags',adminOnly,(req,res)=>{const db=readDb(),meta=crmCore.updateCustomerTags(db,req.params.email,req.body?.tags);if(!meta)return res.status(400).json({error:'Invalid customer'});writeDb(db);res.json({success:true,tags:meta.tags||[]})});
+  app.post('/api/admin/crm/customers/:email/notes',adminOnly,(req,res)=>{const db=readDb(),note=crmCore.addCustomerNote(db,req.params.email,req.body?.note,req.extensionSession?.email||'admin');if(!note)return res.status(400).json({error:'Note required'});writeDb(db);res.json({success:true,note})});
+  app.get('/api/admin/crm/leads',adminOnly,(req,res)=>res.json(crmCore.buildLeads(readDb())));
+  app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,(req,res)=>{const db=readDb(),lead=crmCore.updateLead(db,req.params.kind,req.params.id,req.body||{},req.extensionSession?.email||'admin');if(!lead)return res.status(404).json({error:'Lead not found'});writeDb(db);res.json({success:true,lead})});
 }
 
 function wrappedExpress(...args){
