@@ -20,10 +20,18 @@ beforeEach(()=>server.writeDB({
   users:[
     {id:1,name:'Owner',email:'owner@example.test',password:hash,provider:'local',role:'admin',emailVerifiedAt:'2026-01-01T00:00:00Z'},
     {id:2,name:'Sales',email:'sales@example.test',password:hash,provider:'local',role:'staff',emailVerifiedAt:'2026-01-01T00:00:00Z'},
-    {id:3,name:'Customer',email:'customer@example.test',password:hash,provider:'local',role:'user',emailVerifiedAt:'2026-01-01T00:00:00Z'}
+    {id:3,name:'Customer',email:'customer@example.test',password:hash,provider:'local',role:'user',emailVerifiedAt:'2026-01-01T00:00:00Z'},
+    {id:4,name:'Manager',email:'manager@example.test',password:hash,provider:'local',role:'staff',emailVerifiedAt:'2026-01-01T00:00:00Z'},
+    {id:5,name:'Other Customer',email:'other@example.test',password:hash,provider:'local',role:'user',emailVerifiedAt:'2026-01-01T00:00:00Z'}
   ],
-  adminAccessGrants:[{id:'STAFF-SALES',email:'sales@example.test',name:'Sales',permissions:['crm_dashboard','customers','leads'],active:true,emailVerifiedAt:'2026-01-01T00:00:00Z',acceptedAt:'2026-01-01T00:00:00Z'}],
-  sessions:[],passwordResetTokens:[],orders:[],eventRequests:[],bookings:[],contactRequests:[],crmLeads:[],crmCustomers:{},kits:[]
+  adminAccessGrants:[
+    {id:'STAFF-SALES',email:'sales@example.test',name:'Sales',permissions:['crm_dashboard','customers','leads'],active:true,emailVerifiedAt:'2026-01-01T00:00:00Z',acceptedAt:'2026-01-01T00:00:00Z'},
+    {id:'STAFF-MANAGER',email:'manager@example.test',name:'Manager',permissions:['crm_dashboard','customers','leads','crm_manager'],active:true,emailVerifiedAt:'2026-01-01T00:00:00Z',acceptedAt:'2026-01-01T00:00:00Z'}
+  ],
+  sessions:[],passwordResetTokens:[],orders:[],eventRequests:[
+    {id:101,reference:'EVT-OWN',name:'Customer',email:'customer@example.test',phone:'555-0101',eventType:'Corporate',status:'nouvelle',quoteAmount:0,createdAt:'2026-09-18T12:00:00Z',crm:{status:'new',owner:'sales@example.test',tags:[],statusHistory:[]}},
+    {id:102,reference:'EVT-OTHER',name:'Other Customer',email:'other@example.test',phone:'555-0102',eventType:'Birthday',status:'nouvelle',quoteAmount:0,createdAt:'2026-09-18T13:00:00Z',crm:{status:'new',owner:'manager@example.test',tags:[],statusHistory:[]}}
+  ],bookings:[],contactRequests:[],crmLeads:[],crmCustomers:{},kits:[]
 }));
 after(async()=>{await new Promise(resolve=>listener.close(resolve));fs.rmSync(temp,{recursive:true,force:true});});
 
@@ -49,6 +57,31 @@ test('sales preset can use CRM pages but cannot perform account security actions
   assert.equal((await request('/admin/crm/customers/customer%40example.test/disable',{method:'POST',body:{disabled:true},token:sales.data.token})).status,403);
 });
 
+test('sales staff only receive assigned CRM leads and customers',async()=>{
+  const sales=await login('sales@example.test');
+  const leads=await request('/admin/crm/leads',{token:sales.data.token});
+  const customers=await request('/admin/crm/customers',{token:sales.data.token});
+  assert.equal(leads.status,200);
+  assert.equal(leads.data.length,1);
+  assert.equal(leads.data[0].email,'customer@example.test');
+  assert.equal(customers.status,200);
+  assert.equal(customers.data.length,1);
+  assert.equal(customers.data[0].email,'customer@example.test');
+  assert.equal((await request('/admin/crm/customers/other%40example.test',{token:sales.data.token})).status,403);
+});
+
+test('sales manager permission can see the full CRM team',async()=>{
+  const manager=await login('manager@example.test');
+  assert.equal(manager.status,200);
+  assert.ok(manager.data.user.permissions.includes('crm_manager'));
+  const leads=await request('/admin/crm/leads',{token:manager.data.token});
+  const customers=await request('/admin/crm/customers',{token:manager.data.token});
+  assert.equal(leads.status,200);
+  assert.equal(leads.data.length,2);
+  assert.equal(customers.status,200);
+  assert.equal(customers.data.length,2);
+});
+
 test('explicit account security permission revokes active customer sessions when disabling an account',async()=>{
   const db=server.readDB();
   db.adminAccessGrants[0].permissions.push('account_management');
@@ -66,5 +99,5 @@ test('explicit account security permission revokes active customer sessions when
 test('owner always has all CRM permissions including account security',async()=>{
   const owner=await login('owner@example.test');
   assert.equal(owner.status,200);
-  for(const permission of ['crm_dashboard','customers','leads','account_management'])assert.ok(owner.data.user.permissions.includes(permission));
+  for(const permission of ['crm_dashboard','customers','leads','crm_manager','account_management'])assert.ok(owner.data.user.permissions.includes(permission));
 });
