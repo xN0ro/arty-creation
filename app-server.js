@@ -136,7 +136,12 @@ function installExtensionRoutes(app){
   app.get('/api/admin/marketing-config',adminOnly,(req,res)=>res.json(getMarketingConfig()));
   app.put('/api/admin/marketing-config',adminOnly,(req,res)=>{const db=readDb(),config=marketingCore.normalizeMarketingConfig(req.body||{});db.marketingConfig=config;writeDb(db);res.json({success:true,config})});
   app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(readDb())));
-  app.get('/api/admin/crm/action-center',adminOnly,(req,res)=>res.json(crmCore.crmActionCenter(readDb())));
+  app.get('/api/admin/crm/action-center',adminOnly,(req,res)=>{
+    const data=crmCore.crmActionCenter(readDb()),permissions=new Set(req.extensionSession?.permissions||[]);
+    if(req.extensionSession?.role!=='admin'&&!permissions.has('orders')){data.recentOrders=[];data.paymentPending=data.eventPaymentsPending;data.orderPaymentsPending=0}
+    if(req.extensionSession?.role!=='admin'&&!permissions.has('inventory'))data.lowInventory=[];
+    res.json(data);
+  });
   app.get('/api/admin/crm/reporting',adminOnly,(req,res)=>res.json(crmCore.crmReporting(readDb())));
   app.get('/api/admin/crm/team',adminOnly,(req,res)=>{
     const db=readDb(),seen=new Set(),team=[];
