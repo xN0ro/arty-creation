@@ -26,6 +26,7 @@ app.use('/api', localeMiddleware);
 const VERIFIED_ADMIN_EMAILS = ['info@creationarty.com'];
 const DEFAULT_DB = {
   adminEmails: [...VERIFIED_ADMIN_EMAILS],
+  adminAccessGrants: [],
   googleClientId: '',
   categories: [],
   kits: [],
@@ -123,6 +124,7 @@ function getCollectionCountsSafe() {
     const db = normalizeDB(safeReadJSON(DB_PATH));
     return {
       users: db.users.length,
+      adminAccessGrants: (db.adminAccessGrants || []).length,
       kits: db.kits.length,
       categories: db.categories.length,
       events: db.events.length,
@@ -149,6 +151,12 @@ function normalizeDB(db = {}) {
     ...DEFAULT_DB,
     ...db,
     adminEmails: [...new Set([...(Array.isArray(db.adminEmails) ? db.adminEmails : []), ...VERIFIED_ADMIN_EMAILS].map(email => String(email).trim().toLowerCase()))],
+    adminAccessGrants: Array.isArray(db.adminAccessGrants) ? db.adminAccessGrants.map(grant => ({
+      ...grant,
+      email:String(grant.email || '').trim().toLowerCase(),
+      permissions:Array.isArray(grant.permissions) ? [...new Set(grant.permissions.map(String))] : [],
+      active:grant.active !== false
+    })).filter(grant => grant.email) : [],
     categories: Array.isArray(db.categories) ? db.categories : [],
     kits: Array.isArray(db.kits) ? db.kits.map(({ tags, badges, difficulty, ...kit }) => kit) : [],
     events: Array.isArray(db.events) ? db.events : [],
@@ -317,6 +325,99 @@ function cleanExpiredSessions(db) {
   return db.sessions.length !== before;
 }
 
+const ADMIN_PERMISSION_KEYS = ['dashboard','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
+
+function normalizeStaffPermissions(value) {
+  const allowed = new Set(ADMIN_PERMISSION_KEYS);
+  return [...new Set((Array.isArray(value) ? value : []).map(item => String(item || '').trim()).filter(item => allowed.has(item)))];
+}
+function getStaffGrant(db, email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  return (db.adminAccessGrants || []).find(grant => grant.active !== false && String(grant.email || '').trim().toLowerCase() === normalized) || null;
+}
+function staffEmailVerified(user, grant) {
+  return Boolean(grant?.emailVerifiedAt || user?.emailVerifiedAt || user?.googleLinkedAt || user?.provider === 'google');
+}
+function effectiveAccountRole(db, user) {
+  if (!user) return 'user';
+  const email = String(user.email || '').trim().toLowerCase();
+  if (user.role === 'admin' || (db.adminEmails || []).includes(email)) return 'admin';
+  const grant = getStaffGrant(db, email);
+  if (grant && staffEmailVerified(user, grant)) return 'staff';
+  return 'user';
+}
+function effectiveAccountPermissions(db, user) {
+  const role = effectiveAccountRole(db, user);
+  if (role === 'admin') return [...ADMIN_PERMISSION_KEYS];
+  if (role !== 'staff') return [];
+  return normalizeStaffPermissions(getStaffGrant(db, user.email)?.permissions);
+}
+function syncUserAccessRole(db, user) {
+  if (!user) return 'user';
+  const role = effectiveAccountRole(db, user);
+  if (user.role !== 'admin') user.role = role;
+  return role;
+}
+function adminPermissionRequirement(req) {
+  const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/^\/api\/admin\/?/,'');
+  const method = String(req.method || 'GET').toUpperCase();
+  if (path.startsWith('access-grants')) return '__owner';
+  if (path === 'stats' || path === 'analytics') return 'dashboard';
+  if (path === 'storage') return 'settings';
+  if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
+  if (path === 'kits' || path.startsWith('kits/') || path.startsWith('product-images') || path.startsWith('product-templates') || path.startsWith('bundles') || path.startsWith('studio-config')) {
+    if (method === 'GET' && (path === 'kits' || path.startsWith('kits?'))) return ['products','inventory','promotions'];
+    return 'products';
+  }
+  if (path === 'inventory' || path.startsWith('inventory/')) return 'inventory';
+  if (path.startsWith('discounts') || path.startsWith('bundle-deals')) return 'promotions';
+  if (path.startsWith('orders') || path.startsWith('refunds')) return 'orders';
+  if (path.startsWith('support-requests')) return 'support';
+  if (path.startsWith('events') || path.startsWith('bookings') || path.startsWith('tickets') || path.startsWith('event-requests') || path.startsWith('event-options')) return 'events';
+  if (path.startsWith('categories')) return method === 'GET' ? ['categories','products','promotions'] : 'categories';
+  if (path.startsWith('marketing-config')) return 'marketing';
+  if (path.startsWith('announcement') || path.startsWith('commerce-config')) return 'settings';
+  return '__owner';
+}
+function sessionHasAdminPermission(session, requirement) {
+  if (session?.role === 'admin') return true;
+  if (session?.role !== 'staff' || requirement === '__owner') return false;
+  const owned = new Set(Array.isArray(session.permissions) ? session.permissions : []);
+  if (Array.isArray(requirement)) return requirement.some(permission => owned.has(permission));
+  return owned.has(requirement);
+}
+function fullAdminOnly(req, res, next) {
+  const s = getSession(req);
+  if (!s) return res.status(401).json({ error:I18n.t('Non authentifié') });
+  if (s.role !== 'admin') return res.status(403).json({ error:I18n.t('Accès propriétaire requis') });
+  req.session = s;
+  next();
+}
+function createStaffInviteToken(grant) {
+  const token = crypto.randomBytes(32).toString('hex');
+  grant.inviteTokenHash = hashToken(token);
+  grant.inviteExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  grant.invitedAt = new Date().toISOString();
+  return token;
+}
+function publicStaffGrant(db, grant) {
+  const user = (db.users || []).find(item => String(item.email || '').trim().toLowerCase() === String(grant.email || '').trim().toLowerCase());
+  return {
+    id:grant.id,
+    email:grant.email,
+    name:grant.name || user?.name || '',
+    permissions:normalizeStaffPermissions(grant.permissions),
+    active:grant.active !== false,
+    createdAt:grant.createdAt || '',
+    updatedAt:grant.updatedAt || '',
+    invitedAt:grant.invitedAt || '',
+    acceptedAt:grant.acceptedAt || '',
+    emailVerifiedAt:grant.emailVerifiedAt || '',
+    accountExists:Boolean(user),
+    accountRole:user ? effectiveAccountRole(db,user) : 'pending'
+  };
+}
+
 function createToken(user) {
   const token = crypto.randomBytes(32).toString('hex');
   const db = readDB();
@@ -345,7 +446,9 @@ function getSession(req) {
     writeDB(db);
     return null;
   }
-  return session;
+  const user = (db.users || []).find(item => item.id === session.userId) || (db.users || []).find(item => String(item.email || '').trim().toLowerCase() === String(session.email || '').trim().toLowerCase());
+  if (!user) return session;
+  return { ...session, email:user.email, role:effectiveAccountRole(db,user), permissions:effectiveAccountPermissions(db,user) };
 }
 
 function auth(req, res, next) {
@@ -357,7 +460,9 @@ function auth(req, res, next) {
 function adminOnly(req, res, next) {
   const s = getSession(req);
   if (!s) return res.status(401).json({ error: I18n.t('Non authentifié') });
-  if (s.role !== 'admin') return res.status(403).json({ error: I18n.t('Accès admin requis') });
+  if (!['admin','staff'].includes(s.role)) return res.status(403).json({ error:I18n.t('Accès admin requis') });
+  const requirement = adminPermissionRequirement(req);
+  if (!sessionHasAdminPermission(s, requirement)) return res.status(403).json({ error:I18n.t('Vous n’avez pas la permission pour cette section') });
   req.session = s;
   next();
 }
@@ -443,13 +548,16 @@ function normalizeAccountAddress(raw = {}, existing = {}) {
     country: String(value.country ?? existing.country ?? 'Canada').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Canada'
   };
 }
-function publicUserAccount(user) {
+function publicUserAccount(user, db = null) {
+  const sourceDb = db || readDB();
+  const role = effectiveAccountRole(sourceDb, user);
   return {
     id: user.id,
     locale: I18n.normalize(user.locale),
     name: user.name,
     email: user.email,
-    role: user.role,
+    role,
+    permissions: effectiveAccountPermissions(sourceDb, user),
     picture: user.picture || '',
     provider: user.provider || 'local',
     linkedProviders: Array.isArray(user.linkedProviders) ? user.linkedProviders : [user.provider || 'local'],
@@ -478,6 +586,7 @@ app.post('/api/users/register', async (req, res) => {
     const hashed = await bcrypt.hash(password, 10);
     const isAdmin = canPromoteAdmin(db, { email, provider: 'local' });
     const user = { locale:req.locale, id: Date.now(), name, email, password: hashed, role: isAdmin ? 'admin' : 'user', provider: 'local', linkedProviders:['local'], picture: '', phone: '', defaultAddress: normalizeAccountAddress(), createdAt: new Date().toISOString() };
+    syncUserAccessRole(db, user);
     db.users.push(user); writeDB(db);
     const token = createToken(user);
     const emailResult = await sendAccountWelcomeEmail(user);
@@ -494,6 +603,7 @@ app.post('/api/users/login', async (req, res) => {
     if (!user) return res.status(401).json({ error: I18n.t('Courriel ou mot de passe invalide') });
     if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ error: I18n.t('Courriel ou mot de passe invalide') });
     if (canPromoteAdmin(db, user)) user.role = 'admin';
+    else syncUserAccessRole(db, user);
     user.locale = req.locale; writeDB(db);
     const token = createToken(user);
     const emailResult = await sendLoginAlertEmail(user);
@@ -506,6 +616,8 @@ app.post('/api/users/google', async (req, res) => {
     const { credential } = req.body; if (!credential) return res.status(400).json({ error: I18n.t('Pas de credential') });
     const g = await verifyGoogleToken(credential); const db = readDB();
     db.users = db.users || [];
+    const staffGrant = getStaffGrant(db, g.email);
+    if (staffGrant && !staffGrant.emailVerifiedAt) staffGrant.emailVerifiedAt = new Date().toISOString();
     let user = db.users.find(u => String(u.email || '').toLowerCase() === g.email);
     const isAdmin = (db.adminEmails||[]).map(e=>String(e).toLowerCase()).includes(g.email);
     const isNewAccount = !user;
@@ -526,6 +638,8 @@ app.post('/api/users/google', async (req, res) => {
       user.googleLinkedAt = user.googleLinkedAt || new Date().toISOString();
     }
     user.emailVerifiedAt = user.emailVerifiedAt || new Date().toISOString();
+    syncUserAccessRole(db, user);
+    if (staffGrant && !staffGrant.acceptedAt) staffGrant.acceptedAt = new Date().toISOString();
     user.locale = req.locale; writeDB(db);
     const token = createToken(user);
     const emailResult = isNewAccount ? await sendAccountWelcomeEmail(user) : await sendLoginAlertEmail(user);
@@ -590,6 +704,7 @@ app.post('/api/users/reset-password', async (req, res) => {
     reset.usedAt = new Date().toISOString();
     user.emailVerifiedAt = user.emailVerifiedAt || reset.usedAt;
     if (canPromoteAdmin(db, user)) user.role = 'admin';
+    else syncUserAccessRole(db, user);
     db.passwordResetTokens = (db.passwordResetTokens || []).filter(item => item.userId !== user.id || item.tokenHash === tokenHash);
     db.sessions = (db.sessions || []).filter(item => item.userId !== user.id);
     writeDB(db);
@@ -601,10 +716,69 @@ app.post('/api/users/reset-password', async (req, res) => {
   }
 });
 app.put('/api/users/locale', auth, (req,res) => { const db=readDB(); const user=db.users.find(item=>item.id===req.session.userId); if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')}); user.locale=req.locale; writeDB(db); res.json({success:true,locale:user.locale}); });
+
+app.get('/api/staff-invite/accept', (req,res) => {
+  const token = String(req.query.token || '').trim();
+  if (!token) return res.status(400).send('Invalid invitation');
+  const db = readDB(), tokenHash = hashToken(token), now = Date.now();
+  const grant = (db.adminAccessGrants || []).find(item => item.active !== false && item.inviteTokenHash === tokenHash);
+  if (!grant || (grant.inviteExpiresAt && new Date(grant.inviteExpiresAt).getTime() < now)) return res.status(400).send('This invitation is invalid or expired.');
+  const acceptedAt = new Date().toISOString();
+  grant.emailVerifiedAt = grant.emailVerifiedAt || acceptedAt;
+  grant.acceptedAt = acceptedAt;
+  grant.inviteTokenHash = '';
+  grant.inviteExpiresAt = '';
+  const user = (db.users || []).find(item => String(item.email || '').trim().toLowerCase() === String(grant.email || '').trim().toLowerCase());
+  if (user && user.role !== 'admin') { user.emailVerifiedAt = user.emailVerifiedAt || acceptedAt; syncUserAccessRole(db,user); }
+  writeDB(db);
+  const site = normalizePublicUrl() || '/';
+  res.redirect(site === '/' ? '/?staff=accepted' : site + '/?staff=accepted');
+});
+
+app.get('/api/admin/access-grants', fullAdminOnly, (req,res) => {
+  const db=readDB();
+  res.json((db.adminAccessGrants || []).map(grant => publicStaffGrant(db,grant)).sort((a,b)=>String(a.name||a.email).localeCompare(String(b.name||b.email))));
+});
+app.post('/api/admin/access-grants', fullAdminOnly, async (req,res) => {
+  const db=readDB(), email=String(req.body.email||'').trim().toLowerCase(), name=String(req.body.name||'').replace(/\s+/g,' ').trim().slice(0,80);
+  if (!validEmail(email)) return res.status(400).json({error:I18n.t('Courriel invalide')});
+  if ((db.adminEmails||[]).includes(email)) return res.status(400).json({error:I18n.t('Ce compte possède déjà un accès administrateur complet')});
+  if ((db.adminAccessGrants||[]).some(grant=>String(grant.email||'').toLowerCase()===email)) return res.status(400).json({error:I18n.t('Un accès existe déjà pour ce courriel')});
+  const permissions=normalizeStaffPermissions(req.body.permissions);
+  if (!permissions.length) return res.status(400).json({error:I18n.t('Sélectionnez au moins une permission')});
+  const now=new Date().toISOString(), grant={id:'STAFF-'+crypto.randomBytes(6).toString('hex').toUpperCase(),email,name,permissions,active:true,createdAt:now,updatedAt:now,createdBy:req.session.email||''};
+  const existingUser=(db.users||[]).find(user=>String(user.email||'').trim().toLowerCase()===email);
+  if(existingUser&&staffEmailVerified(existingUser,grant)){grant.emailVerifiedAt=now;grant.acceptedAt=now;syncUserAccessRole(db,existingUser)}
+  const rawToken=createStaffInviteToken(grant);
+  db.adminAccessGrants=db.adminAccessGrants||[];db.adminAccessGrants.push(grant);writeDB(db);
+  const emailResult=await sendStaffAccessInviteEmail(grant,rawToken);
+  res.json({success:true,grant:publicStaffGrant(db,grant),emailStatus:emailResult.status});
+});
+app.put('/api/admin/access-grants/:id', fullAdminOnly, (req,res) => {
+  const db=readDB(), grant=(db.adminAccessGrants||[]).find(item=>String(item.id)===String(req.params.id));
+  if(!grant)return res.status(404).json({error:I18n.t('Accès introuvable')});
+  const permissions=normalizeStaffPermissions(req.body.permissions);
+  if(!permissions.length)return res.status(400).json({error:I18n.t('Sélectionnez au moins une permission')});
+  grant.name=String(req.body.name??grant.name??'').replace(/\s+/g,' ').trim().slice(0,80);grant.permissions=permissions;grant.active=req.body.active===undefined?grant.active:req.body.active!==false;grant.updatedAt=new Date().toISOString();
+  const user=(db.users||[]).find(item=>String(item.email||'').trim().toLowerCase()===String(grant.email||'').trim().toLowerCase());if(user&&user.role!=='admin')syncUserAccessRole(db,user);
+  writeDB(db);res.json({success:true,grant:publicStaffGrant(db,grant)});
+});
+app.post('/api/admin/access-grants/:id/resend', fullAdminOnly, async (req,res) => {
+  const db=readDB(), grant=(db.adminAccessGrants||[]).find(item=>String(item.id)===String(req.params.id));
+  if(!grant)return res.status(404).json({error:I18n.t('Accès introuvable')});
+  grant.active=true;grant.updatedAt=new Date().toISOString();const rawToken=createStaffInviteToken(grant);writeDB(db);
+  const emailResult=await sendStaffAccessInviteEmail(grant,rawToken);res.json({success:true,emailStatus:emailResult.status,grant:publicStaffGrant(db,grant)});
+});
+app.delete('/api/admin/access-grants/:id', fullAdminOnly, (req,res) => {
+  const db=readDB(), index=(db.adminAccessGrants||[]).findIndex(item=>String(item.id)===String(req.params.id));
+  if(index<0)return res.status(404).json({error:I18n.t('Accès introuvable')});
+  const [removed]=db.adminAccessGrants.splice(index,1);const user=(db.users||[]).find(item=>String(item.email||'').trim().toLowerCase()===String(removed.email||'').trim().toLowerCase());if(user&&user.role==='staff')user.role='user';
+  writeDB(db);res.json({success:true});
+});
 app.get('/api/admin/categories', adminOnly, (req,res) => res.json(readDB().categories || []));
 app.get('/api/admin/announcement', adminOnly, (req,res) => res.json(readDB().announcement || {}));
 
-app.get('/api/users/me', auth, (req, res) => { const u = readDB().users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:I18n.t('Non trouvé')}); res.json(publicUserAccount(u)); });
+app.get('/api/users/me', auth, (req, res) => { const db=readDB(); const u=db.users.find(u=>u.id===req.session.userId); if(!u) return res.status(404).json({error:I18n.t('Non trouvé')}); res.json(publicUserAccount(u,db)); });
 app.put('/api/users/me', auth, async (req, res) => {
   const db = readDB(); const idx = db.users.findIndex(u=>u.id===req.session.userId); if(idx===-1) return res.status(404).json({error:I18n.t('Non trouvé')});
   const {name,currentPassword,newPassword,phone,defaultAddress} = req.body;
@@ -996,6 +1170,31 @@ function sendTransactionalEmail({ to, subject, html, idempotencyKey, replyTo = '
     html,
     ...(replyAddress ? { reply_to:replyAddress } : {})
   }, idempotencyKey);
+}
+function sendStaffAccessInviteEmail(grant, token) {
+  const siteUrl = normalizePublicUrl();
+  const inviteUrl = `${siteUrl}/api/staff-invite/accept?token=${encodeURIComponent(token)}`;
+  const permissionLabels = {
+    dashboard:'Dashboard & analytics', products:'Products', inventory:'Inventory', promotions:'Promotions',
+    orders:'Orders & refunds', support:'Customer support', events:'Events & tickets', categories:'Categories',
+    marketing:'Marketing', settings:'Site settings'
+  };
+  const permissions = normalizeStaffPermissions(grant.permissions).map(key => permissionLabels[key] || key).join(', ');
+  return sendTransactionalEmail({
+    to:grant.email,
+    subject:'ARTY — invitation to staff access',
+    idempotencyKey:`staff-invite-${grant.id}-${Date.now()}`,
+    replyTo:'info',
+    html:emailShell({
+      title:'ARTY staff invitation',
+      intro:'You have been invited to help manage the ARTY website.',
+      preheader:'Confirm your email to activate your ARTY staff permissions.',
+      content:`<p>Hello ${escapeEmailHTML(grant.name || '')},</p><p>ARTY has granted this email address restricted staff access.</p>${emailPanel(`<strong style="display:block;margin-bottom:6px;color:#332b22">Permissions</strong>${escapeEmailHTML(permissions)}`,'teal')}<p>Confirm this email address, then create or sign in to your ARTY account using <strong>${escapeEmailHTML(grant.email)}</strong>. You will only see the sections you were authorized to use.</p>`,
+      ctaLabel:'Confirm my ARTY access',
+      ctaUrl:inviteUrl,
+      footer:'This invitation expires in 7 days. If you were not expecting it, you can ignore this email.'
+    })
+  });
 }
 function sendAccountWelcomeEmail(user) {
   return withLocale(user.locale, () => {

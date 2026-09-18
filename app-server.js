@@ -24,13 +24,19 @@ function resolveDbPath(){
 function readDb(){try{return JSON.parse(fs.readFileSync(resolveDbPath(),'utf8'))}catch{return {}}}
 function writeDb(db){const file=resolveDbPath(),dir=path.dirname(file);if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const tmp=`${file}.${process.pid}.${Date.now()}.ext.tmp`;fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,file)}
 function hashToken(token){return crypto.createHash('sha256').update(String(token||'')).digest('hex')}
+function extensionGrant(db,email){const normalized=String(email||'').trim().toLowerCase();return(db.adminAccessGrants||[]).find(grant=>grant.active!==false&&String(grant.email||'').trim().toLowerCase()===normalized&&(grant.emailVerifiedAt||grant.acceptedAt))||null}
+function extensionPermission(req){const path=String(req.originalUrl||req.url||'').split('?')[0];if(path.includes('/marketing-config'))return'marketing';if(path.includes('/commerce-config'))return'settings';if(path.includes('/studio-config'))return'products';return''}
 function adminOnly(req,res,next){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
   if(!token)return res.status(401).json({error:'Non authentifié'});
   const db=readDb(),hash=hashToken(token),session=(db.sessions||[]).find(item=>item.tokenHash===hash&&(!item.expiresAt||new Date(item.expiresAt).getTime()>Date.now()));
   if(!session)return res.status(401).json({error:'Non authentifié'});
-  if(session.role!=='admin')return res.status(403).json({error:'Accès admin requis'});
-  req.extensionSession=session;next();
+  const user=(db.users||[]).find(item=>item.id===session.userId)||{},email=String(user.email||session.email||'').trim().toLowerCase();
+  const fullAdmin=user.role==='admin'||(db.adminEmails||[]).map(value=>String(value).toLowerCase()).includes(email);
+  if(fullAdmin){req.extensionSession={...session,role:'admin',email};return next()}
+  const grant=extensionGrant(db,email),permission=extensionPermission(req);
+  if(!grant||!permission||!(grant.permissions||[]).includes(permission))return res.status(403).json({error:'Permission insuffisante'});
+  req.extensionSession={...session,role:'staff',email,permissions:grant.permissions||[]};next();
 }
 function text(value,max=160){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
 function num(value,fallback=0,min=0,max=100000){const n=Number(value);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback}
