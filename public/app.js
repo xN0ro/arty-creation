@@ -1213,8 +1213,8 @@ function productChoicePrice(price){
   return amount>0?`+ ${I18n.currency(toMoney(amount))}`:I18n.t('Inclus');
 }
 function readProductSelection(kit){
-  const sizes=Array.isArray(kit?.sizeOptions)?kit.sizeOptions:[];
-  const addOns=Array.isArray(kit?.addOns)?kit.addOns:[];
+  const sizes=normalizeClientProductChoices(kit?.sizeOptions,'size');
+  const addOns=normalizeClientProductChoices(kit?.addOns,'addon');
   const sizeId=document.querySelector('input[name="productSize"]:checked')?.value||'';
   const size=sizes.find(option=>String(option.id)===String(sizeId))||null;
   const selectedIds=Array.from(document.querySelectorAll('.product-addon-input:checked')).map(input=>String(input.value));
@@ -1361,9 +1361,25 @@ async function retryProductPage(id){
   if(c)c.innerHTML=productLoadingHTML();
   await renderProductPage(id,{force:true});
 }
+function normalizeClientProductChoices(raw,prefix){
+  if(!Array.isArray(raw))return [];
+  return raw.filter(Boolean).map((option,index)=>{
+    if(typeof option==='string')return{id:`${prefix}-${index+1}`,label:option,description:'',priceDelta:0,translations:{}};
+    if(typeof option!=='object')return null;
+    return{
+      ...option,
+      id:String(option.id||`${prefix}-${index+1}`),
+      label:String(option.label||option.name||'').trim(),
+      description:String(option.description||'').trim(),
+      priceDelta:Number(option.priceDelta||option.price||0)||0
+    };
+  }).filter(option=>option&&option.label);
+}
 async function renderProductPage(id,{force=false}={}){
   const c=document.getElementById('productPageContent');
   if(!c)return;
+  c.innerHTML=productLoadingHTML();
+  try{
   let kit=allKits.find(k=>String(k.id)===String(id));
   if(!kit||force){
     c.innerHTML=productLoadingHTML();
@@ -1373,7 +1389,10 @@ async function renderProductPage(id,{force=false}={}){
   if(!kit){c.innerHTML=productLoadErrorHTML(id);return}
   const t=productUiText();
   const cat=allCategories.find(ct=>String(ct.id)===String(kit.categoryId));
-  const images=productImageList(kit),sizes=Array.isArray(kit.sizeOptions)?kit.sizeOptions:[],addOns=Array.isArray(kit.addOns)?kit.addOns:[],included=Array.isArray(kit.includes)?kit.includes:[];
+  const images=productImageList(kit).filter(Boolean);
+  const sizes=normalizeClientProductChoices(kit.sizeOptions,'size');
+  const addOns=normalizeClientProductChoices(kit.addOns,'addon');
+  const included=(Array.isArray(kit.includes)?kit.includes:[]).filter(Boolean).map(item=>typeof item==='string'?item:(item?.label||item?.name||String(item||''))).filter(Boolean);
   const localizedName=I18n.field(kit,'name')||kit.name||'ARTY';
   const localizedDescription=I18n.field(kit,'description')||I18n.field(kit,'shortDesc')||kit.description||kit.shortDesc||'';
   const localizedCategory=cat?(I18n.field(cat,'name')||cat.name):'ARTY';
@@ -1416,6 +1435,10 @@ async function renderProductPage(id,{force=false}={}){
     </div>
     <div class="product-details-grid ${includedCard?'':'product-details-single'}">${includedCard}${processCard}</div>`;
   updateProductPrice(kit.id);
+  }catch(error){
+    console.error('ARTY product page render failed',error,{productId:id});
+    c.innerHTML=productLoadErrorHTML(id);
+  }
 }
 function addToCart(kitId){
   const kit=allKits.find(k=>String(k.id)===String(kitId));if(!kit)return false;if(kit.inStock===false){showToast(I18n.t('Ce produit est épuisé'),'error');return false}
