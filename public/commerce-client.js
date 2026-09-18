@@ -85,13 +85,14 @@
     const remaining=Math.max(0,Number(commerceConfig.shipping.freeShippingThreshold)-Number(quote.shippingQualifyingSubtotal||0));
     return remaining>0?`<div class="checkout-free-shipping">${safeText(I18n.t('Ajoutez'))} <strong>${currency(remaining)}</strong> ${safeText(I18n.t('de produits physiques pour obtenir la livraison gratuite.'))}</div>`:'';
   }
-  function renderCheckoutCommerce(){const host=document.getElementById('checkoutCommerceTotals');if(!host)return;host.innerHTML=commerceRowsHTML(checkoutQuote)+freeShippingMessage(checkoutQuote)}
+  function renderCheckoutCommerce(){const host=document.getElementById('checkoutCommerceTotals');if(!host)return;host.innerHTML=commerceRowsHTML(checkoutQuote)+freeShippingMessage(checkoutQuote);try{window.ARTYDiscountCheckout?.renderQuote?.(checkoutQuote)}catch{}}
   async function requestCheckoutQuote(){
     if((location.hash||'')!=='#/checkout'||!Array.isArray(cart)||!cart.length)return;
     const seq=++quoteSequence;const host=document.getElementById('checkoutCommerceTotals');if(host&&!checkoutQuote)renderCheckoutCommerce();
     try{const response=await artyFetch('/api/checkout-quote',{method:'POST',headers:authH(),body:JSON.stringify({items:cart,address:checkoutAddress()})}),data=await response.json().catch(()=>({}));if(seq!==quoteSequence)return;if(!response.ok)throw new Error(data.error||I18n.t('Impossible de calculer le total'));checkoutQuote=data;renderCheckoutCommerce()}catch(error){if(seq!==quoteSequence)return;checkoutQuote=null;if(host)host.innerHTML=`<div class="checkout-commerce-error">${safeText(error.message||I18n.t('Impossible de calculer le total'))}</div>`}
   }
   function scheduleCheckoutQuote(){clearTimeout(quoteTimer);quoteTimer=setTimeout(requestCheckoutQuote,180)}
+  window.refreshArtyCheckoutQuote=function(){checkoutQuote=null;renderCheckoutCommerce();scheduleCheckoutQuote()};
   function mountCheckoutCommerce(){
     const summary=document.querySelector('.checkout-summary-card');if(!summary||!cart?.length)return;
     enhanceProvinceCountryFields();

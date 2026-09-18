@@ -676,7 +676,9 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
   const needsShipping = built.items.some(item => item.type !== 'event-ticket');
   if (needsShipping && (!address || !String(address.line1 || '').trim())) return res.status(400).json({ error: I18n.t('Adresse de livraison requise') });
 
-  const pricing = priceOrder(db, built.items);
+  const pricing = priceOrder(db, built.items, req.body?.promoCode || '');
+  if (pricing.promoCode && !pricing.promoCodeValid) return res.status(400).json({ error:I18n.t('Code promo invalide ou expiré') });
+  if (pricing.promoCode && pricing.promoCodeValid && !pricing.promoCodeQualified) return res.status(400).json({ error:I18n.t('Les conditions du code promo ne sont pas remplies') });
   const hasEventTickets = pricing.items.some(item => item.type === 'event-ticket');
   if (hasEventTickets && !isTicketPaymentEnabled()) return res.status(503).json({ error: I18n.t('Le paiement sécurisé des billets doit être entièrement configuré avant la vente') });
   const orderId = 'ARTY-' + Date.now().toString(36).toUpperCase();
@@ -711,6 +713,8 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     subtotal: pricing.subtotal,
     discountTotal: pricing.discountTotal,
     discountsApplied: pricing.discountsApplied,
+    promoCode: pricing.promoCode || '',
+    promoCodeApplied: !!pricing.promoCodeApplied,
     total: pricing.total,
     status: 'en attente de paiement',
     statusHistory: [{ from: '', to: 'en attente de paiement', at: createdAt, by: 'client' }],
@@ -2190,8 +2194,8 @@ app.get('/api/admin/discounts', adminOnly, (req, res) => {
 app.post('/api/admin/discounts', adminOnly, (req, res) => {
   const db = readDB();
   const discount = normalizeDiscountPayload(req.body);
-  if (!discount.title) return res.status(400).json({ error: I18n.t('Nom du rabais requis') });
-  if (!discount.type) return res.status(400).json({ error: I18n.t('Type de rabais requis') });
+  const discountError = validateDiscountDefinition(discount, db);
+  if (discountError) return res.status(400).json({ error: discountError });
   discount.id = (db.discounts || []).length ? Math.max(...db.discounts.map(d => Number(d.id) || 0)) + 1 : 1;
   discount.createdAt = new Date().toISOString();
   discount.updatedAt = new Date().toISOString();
@@ -2204,7 +2208,10 @@ app.put('/api/admin/discounts/:id', adminOnly, (req, res) => {
   const db = readDB();
   const i = (db.discounts || []).findIndex(d => d.id === parseInt(req.params.id));
   if (i === -1) return res.status(404).json({ error: I18n.t('Rabais non trouvé') });
-  db.discounts[i] = { ...db.discounts[i], ...normalizeDiscountPayload(req.body, db.discounts[i]), id: db.discounts[i].id, createdAt: db.discounts[i].createdAt, updatedAt: new Date().toISOString() };
+  const updatedDiscount = { ...db.discounts[i], ...normalizeDiscountPayload(req.body, db.discounts[i]), id: db.discounts[i].id, createdAt: db.discounts[i].createdAt, updatedAt: new Date().toISOString() };
+  const discountError = validateDiscountDefinition(updatedDiscount, db, db.discounts[i].id);
+  if (discountError) return res.status(400).json({ error: discountError });
+  db.discounts[i] = updatedDiscount;
   writeDB(db);
   res.json({ success: true, discount: db.discounts[i] });
 });
@@ -2572,27 +2579,51 @@ function normalizeKitPayload(body, existing = {}) {
   return payload;
 }
 function normalizeDiscountPayload(body, existing = {}) {
-  const type = String(body.type ?? existing.type ?? 'percent').trim();
+  const type = String(body.type ?? existing.type ?? 'percent').trim().toLowerCase();
   const codeRaw = String(body.code ?? existing.code ?? '').trim().toUpperCase();
+  const requestedMode = String(body.mode ?? existing.mode ?? (codeRaw ? 'code' : 'automatic')).trim().toLowerCase();
+  const mode = requestedMode === 'code' ? 'code' : 'automatic';
   return {
     translations:normalizeTranslations(body.translations,existing.translations),
     title: String(body.title ?? body.name ?? existing.title ?? '').trim(),
-    code: codeRaw,
+    mode,
+    code: mode === 'code' ? codeRaw : '',
     type,
     value: parseFloat(body.value ?? existing.value ?? 0) || 0,
     scope: String(body.scope ?? existing.scope ?? 'all').trim(),
     kitIds: parseIdList(body.kitIds ?? existing.kitIds),
     categoryIds: parseIdList(body.categoryIds ?? existing.categoryIds),
-    tags: parseStringList(body.tags ?? existing.tags).map(t => t.toLowerCase()),
+    tags: [],
     minQty: Math.max(1, parseInt(body.minQty ?? existing.minQty ?? 1) || 1),
-    buyQty: Math.max(1, parseInt(body.buyQty ?? existing.buyQty ?? 1) || 1),
+    buyQty: Math.max(1, parseInt(body.buyQty ?? existing.buyQty ?? 2) || 2),
     freeQty: Math.max(1, parseInt(body.freeQty ?? existing.freeQty ?? 1) || 1),
     active: body.active === undefined ? (existing.active !== false) : (body.active === true || body.active === 'true'),
     startsAt: String(body.startsAt ?? existing.startsAt ?? '').trim(),
     endsAt: String(body.endsAt ?? existing.endsAt ?? '').trim(),
     customerLabel: String(body.customerLabel ?? existing.customerLabel ?? '').trim(),
-    stackable: body.stackable === true || body.stackable === 'true'
+    stackable: false
   };
+}
+function discountMode(discount) {
+  const explicit = String(discount?.mode || '').trim().toLowerCase();
+  if (explicit === 'code' || explicit === 'automatic') return explicit;
+  return String(discount?.code || '').trim() ? 'code' : 'automatic';
+}
+function validateDiscountDefinition(discount, db, excludeId = null) {
+  if (!discount.title) return I18n.t('Nom du rabais requis');
+  if (!['percent','fixed','bogo'].includes(discount.type)) return I18n.t('Type de rabais invalide');
+  if (!['all','kits','categories'].includes(discount.scope)) return I18n.t('Portée du rabais invalide');
+  if (discount.type === 'percent' && (!(discount.value > 0) || discount.value > 100)) return I18n.t('Le pourcentage doit être entre 0 et 100');
+  if (discount.type === 'fixed' && !(discount.value > 0)) return I18n.t('Le montant du rabais doit être supérieur à 0');
+  if (discount.scope === 'kits' && !(discount.kitIds || []).length) return I18n.t('Sélectionnez au moins un produit');
+  if (discount.scope === 'categories' && !(discount.categoryIds || []).length) return I18n.t('Sélectionnez au moins une catégorie');
+  if (discount.mode === 'code') {
+    if (!discount.code) return I18n.t('Code promo requis');
+    const duplicate = (db.discounts || []).some(item => String(item.id) !== String(excludeId ?? '') && String(item.code || '').trim().toUpperCase() === discount.code);
+    if (duplicate) return I18n.t('Ce code promo est déjà utilisé');
+  }
+  if (discount.startsAt && discount.endsAt && discount.startsAt > discount.endsAt) return I18n.t('La date de fin doit être après la date de début');
+  return '';
 }
 function isDiscountActive(discount, now = new Date()) {
   if (!discount || discount.active === false) return false;
@@ -2607,10 +2638,9 @@ function discountAppliesToKit(discount, kit) {
   const scope = discount.scope || 'all';
   if (scope === 'all') return true;
   if (scope === 'kits') return (discount.kitIds || []).map(Number).includes(Number(kit.id));
-  if (scope === 'categories') return (discount.categoryIds || []).map(Number).includes(Number(kit.categoryId));
-  if (scope === 'tags') {
-    const kitTags = normalizeTags(kit.tags).map(t => t.toLowerCase());
-    return (discount.tags || []).some(t => kitTags.includes(String(t).toLowerCase()));
+  if (scope === 'categories') {
+    const kitCategories = [kit.categoryId, ...(Array.isArray(kit.categoryIds) ? kit.categoryIds : [])].filter(value => value !== undefined && value !== null).map(Number);
+    return (discount.categoryIds || []).map(Number).some(id => kitCategories.includes(id));
   }
   return true;
 }
@@ -2618,6 +2648,8 @@ function getBestSingleKitDiscount(db, kit) {
   const price = Number(kit.price) || 0;
   let best = null;
   for (const d of getActiveDiscounts(db)) {
+    if (discountMode(d) !== 'automatic') continue;
+    if ((Number(d.minQty) || 1) > 1) continue;
     if (!discountAppliesToKit(d, kit)) continue;
     if (d.type === 'bogo') {
       if (!best) best = { amount: 0, discount: d, label: I18n.field(d,'customerLabel') || I18n.msg`Achetez ${d.buyQty || 1}, obtenez ${d.freeQty || 1} gratuit` };
@@ -2702,50 +2734,112 @@ function buildOrderItems(db, rawItems = []) {
   return { items };
 }
 
-function discountAmountForItem(discount, kitLike, item) {
-  const qty = Number(item.qty) || 1;
-  const unitPrice = Number(item.unitPrice) || Number(item.price) || 0;
-  const line = unitPrice * qty;
-  const discountUnitPrice = Number(item.discountBaseUnitPrice ?? unitPrice) || 0;
-  const discountLine = discountUnitPrice * qty;
-  if (!discountAppliesToKit(discount, kitLike)) return 0;
-  if (qty < (discount.minQty || 1)) return 0;
-  if (discount.type === 'percent') return discountLine * Math.min(100, Math.max(0, Number(discount.value) || 0)) / 100;
-  if (discount.type === 'fixed') return Math.min(discountLine, Math.max(0, Number(discount.value) || 0) * qty);
-  if (discount.type === 'bogo') {
+function pricingDiscountContext(db, promoCode = '') {
+  const code = String(promoCode || '').trim().toUpperCase();
+  const active = getActiveDiscounts(db);
+  const automatic = active.filter(discount => discountMode(discount) === 'automatic');
+  const matchingCodes = code ? active.filter(discount => discountMode(discount) === 'code' && String(discount.code || '').trim().toUpperCase() === code) : [];
+  return {
+    code,
+    promoCodeValid: !code || matchingCodes.length > 0,
+    codeDiscountIds: new Set(matchingCodes.map(discount => String(discount.id))),
+    discounts: [...automatic, ...matchingCodes]
+  };
+}
+function buildPromotionCandidate(discount, db, items = []) {
+  const eligible = [];
+  items.forEach((item, index) => {
+    if (item.type !== 'kit') return;
+    const kit = (db.kits || []).find(record => Number(record.id) === Number(item.kitId)) || item;
+    if (!discountAppliesToKit(discount, kit)) return;
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const unitPrice = Math.max(0, Number(item.unitPrice) || Number(item.price) || 0);
+    const discountUnitPrice = Math.max(0, Number(item.discountBaseUnitPrice ?? unitPrice) || 0);
+    eligible.push({ index, item, qty, unitPrice, discountUnitPrice });
+  });
+  const eligibleQty = eligible.reduce((sum, entry) => sum + entry.qty, 0);
+  if (!eligible.length || eligibleQty < Math.max(1, Number(discount.minQty) || 1)) return { discount, total:0, allocations:new Map(), eligibleQty };
+  const allocations = new Map();
+  if (discount.type === 'percent') {
+    const rate = Math.min(100, Math.max(0, Number(discount.value) || 0)) / 100;
+    for (const entry of eligible) allocations.set(entry.index, money(entry.discountUnitPrice * entry.qty * rate));
+  } else if (discount.type === 'fixed') {
+    const amountEach = Math.max(0, Number(discount.value) || 0);
+    for (const entry of eligible) allocations.set(entry.index, money(Math.min(entry.discountUnitPrice, amountEach) * entry.qty));
+  } else if (discount.type === 'bogo') {
     const buy = Math.max(1, parseInt(discount.buyQty) || 1);
     const free = Math.max(1, parseInt(discount.freeQty) || 1);
-    const cycle = buy + free;
-    const freeUnits = Math.floor(qty / cycle) * free;
-    return Math.min(line, freeUnits * unitPrice);
-  }
-  return 0;
-}
-function priceOrder(db, items = []) {
-  const active = getActiveDiscounts(db);
-  let subtotal = 0;
-  let discountTotal = 0;
-  const discountsApplied = [];
-  const pricedItems = items.map(item => {
-    const lineSubtotal = money((Number(item.unitPrice) || Number(item.price) || 0) * (Number(item.qty) || 1));
-    subtotal += lineSubtotal;
-    let kitLike = item;
-    if (item.type === 'kit') kitLike = (db.kits || []).find(k => k.id === item.kitId) || item;
-    let best = { amount: 0, discount: null };
-    if (item.type === 'kit') {
-      for (const d of active) {
-        const amount = discountAmountForItem(d, kitLike, item);
-        if (amount > best.amount) best = { amount, discount: d };
-      }
+    let freeUnits = Math.floor(eligibleQty / (buy + free)) * free;
+    for (const entry of eligible.slice().sort((a,b) => a.discountUnitPrice - b.discountUnitPrice)) {
+      if (freeUnits <= 0) break;
+      const units = Math.min(entry.qty, freeUnits);
+      if (units > 0) allocations.set(entry.index, money(units * entry.discountUnitPrice));
+      freeUnits -= units;
     }
-    const itemDiscount = money(Math.min(lineSubtotal, best.amount || 0));
-    discountTotal += itemDiscount;
-    if (best.discount && itemDiscount > 0) discountsApplied.push({ id: best.discount.id, title: best.discount.title, type: best.discount.type, amount: itemDiscount, itemId: item.id });
-    return { ...item, originalUnitPrice: Number(item.unitPrice) || 0, discountAmount: itemDiscount, discountLabel: I18n.field(best.discount,'customerLabel') || I18n.field(best.discount,'title') || '', lineSubtotal, lineTotal: money(lineSubtotal - itemDiscount) };
+  }
+  const total = money([...allocations.values()].reduce((sum, amount) => sum + Number(amount || 0), 0));
+  return { discount, total, allocations, eligibleQty };
+}
+function priceOrder(db, items = [], promoCode = '') {
+  const context = pricingDiscountContext(db, promoCode);
+  const baseLines = items.map(item => {
+    const lineSubtotal = money((Number(item.unitPrice) || Number(item.price) || 0) * (Number(item.qty) || 1));
+    return { item, lineSubtotal };
   });
-  subtotal = money(subtotal);
+  const candidates = context.discounts.map(discount => buildPromotionCandidate(discount, db, items)).filter(candidate => candidate.total > 0);
+  let subtotal = money(baseLines.reduce((sum, line) => sum + line.lineSubtotal, 0));
+  let discountTotal = 0;
+  let promoDiscountTotal = 0;
+  const discountsApplied = [];
+  const pricedItems = baseLines.map((line, index) => {
+    let best = { amount:0, candidate:null };
+    for (const candidate of candidates) {
+      const amount = Math.max(0, Number(candidate.allocations.get(index)) || 0);
+      if (amount > best.amount) best = { amount, candidate };
+    }
+    const itemDiscount = money(Math.min(line.lineSubtotal, best.amount));
+    discountTotal += itemDiscount;
+    if (best.candidate && itemDiscount > 0) {
+      const discount = best.candidate.discount;
+      const isCode = context.codeDiscountIds.has(String(discount.id));
+      if (isCode) promoDiscountTotal += itemDiscount;
+      discountsApplied.push({
+        id:discount.id,
+        title:discount.title,
+        type:discount.type,
+        mode:discountMode(discount),
+        code:isCode ? context.code : '',
+        amount:itemDiscount,
+        itemId:line.item.id
+      });
+    }
+    const discount = best.candidate?.discount || null;
+    return {
+      ...line.item,
+      originalUnitPrice:Number(line.item.unitPrice) || 0,
+      discountAmount:itemDiscount,
+      discountLabel:I18n.field(discount,'customerLabel') || I18n.field(discount,'title') || '',
+      lineSubtotal:line.lineSubtotal,
+      lineTotal:money(line.lineSubtotal - itemDiscount)
+    };
+  });
   discountTotal = money(discountTotal);
-  return { items: pricedItems, subtotal, discountTotal, discountsApplied, total: money(subtotal - discountTotal) };
+  promoDiscountTotal = money(promoDiscountTotal);
+  const codeCandidates = candidates.filter(candidate => context.codeDiscountIds.has(String(candidate.discount.id)));
+  const promoCodeQualified = !context.code || codeCandidates.some(candidate => candidate.total > 0);
+  const promoCodeApplied = !context.code || promoDiscountTotal > 0 || (promoCodeQualified && codeCandidates.some(candidate => candidate.total > 0));
+  return {
+    items:pricedItems,
+    subtotal,
+    discountTotal,
+    discountsApplied,
+    promoCode:context.code,
+    promoCodeValid:context.promoCodeValid,
+    promoCodeQualified,
+    promoCodeApplied,
+    promoDiscountTotal,
+    total:money(subtotal - discountTotal)
+  };
 }
 function findKit(db, kitId) { return (db.kits || []).find(k => Number(k.id) === Number(kitId)); }
 function updateKitStock(kit, delta, db, orderId, reason) {

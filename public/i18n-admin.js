@@ -102,9 +102,10 @@ englishAdminHook('applyProductTemplate',()=>{
     ['marketing-admin-fix.js','artyMarketingAdminFix'],
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
     ['studio-admin.js','artyStudioAdminEnhancements'],
-    ['commerce-client.js','artyCommerceEnhancements'],
+    ['commerce-client.js?v=20260918-promotions-1','artyCommerceEnhancements'],
     ['commerce-profile-fix.js','artyCommerceProfileEnhancement'],
-    ['admin-management-enhancements.js?v=20260918-admin-scale-3','artyAdminManagementEnhancements']
+    ['admin-management-enhancements.js?v=20260918-admin-scale-3','artyAdminManagementEnhancements'],
+    ['discount-enhancements.js?v=20260918-promotions-1','artyDiscountExperience']
   ];
   const next=()=>{
     const item=queue.shift();if(!item)return;
