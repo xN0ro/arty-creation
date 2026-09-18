@@ -373,3 +373,58 @@
 @media screen and (max-width:1080px) and (prefers-reduced-motion:reduce){
   .nav-drawer,.catalog-sidebar,.cart-sidebar{transition:none}
 }
+
+
+/* ARTY polished product page — mobile overrides */
+@media screen and (max-width:680px){
+  #page-product .product-page{padding-bottom:64px}
+  #page-product #productPageContent{padding-left:16px;padding-right:16px}
+  #page-product .product-breadcrumb{display:flex;margin:0 0 6px;font-size:.7rem}
+  #page-product .product-back{min-height:40px;margin-bottom:10px;font-size:.84rem}
+  #page-product .product-layout-pro{gap:20px;margin-bottom:28px}
+  #page-product .product-main-media{padding:7px;border-radius:22px;aspect-ratio:1/1.02}
+  #page-product .product-main-media::after{inset:7px;border-radius:16px}
+  #page-product .product-main-media .product-main-img{width:100%;height:100%;max-height:none;object-fit:contain;border-radius:15px}
+  #page-product .product-image-nav{width:40px;height:40px;font-size:1.45rem}
+  #page-product .product-image-prev{left:14px}
+  #page-product .product-image-next{right:14px}
+  #page-product .product-image-zoom{left:14px;bottom:14px;min-height:38px;padding:7px 9px}
+  #page-product .product-image-zoom small{display:none}
+  #page-product .product-photo-count{right:14px;bottom:14px}
+  #page-product .product-gallery-pro .product-thumbs{width:100%;justify-content:flex-start;flex-wrap:nowrap;overflow-x:auto;margin:9px 0 0;padding:6px}
+  #page-product .product-gallery-pro .product-thumb{flex:0 0 62px;width:62px;height:62px;padding:3px}
+  #page-product .product-meta-line{margin:2px 0 8px}
+  #page-product .product-info-pro h1,#page-product .product-info h1{font-size:2rem;line-height:1.08;letter-spacing:-1px}
+  #page-product .product-title-row{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px}
+  #page-product .product-popular-mark{display:inline-flex;margin:2px 0 0;font-size:.6rem;padding:5px 8px}
+  #page-product .product-info-pro .product-desc{margin-bottom:16px;font-size:.96rem;line-height:1.65}
+  #page-product .product-purchase-card{padding:18px 16px;border-radius:22px}
+  #page-product .product-price-line{display:flex;align-items:flex-start;gap:12px}
+  #page-product .product-configured-price strong{font-size:2.25rem}
+  #page-product .product-selection-total{max-width:46%;margin:0;text-align:right}
+  #page-product .product-size-grid{grid-template-columns:minmax(0,1fr)}
+  #page-product .product-size-option>span{min-height:58px}
+  #page-product .product-addon-option{padding:13px}
+  #page-product .product-buy-row{grid-template-columns:116px minmax(0,1fr);gap:9px;align-items:end}
+  #page-product .product-buy-row .product-qty-row{display:block}
+  #page-product .product-buy-row .product-qty-row label{margin-bottom:5px}
+  #page-product .product-add-button,#page-product .product-buy-now{min-height:48px;font-size:.96rem}
+  #page-product .product-checkout-note{font-size:.7rem;line-height:1.4}
+  #page-product .product-service-strip{grid-template-columns:minmax(0,1fr);gap:7px}
+  #page-product .product-service-strip>div{min-height:54px;padding:10px 12px}
+  #page-product .product-details-grid{grid-template-columns:minmax(0,1fr);max-width:680px;margin-top:26px}
+  #page-product .product-detail-card{padding:22px 18px;gap:0}
+  #page-product .product-detail-card-head{grid-template-columns:36px minmax(0,1fr);gap:11px;margin-bottom:16px}
+  #page-product .product-detail-icon{width:36px;height:36px;border-radius:11px}
+  #page-product .product-detail-card p{font-size:.9rem}
+  #page-product .product-included-card ul{grid-template-columns:minmax(0,1fr)}
+  #page-product .product-included-card li{font-size:.9rem;padding:10px 12px 10px 36px}
+  #page-product .product-process-steps>div{padding:11px}
+  #page-product .product-image-lightbox{padding:12px}
+}
+@media screen and (max-width:390px){
+  #page-product .product-price-line{display:block}
+  #page-product .product-selection-total{max-width:none;margin-top:10px;text-align:left}
+  #page-product .product-buy-row{grid-template-columns:minmax(0,1fr)}
+  #page-product .product-buy-row .product-qty-row{display:flex;align-items:center;justify-content:space-between}
+}
