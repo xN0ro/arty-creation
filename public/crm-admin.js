@@ -278,7 +278,7 @@ function renderLeadActions(){
     </div>
     <div class="crm-quick-actions">
       ${!terminal?`<button class="crm-action-tile primary" onclick="ARTYCRM.renderFollowUpAction()"><span>↗</span><strong>${T('Planifier un suivi','Schedule follow-up')}</strong><small>${T('Date, heure et rappel Google Calendar','Date, time and Google Calendar reminder')}</small></button>`:''}
-      ${l.kind==='event'&&l.status!=='won'?`<button class="crm-action-tile quote" onclick="ARTYCRM.renderQuoteAction()"><span>$</span><strong>${T('Envoyer un devis','Send quote')}</strong><small>${T('Courriel avec paiement Stripe sécurisé','Email with secure Stripe payment')}</small></button>`:''}
+      ${l.status!=='won'?`<button class="crm-action-tile quote" onclick="ARTYCRM.renderQuoteAction()"><span>$</span><strong>${T('Envoyer un devis','Send quote')}</strong><small>${T('Courriel avec paiement Stripe sécurisé','Email with secure Stripe payment')}</small></button>`:''}
       <button class="crm-action-tile" onclick="ARTYCRM.emailLead()"><span>@</span><strong>${T('Envoyer un courriel','Email client')}</strong><small>${esc(l.email||'')}</small></button>
       ${l.phone?`<button class="crm-action-tile" onclick="ARTYCRM.callLead()"><span>☎</span><strong>${T('Appeler','Call')}</strong><small>${esc(l.phone)}</small></button>`:''}
       <button class="crm-action-tile" onclick="ARTYCRM.openLeadCalendar()"><span>▣</span><strong>${T('Google Calendar','Google Calendar')}</strong><small>${l.nextFollowUp?T('Ouvrir ce suivi','Open this follow-up'):T('Ouvrir le calendrier','Open calendar')}</small></button>
@@ -319,22 +319,39 @@ async function clearFollowUp(){
   try{await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify({nextFollowUp:''})});await refreshLeadAfterAction(l.kind,l.id);showToast(T('Suivi supprimé','Follow-up removed'),'success');renderLeadActions()}catch(e){showToast(e.message,'error')}
 }
 function renderQuoteAction(){
-  const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l||l.kind!=='event')return;
+  const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l)return;
+  const needsConversion=l.kind!=='event';
   host.innerHTML=`<div class="crm-editor-head"><span>${T('Devis sécurisé','Secure quote')}</span><h2>${T('Envoyer le devis au client','Send quote to client')}</h2><p>${esc(l.name||l.email)} · ${esc(l.email||'')}</p></div>
     <div class="crm-quote-banner"><div><strong>${T('Paiement Stripe sécurisé','Secure Stripe payment')}</strong><small>${T('ARTY génère un lien personnel valable 30 jours et l’envoie par courriel. Après paiement, le prospect passe automatiquement à Gagné.','ARTY generates a personal 30-day link and emails it. After payment, the lead automatically becomes Won.')}</small></div></div>
     <div class="crm-action-form">
+      ${needsConversion?`<label>${T('Type d’événement / projet','Event / project type')}<input id="quickQuoteEventType" value="${attr(l.eventType||l.title||'')}" placeholder="${T('Événement privé, corporatif…','Private event, corporate…')}"></label>
+      <label>${T('Nombre de personnes','Guests')}<input id="quickQuoteGuests" type="number" min="1" max="1000" value="1"></label>
+      <label>${T('Date souhaitée','Preferred date')}<input id="quickQuotePreferredDate" type="date" value="${attr((l.preferredDate||'').slice(0,10))}"></label>
+      <label>${T('Lieu (optionnel)','Location (optional)')}<input id="quickQuoteLocation" value="" placeholder="${T('À confirmer','To be confirmed')}"></label>`:''}
       <label>${T('Montant du devis (CAD)','Quote amount (CAD)')}<input id="quickQuoteAmount" type="number" min=".50" step=".01" value="${Number(l.expectedValue||l.value||0)||''}" placeholder="500.00"></label>
       <label class="wide">${T('Description visible au client','Description shown to client')}<textarea id="quickQuoteDescription" rows="6" placeholder="${T('Ex.: Expérience artistique privée pour 20 personnes, matériel inclus…','E.g. Private art experience for 20 guests, materials included…')}">${esc(l.quoteDescription||'')}</textarea></label>
     </div>
+    ${needsConversion?`<div class="crm-form-note">${T('Ce prospect sera transformé en opportunité événement afin d’utiliser le paiement sécurisé, sans créer de doublon dans le pipeline.','This lead will be converted into an event opportunity for secure payment without creating a duplicate in the pipeline.')}</div>`:''}
     <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="ARTYCRM.renderLeadActions()">${T('Retour','Back')}</button><button class="btn btn-orange" onclick="ARTYCRM.sendQuoteAction()">${T('Envoyer le devis sécurisé','Send secure quote')}</button></div>`;
 }
 async function sendQuoteAction(){
-  const l=state.editingLead,amount=Number(document.getElementById('quickQuoteAmount')?.value)||0,quoteDescription=document.getElementById('quickQuoteDescription')?.value.trim()||'';
-  if(!l||l.kind!=='event')return;if(amount<.5)return showToast(T('Entrez un montant valide','Enter a valid amount'),'error');
+  let l=state.editingLead;
+  const amount=Number(document.getElementById('quickQuoteAmount')?.value)||0,quoteDescription=document.getElementById('quickQuoteDescription')?.value.trim()||'';
+  if(!l)return;if(amount<.5)return showToast(T('Entrez un montant valide','Enter a valid amount'),'error');
   if(!confirm(T('Envoyer ce devis au client par courriel maintenant?','Send this quote to the customer by email now?')))return;
   try{
+    if(l.kind!=='event'){
+      const converted=await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id)+'/convert-event',{method:'POST',body:JSON.stringify({
+        eventType:document.getElementById('quickQuoteEventType')?.value||l.title||'ARTY event',
+        guests:Number(document.getElementById('quickQuoteGuests')?.value)||1,
+        preferredDate:document.getElementById('quickQuotePreferredDate')?.value||'',
+        location:document.getElementById('quickQuoteLocation')?.value||''
+      })});
+      if(!converted.lead)throw new Error(T('Conversion du prospect impossible','Could not convert lead'));
+      l=converted.lead;state.editingLead={...l};
+    }
     const result=await api('/api/admin/event-requests/'+encodeURIComponent(l.id)+'/payment-link',{method:'POST',body:JSON.stringify({quoteAmount:amount,quoteDescription})});
-    await refreshLeadAfterAction(l.kind,l.id);
+    await refreshLeadAfterAction('event',l.id);
     showToast(result.emailStatus==='sent'?T('Devis envoyé. Le client peut maintenant payer en ligne.','Quote sent. The customer can now pay online.'):T('Lien créé, mais vérifiez la livraison du courriel.','Link created, but check email delivery.'),result.emailStatus==='sent'?'success':'warning');
     renderLeadActions();
   }catch(e){showToast(e.message,'error')}
