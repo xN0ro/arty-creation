@@ -2115,3 +2115,80 @@ body.product-lightbox-open{overflow:hidden}
   .event-share-button span{display:none}
   .event-share-button svg{width:20px;height:20px}
 }
+
+
+/* === Test order separation === */
+.admin-order-row.is-test-order{
+  opacity:.72;
+  background:linear-gradient(90deg,rgba(232,134,58,.035),rgba(255,255,255,.5));
+}
+.admin-order-row.is-test-order:hover{opacity:.9}
+.admin-order-id-line{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  flex-wrap:wrap;
+}
+.admin-test-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:20px;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#fff0df;
+  color:#b76320;
+  border:1px solid #f0cfac;
+  font-size:.62rem;
+  font-style:normal;
+  font-weight:900;
+  letter-spacing:.7px;
+  line-height:1;
+}
+.admin-test-badge-large{
+  min-height:26px;
+  padding:5px 9px;
+  font-size:.7rem;
+}
+.admin-test-order-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+.admin-test-order-actions>span{
+  color:var(--text-light);
+  font-size:.76rem;
+  font-weight:700;
+}
+.admin-test-order-control{
+  margin-top:16px;
+  padding:14px;
+  border:1px solid rgba(232,134,58,.18);
+  border-radius:14px;
+  background:#fff9f2;
+}
+.admin-test-order-control>strong{
+  display:block;
+  color:var(--text);
+  font-size:.86rem;
+}
+.admin-test-order-control>p{
+  margin:5px 0 11px;
+  color:var(--text-light);
+  font-size:.76rem;
+  line-height:1.45;
+}
+.admin-orders-overview{
+  flex-wrap:wrap;
+}
+@media(max-width:680px){
+  .admin-test-order-actions{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .admin-test-order-actions .btn{
+    width:100%;
+  }
+}
