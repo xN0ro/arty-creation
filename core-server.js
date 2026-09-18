@@ -815,7 +815,7 @@ app.post('/api/admin/crm/customers/:email/password-reset', adminOnly, async (req
 app.post('/api/admin/crm/customers/:email/resend-welcome', adminOnly, async (req,res) => {
   const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
   if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
-  const result=await sendAccountWelcomeEmail(user);res.json({success:true,emailStatus:result.status});
+  const result=await sendAccountWelcomeEmail(user,Date.now().toString(36));res.json({success:true,emailStatus:result.status});
 });
 app.get('/api/admin/categories', adminOnly, (req,res) => res.json(readDB().categories || []));
 app.get('/api/admin/announcement', adminOnly, (req,res) => res.json(readDB().announcement || {}));
@@ -1255,14 +1255,14 @@ function sendStaffAccessInviteEmail(grant, token) {
     })
   });
 }
-function sendAccountWelcomeEmail(user) {
+function sendAccountWelcomeEmail(user, keySuffix = '') {
   return withLocale(user.locale, () => {
 
   const profileUrl = `${normalizePublicUrl()}/?lang=${I18n.language()}#/profile`;
   return sendTransactionalEmail({
     to:user.email,
     subject:I18n.t('Bienvenue chez ARTY — votre compte est prêt'),
-    idempotencyKey:`account-welcome-${user.id}`,
+    idempotencyKey:`account-welcome-${user.id}${keySuffix ? '-' + keySuffix : ''}`,
     replyTo:'support',
     html:emailShell({
       title:I18n.t('Bienvenue chez ARTY'),
