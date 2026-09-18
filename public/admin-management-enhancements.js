@@ -116,7 +116,10 @@
     const table=panel.querySelector('.admin-table-wrap');
     if(!editor || !table) return;
     table.insertAdjacentHTML('beforebegin',productToolbarHTML());
-    panel.insertBefore(table,editor);
+    const management=panel.querySelector('#adminProductManagement');
+    if(management)panel.insertBefore(management,panel.firstChild);
+    if(management)management.insertAdjacentElement('afterend',table);
+    table.insertAdjacentElement('afterend',editor);
     editor.id='adminProductEditor';
     editor.hidden=!productEditorOpen;
     const cancel=document.getElementById('cancelKit');
