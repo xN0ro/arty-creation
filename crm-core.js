@@ -115,6 +115,11 @@ function buildCustomerIndex(db={}){
       averageOrder:paid.length?money(lifetimeSpend/paid.length):0,
       eventRequestCount:c.eventRequests.length,bookingCount:c.bookings.length,contactCount:c.contacts.length,
       leadCount:c.eventRequests.length+c.contacts.length+c.manualLeads.length,lastActivity:dates.length?dates[dates.length-1]:'',
+      owners:list([
+        ...c.eventRequests.map(x=>x.crm?.owner),
+        ...c.contacts.map(x=>x.crm?.owner),
+        ...c.manualLeads.map(x=>x.crm?.owner)
+      ].filter(Boolean),50),
       tags:c.meta.tags,preferredLanguage:c.meta.preferredLanguage||c.account?.locale||'',
       marketingConsent:c.meta.marketingConsent,marketingConsentAt:c.meta.marketingConsentAt
     };
