@@ -142,7 +142,7 @@ async function serviceAccessToken(force=false){
     iat:now-5,exp:now+3600
   }));
   const unsigned=`${header}.${claim}`,signature=crypto.sign('RSA-SHA256',Buffer.from(unsigned),c.privateKey);
-  const assertion=`${unsigned}.${base64url(signature)}`,body=form({grant_type:'urn:ietf:params:oauth-type:jwt-bearer',assertion});
+  const assertion=`${unsigned}.${base64url(signature)}`,body=form({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion});
   const result=await httpsJson({
     hostname:'oauth2.googleapis.com',path:'/token',method:'POST',
     headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}
