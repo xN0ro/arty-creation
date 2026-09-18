@@ -50,7 +50,7 @@ async function api(path,opts={}){
 function addTab(key,label,afterSelector){
   const tabs=document.querySelector('.admin-tabs');if(!tabs||tabs.querySelector('[data-crm-tab="'+key+'"]'))return;
   const b=document.createElement('button');b.type='button';b.className='admin-tab';b.dataset.crmTab=key;b.textContent=label;b.setAttribute('onclick',`switchAdminTab('${key}',this)`);
-  const after=tabs.querySelector(afterSelector);if(after)after.insertAdjacentElement('afterend',b);else tabs.appendChild(b);
+  const after=tabs.querySelector(afterSelector)||tabs.querySelector('.admin-tab[onclick*="dashboard"]');if(after)after.insertAdjacentElement('afterend',b);else tabs.appendChild(b);
 }
 function ensurePanels(){
   const container=document.querySelector('.admin-pro-container')||document.querySelector('#page-admin .container');if(!container)return;
@@ -63,8 +63,8 @@ function ensurePanels(){
 function ensure(){
   if(!currentUser||!['admin','staff'].includes(currentUser.role))return;
   if(has('crm_dashboard'))addTab('crmOverview',T('CRM','CRM'),'.admin-tab[onclick*="dashboard"]');
-  if(has('customers'))addTab('crmCustomers',T('Clients','Customers'),'[data-crm-tab="crmOverview"], .admin-tab[onclick*="dashboard"]');
-  if(has('leads'))addTab('crmLeads',T('Prospects','Leads'),'[data-crm-tab="crmCustomers"], [data-crm-tab="crmOverview"], .admin-tab[onclick*="dashboard"]');
+  if(has('customers'))addTab('crmCustomers',T('Clients','Customers'),'[data-crm-tab="crmOverview"]');
+  if(has('leads'))addTab('crmLeads',T('Prospects','Leads'),'[data-crm-tab="crmCustomers"]');
   ensurePanels();styles();ensureModal();
 }
 function ensureModal(){
