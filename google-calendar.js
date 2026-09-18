@@ -182,9 +182,9 @@ function plusMinutes(local,minutes){
 function followUpLabel(type){
   return({call:'Call',email:'Email',meeting:'Meeting',quote:'Quote follow-up',other:'Follow-up'})[String(type||'')]||'Follow-up';
 }
-function buildEvent(lead){
+function buildEvent(lead,integration={}){
   const c=config(),start=localDateTime(lead.nextFollowUp),duration=Math.max(5,Math.min(480,Number(lead.followUpDuration)||30));
-  const type=String(lead.followUpType||'call'),name=clean(lead.name||lead.email,140),owner=String(lead.owner||'').trim().toLowerCase();
+  const type=String(lead.followUpType||'call'),name=clean(lead.name||lead.email,140),owner=String(lead.owner||'').trim().toLowerCase(),connectedEmail=String(integration?.email||'').trim().toLowerCase();
   if(!start||!validEmail(owner))return null;
   const lines=[
     `ARTY CRM ${followUpLabel(type)}`,
@@ -200,7 +200,7 @@ function buildEvent(lead){
     description:lines.join('\n'),
     start:{dateTime:start,timeZone:c.timeZone},
     end:{dateTime:plusMinutes(start,duration),timeZone:c.timeZone},
-    attendees:[{email:owner}],
+    attendees:owner&&owner!==connectedEmail?[{email:owner}]:[],
     reminders:{useDefault:false,overrides:[{method:'popup',minutes:15}]},
     visibility:'private',
     extendedProperties:{private:{artyLeadKey:`${lead.kind}:${lead.id}`,artyOwner:owner}}
@@ -220,7 +220,7 @@ async function syncFollowUp(lead,calendarMeta={},integration={}){
   if(!connected(integration))return{action:'not_configured',eventId:existingId,htmlLink:String(calendarMeta.htmlLink||'')};
   const shouldDelete=!lead.nextFollowUp||!lead.owner||['won','lost'].includes(String(lead.status||''));
   if(shouldDelete)return deleteEvent(existingId,integration);
-  const event=buildEvent(lead);if(!event)return deleteEvent(existingId,integration);
+  const event=buildEvent(lead,integration);if(!event)return deleteEvent(existingId,integration);
   if(existingId){
     try{
       const updated=await calendarRequest('PATCH',eventPath(existingId,'?sendUpdates=all'),event,integration);
