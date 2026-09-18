@@ -251,10 +251,12 @@ function crmActionCenter(db={}){
   const dueToday=open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)===day).slice(0,20);
   const newLeads=open.filter(l=>l.status==='new').slice(0,20);
   const quoteWaiting=open.filter(l=>l.status==='quote_sent'||l.operationalStatus==='devis préparé'||l.operationalStatus==='paiement prêt').slice(0,20);
-  const paymentPending=(db.orders||[]).filter(o=>!o.isTest&&o.paymentStatus==='pending').length+(db.eventRequests||[]).filter(r=>['ready','pending'].includes(String(r.quotePaymentStatus||''))).length;
-  const recentOrders=(db.orders||[]).filter(o=>!o.isTest).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,6);
+  const orderPaymentsPending=(db.orders||[]).filter(o=>!o.isTest&&o.paymentStatus==='pending').length;
+  const eventPaymentsPending=(db.eventRequests||[]).filter(r=>['ready','pending'].includes(String(r.quotePaymentStatus||''))).length;
+  const paymentPending=orderPaymentsPending+eventPaymentsPending;
+  const recentOrders=(db.orders||[]).filter(o=>!o.isTest).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,6).map(o=>({id:o.id,total:money(o.total),status:o.status||'',paymentStatus:o.paymentStatus||'',createdAt:o.createdAt||''}));
   const lowInventory=(db.kits||[]).filter(k=>k.inStock===false||(Number.isFinite(Number(k.stockQty))&&Number(k.stockQty)<=Number(k.lowStockThreshold??3))).slice(0,12).map(k=>({id:k.id,name:k.name||'',stockQty:Number(k.stockQty)||0,inStock:k.inStock!==false}));
-  return {newLeads,overdue,dueToday,quoteWaiting,paymentPending,recentOrders,lowInventory};
+  return {newLeads,overdue,dueToday,quoteWaiting,paymentPending,orderPaymentsPending,eventPaymentsPending,recentOrders,lowInventory};
 }
 function crmReporting(db={}){
   const leads=buildLeads(db),customers=buildCustomerIndex(db),won=leads.filter(l=>l.status==='won'),qualified=leads.filter(l=>['qualified','quote_sent','follow_up','won','lost'].includes(l.status));
