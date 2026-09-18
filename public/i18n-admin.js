@@ -98,7 +98,7 @@ englishAdminHook('applyProductTemplate',()=>{
 /* Load admin enhancements in a deterministic order. */
 (() => {
   const queue=[
-    ['marketing-client.js','artyMarketingReadiness'],
+    ['marketing-client.js?v=20260918-test-orders-1','artyMarketingReadiness'],
     ['marketing-admin-fix.js','artyMarketingAdminFix'],
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
     ['studio-admin.js','artyStudioAdminEnhancements'],
