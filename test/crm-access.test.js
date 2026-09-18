@@ -70,6 +70,14 @@ test('sales staff only receive assigned CRM leads and customers',async()=>{
   assert.equal((await request('/admin/crm/customers/other%40example.test',{token:sales.data.token})).status,403);
 });
 
+test('assigned sales staff can reach secure quote creation but cannot quote another rep lead',async()=>{
+  const sales=await login('sales@example.test');
+  const own=await request('/admin/event-requests/101/payment-link',{method:'POST',body:{quoteAmount:250,quoteDescription:'Corporate ARTY event'},token:sales.data.token});
+  assert.equal(own.status,503);
+  const other=await request('/admin/event-requests/102/payment-link',{method:'POST',body:{quoteAmount:250},token:sales.data.token});
+  assert.equal(other.status,403);
+});
+
 test('sales manager permission can see the full CRM team',async()=>{
   const manager=await login('manager@example.test');
   assert.equal(manager.status,200);
