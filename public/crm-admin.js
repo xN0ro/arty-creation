@@ -492,12 +492,15 @@ function install(){
   if(typeof base==='function'&&!base.__crmV2Wrapped){
     const wrapped=function(tab,button,...rest){
       if(tab==='crm')return showCrm(button);
-      return base.call(this,tab,button,...rest);
+      closeLeadEditor();
+      document.querySelectorAll('#page-admin [id^="adminCrm"][id$="Panel"]').forEach(panel=>panel.style.display='none');
+      const result=base.call(this,tab,button,...rest);
+      return result;
     };wrapped.__crmV2Wrapped=true;window.switchAdminTab=wrapped;
   }
   const loadBase=window.loadAdminData;
   if(typeof loadBase==='function'&&!loadBase.__crmV2Wrapped){
-    const wrapped=async function(...args){const result=await loadBase.apply(this,args);ensure();await loadAll();return result};wrapped.__crmV2Wrapped=true;window.loadAdminData=wrapped;
+    const wrapped=async function(...args){const result=await loadBase.apply(this,args);ensure();return result};wrapped.__crmV2Wrapped=true;window.loadAdminData=wrapped;
   }
 }
 
