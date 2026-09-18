@@ -1042,6 +1042,41 @@ app.get('/api/orders/mine', auth, (req, res) => {
 
 const SUPPORT_TOPICS = ['commande', 'livraison', 'produit', 'paiement', 'événement', 'autre'];
 const SUPPORT_STATUSES = ['nouvelle', 'en cours', 'répondue', 'fermée'];
+const SUPPORT_PRIORITIES = ['low','normal','high','urgent'];
+function supportMessages(request) {
+  if (Array.isArray(request.messages) && request.messages.length) return request.messages.map(message=>({
+    id:String(message.id||''),role:['customer','staff'].includes(message.role)?message.role:'customer',
+    body:String(message.body||'').slice(0,2400),at:message.at||request.createdAt||'',by:String(message.by||'')
+  })).filter(message=>message.body);
+  const messages=[{id:`${request.id}-customer-1`,role:'customer',body:String(request.message||''),at:request.createdAt||'',by:request.customer?.email||''}];
+  if(request.adminReply)messages.push({id:`${request.id}-staff-legacy`,role:'staff',body:String(request.adminReply),at:request.repliedAt||request.updatedAt||'',by:request.assignedTo||'ARTY'});
+  return messages.filter(message=>message.body);
+}
+function supportAdminView(db, request) {
+  const email=String(request.customer?.email||'').trim().toLowerCase();
+  const customer=crmCore.customerDetail(db,email);
+  const order=request.orderId?(db.orders||[]).find(order=>String(order.id)===String(request.orderId)):null;
+  return {
+    ...request,
+    priority:SUPPORT_PRIORITIES.includes(String(request.priority||''))?request.priority:'normal',
+    assignedTo:String(request.assignedTo||''),
+    internalNotes:Array.isArray(request.internalNotes)?request.internalNotes:[],
+    history:Array.isArray(request.history)?request.history:[],
+    messages:supportMessages(request),
+    customerContext:customer?{
+      hasAccount:!!customer.summary?.hasAccount,
+      orderCount:Number(customer.summary?.orderCount||0),
+      lifetimeSpend:Number(customer.summary?.lifetimeSpend||0),
+      leadCount:Number(customer.summary?.leadCount||0),
+      tags:customer.summary?.tags||[],
+      lastActivity:customer.summary?.lastActivity||''
+    }:null,
+    orderContext:order?{
+      id:order.id,status:order.status||'',paymentStatus:order.paymentStatus||'',total:Number(order.total||0),
+      createdAt:order.createdAt||'',tracking:order.tracking||{}
+    }:null
+  };
+}
 function customerSupportView(request) {
   return {
     id: request.id,
@@ -1050,6 +1085,7 @@ function customerSupportView(request) {
     subject: request.subject,
     message: request.message,
     status: request.status,
+    messages:supportMessages(request),
     adminReply: request.adminReply || '',
     createdAt: request.createdAt,
     updatedAt: request.updatedAt || request.createdAt,
@@ -1059,6 +1095,20 @@ function customerSupportView(request) {
 app.get('/api/support-requests/mine', auth, (req, res) => {
   const db = readDB();
   res.json((db.supportRequests || []).filter(request => request.userId === req.session.userId).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(customerSupportView));
+});
+app.post('/api/support-requests/:id/reply', auth, async (req,res)=>{
+  const db=readDB(),request=(db.supportRequests||[]).find(item=>String(item.id)===String(req.params.id)&&item.userId===req.session.userId);
+  if(!request)return res.status(404).json({error:I18n.t('Demande non trouvée')});
+  const body=String(req.body.message||'').trim().slice(0,2400);if(body.length<2)return res.status(400).json({error:I18n.t('Ajoutez un message')});
+  const user=(db.users||[]).find(item=>item.id===req.session.userId),now=new Date().toISOString();
+  request.messages=Array.isArray(request.messages)?request.messages:supportMessages(request);
+  request.messages.push({id:`MSG-${Date.now().toString(36).toUpperCase()}-C`,role:'customer',body,at:now,by:user?.email||request.customer?.email||''});
+  const previous=request.status||'nouvelle';request.status='nouvelle';request.updatedAt=now;
+  request.history=Array.isArray(request.history)?request.history:[];
+  request.history.push({type:'customer_reply',from:previous,to:'nouvelle',at:now,by:user?.email||''});
+  writeDB(db);
+  const emailResult=await sendSupportCustomerReplyAdminEmail(request,body);
+  res.json({success:true,request:customerSupportView(request),emailStatus:emailResult.status});
 });
 app.post('/api/support-requests', auth, async (req, res) => {
   const db = readDB();
@@ -1083,7 +1133,12 @@ app.post('/api/support-requests', auth, async (req, res) => {
     subject,
     message,
     status: 'nouvelle',
+    priority:'normal',
+    assignedTo:'',
     adminReply: '',
+    messages:[{id:`MSG-${Date.now().toString(36).toUpperCase()}-C`,role:'customer',body:message,at:now,by:user.email}],
+    internalNotes:[],
+    history:[{type:'created',from:'',to:'nouvelle',at:now,by:user.email}],
     createdAt: now,
     updatedAt: now,
     repliedAt: ''
@@ -1823,6 +1878,23 @@ function sendSupportRequestAdminEmail(request) {
 
   });
 }
+function sendSupportCustomerReplyAdminEmail(request,message) {
+  return withLocale(request.locale,()=>sendTransactionalEmail({
+    to:businessEmailAddress(supportEmailChannel(request)),
+    subject:I18n.msg`Client reply — ${request.subject}`,
+    idempotencyKey:`support-customer-reply-${request.id}-${hashToken(message||'').slice(0,16)}`,
+    replyTo:request.customer?.email,
+    html:emailShell({
+      title:I18n.t('Le client a répondu'),
+      intro:request.subject,
+      preheader:I18n.msg`Nouvelle réponse sur ${request.id}.`,
+      content:`${emailPanel(I18n.html`<strong>${escapeEmailHTML(request.customer?.name||'')}</strong><br>${escapeEmailHTML(request.customer?.email||'')}`,'orange')}${emailTextPanel(message,'neutral')}`,
+      ctaLabel:I18n.t('Ouvrir le service client'),
+      ctaUrl:`${normalizePublicUrl()}/?lang=${I18n.language()}#/admin`,
+      footer:I18n.msg`Demande ${request.id}.`
+    })
+  }));
+}
 
 app.post('/api/bookings', optionalAuth, async (req, res) => {
   const db = readDB();
@@ -2407,23 +2479,65 @@ app.post('/api/admin/orders/mark-all-test', adminOnly, (req, res) => {
 });
 app.get('/api/admin/support-requests', adminOnly, (req, res) => {
   const db = readDB();
-  res.json((db.supportRequests || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  res.json((db.supportRequests || []).sort((a,b) => new Date(b.updatedAt||b.createdAt) - new Date(a.updatedAt||a.createdAt)).map(request=>supportAdminView(db,request)));
+});
+app.get('/api/admin/support/team',adminOnly,(req,res)=>{
+  const db=readDB(),seen=new Set(),team=[];
+  for(const email of (db.adminEmails||[])){const key=String(email||'').toLowerCase();if(!key||seen.has(key))continue;seen.add(key);const user=(db.users||[]).find(item=>String(item.email||'').toLowerCase()===key);team.push({email:key,name:user?.name||key,role:'admin'})}
+  for(const grant of (db.adminAccessGrants||[])){const key=String(grant.email||'').toLowerCase();if(!key||seen.has(key)||grant.active===false||!(grant.permissions||[]).includes('support'))continue;seen.add(key);team.push({email:key,name:grant.name||key,role:'staff'})}
+  res.json(team.sort((a,b)=>a.name.localeCompare(b.name)));
 });
 app.patch('/api/admin/support-requests/:id', adminOnly, async (req, res) => {
   const db = readDB();
   const request = (db.supportRequests || []).find(item => String(item.id) === String(req.params.id));
   if (!request) return res.status(404).json({ error: I18n.t('Demande non trouvée') });
-  const previousReply = String(request.adminReply || '');
-  const status = String(req.body.status || request.status || 'nouvelle').trim().toLowerCase();
+  const now=new Date().toISOString(),previousStatus=String(request.status||'nouvelle'),previousReply=String(request.adminReply||'');
+  const status = String(req.body.status ?? request.status ?? 'nouvelle').trim().toLowerCase();
+  const priority=String(req.body.priority ?? request.priority ?? 'normal').trim().toLowerCase();
+  const assignedTo=String(req.body.assignedTo ?? request.assignedTo ?? '').trim().toLowerCase().slice(0,240);
   const adminReply = String(req.body.adminReply ?? request.adminReply ?? '').trim().slice(0, 2400);
   if (!SUPPORT_STATUSES.includes(status)) return res.status(400).json({ error: I18n.t('Statut invalide') });
-  request.status = status;
-  request.adminReply = adminReply;
-  request.updatedAt = new Date().toISOString();
-  if (adminReply && adminReply !== previousReply) request.repliedAt = request.updatedAt;
+  if (!SUPPORT_PRIORITIES.includes(priority)) return res.status(400).json({ error: I18n.t('Priorité invalide') });
+  if(assignedTo){
+    const validAssignee=(db.adminEmails||[]).map(x=>String(x).toLowerCase()).includes(assignedTo)||(db.adminAccessGrants||[]).some(grant=>grant.active!==false&&String(grant.email||'').toLowerCase()===assignedTo&&(grant.permissions||[]).includes('support'));
+    if(!validAssignee)return res.status(400).json({error:I18n.t('Responsable support invalide')});
+  }
+  request.status=status;request.priority=priority;request.assignedTo=assignedTo;request.adminReply=adminReply;request.updatedAt=now;
+  request.history=Array.isArray(request.history)?request.history:[];
+  if(previousStatus!==status)request.history.push({type:'status',from:previousStatus,to:status,at:now,by:req.session.email||'admin'});
+  if(String(request.assignedTo||'')!==String(req.body.previousAssignedTo||request.assignedTo||''))request.history.push({type:'assignment',from:'',to:assignedTo,at:now,by:req.session.email||'admin'});
+  if(status==='fermée')request.closedAt=request.closedAt||now;else request.closedAt='';
+  if(adminReply&&adminReply!==previousReply){
+    request.repliedAt=now;request.firstResponseAt=request.firstResponseAt||now;
+    request.messages=Array.isArray(request.messages)?request.messages:supportMessages(request);
+    request.messages.push({id:`MSG-${Date.now().toString(36).toUpperCase()}-S`,role:'staff',body:adminReply,at:now,by:req.session.email||'ARTY'});
+    request.history.push({type:'staff_reply',from:previousStatus,to:status,at:now,by:req.session.email||'admin'});
+  }
   writeDB(db);
   const emailResult = adminReply && adminReply !== previousReply ? await sendSupportReplyEmail(request) : { status:'not_needed' };
-  res.json({ success: true, request, emailStatus:emailResult.status });
+  res.json({ success: true, request:supportAdminView(db,request), emailStatus:emailResult.status });
+});
+app.post('/api/admin/support-requests/:id/reply',adminOnly,async(req,res)=>{
+  const db=readDB(),request=(db.supportRequests||[]).find(item=>String(item.id)===String(req.params.id));
+  if(!request)return res.status(404).json({error:I18n.t('Demande non trouvée')});
+  const message=String(req.body.message||'').trim().slice(0,2400);if(message.length<2)return res.status(400).json({error:I18n.t('Ajoutez une réponse')});
+  const now=new Date().toISOString(),previous=request.status||'nouvelle';
+  request.adminReply=message;request.messages=Array.isArray(request.messages)?request.messages:supportMessages(request);
+  request.messages.push({id:`MSG-${Date.now().toString(36).toUpperCase()}-S`,role:'staff',body:message,at:now,by:req.session.email||'ARTY'});
+  request.status=SUPPORT_STATUSES.includes(String(req.body.status||''))?String(req.body.status):'répondue';
+  request.repliedAt=now;request.firstResponseAt=request.firstResponseAt||now;request.updatedAt=now;
+  request.history=Array.isArray(request.history)?request.history:[];request.history.push({type:'staff_reply',from:previous,to:request.status,at:now,by:req.session.email||'admin'});
+  writeDB(db);const emailResult=await sendSupportReplyEmail(request);
+  res.json({success:true,request:supportAdminView(db,request),emailStatus:emailResult.status});
+});
+app.post('/api/admin/support-requests/:id/note',adminOnly,(req,res)=>{
+  const db=readDB(),request=(db.supportRequests||[]).find(item=>String(item.id)===String(req.params.id));
+  if(!request)return res.status(404).json({error:I18n.t('Demande non trouvée')});
+  const body=String(req.body.note||'').trim().slice(0,2400);if(body.length<2)return res.status(400).json({error:I18n.t('Ajoutez une note')});
+  const note={id:`NOTE-${Date.now().toString(36).toUpperCase()}`,body,at:new Date().toISOString(),by:req.session.email||'admin'};
+  request.internalNotes=Array.isArray(request.internalNotes)?request.internalNotes:[];request.internalNotes.push(note);request.updatedAt=note.at;
+  request.history=Array.isArray(request.history)?request.history:[];request.history.push({type:'internal_note',from:'',to:'',at:note.at,by:note.by});
+  writeDB(db);res.json({success:true,request:supportAdminView(db,request)});
 });
 app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
   const db = readDB();
