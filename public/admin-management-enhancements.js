@@ -19,7 +19,7 @@
     return ids.filter(value => value !== undefined && value !== null && value !== '').map(String);
   };
   const categoryName = id => {
-    const category = (window.allCategories || []).find(item => String(item.id) === String(id));
+    const category = (allCategories || []).find(item => String(item.id) === String(id));
     return category ? (I18n.field?.(category,'name') || category.name || '') : '';
   };
   const kitName = kit => I18n.field?.(kit,'name') || kit?.name || '';
@@ -79,7 +79,7 @@
 
   function categoryOptions(selected){
     return '<option value="all">'+esc(tr('Toutes les catégories','All categories'))+'</option>' +
-      (window.allCategories || []).map(category => '<option value="'+esc(category.id)+'" '+(String(selected)===String(category.id)?'selected':'')+'>'+esc(I18n.field?.(category,'name') || category.name || '')+'</option>').join('');
+      (allCategories || []).map(category => '<option value="'+esc(category.id)+'" '+(String(selected)===String(category.id)?'selected':'')+'>'+esc(I18n.field?.(category,'name') || category.name || '')+'</option>').join('');
   }
 
   function productToolbarHTML(){
@@ -105,7 +105,7 @@
           <option value="price-desc" ${productState.sort==='price-desc'?'selected':''}>${esc(tr('Prix : plus élevé','Price: high to low'))}</option>
         </select>
       </div>
-      <div class="admin-management-results"><span id="adminProductResultCount"></span><span>${esc(tr((window.allKits||[]).length+' produits au total',(window.allKits||[]).length+' total products'))}</span></div>
+      <div class="admin-management-results"><span id="adminProductResultCount"></span><span>${esc(tr((allKits||[]).length+' produits au total',(allKits||[]).length+' total products'))}</span></div>
     </div>`;
   }
 
@@ -128,7 +128,7 @@
     }
     const rows=[...table.querySelectorAll('tbody tr')];
     rows.forEach((row,index)=>{
-      const kit=(window.allKits||[])[index]; if(!kit)return;
+      const kit=(allKits||[])[index]; if(!kit)return;
       row.dataset.productId=String(kit.id);
       row.dataset.search=rawKitSearch(kit);
       row.dataset.categories=categoryIds(kit).join(',');
@@ -148,7 +148,7 @@
     const query=clean(productState.query), tbody=panel.querySelector('.admin-table-wrap tbody');
     if(!tbody)return;
     const rows=[...tbody.querySelectorAll('tr[data-product-id]')];
-    const kitMap=new Map((window.allKits||[]).map(kit=>[String(kit.id),kit]));
+    const kitMap=new Map((allKits||[]).map(kit=>[String(kit.id),kit]));
     rows.forEach(row=>{
       const kit=kitMap.get(row.dataset.productId),cats=(row.dataset.categories||'').split(',').filter(Boolean);
       const matchQuery=!query || (row.dataset.search||'').includes(query);
@@ -189,7 +189,7 @@
           <option value="stock-desc" ${inventoryState.sort==='stock-desc'?'selected':''}>${esc(tr('Stock : plus élevé','Stock: high to low'))}</option>
         </select>
       </div>
-      <div class="admin-management-results"><span id="adminInventoryResultCount"></span><span>${esc(tr((window.allKits||[]).length+' produits suivis',(window.allKits||[]).length+' tracked products'))}</span></div>
+      <div class="admin-management-results"><span id="adminInventoryResultCount"></span><span>${esc(tr((allKits||[]).length+' produits suivis',(allKits||[]).length+' tracked products'))}</span></div>
     </div>`;
   }
 
@@ -201,7 +201,7 @@
     if(intro)intro.style.display='none';
     table.insertAdjacentHTML('beforebegin',inventoryToolbarHTML());
     [...table.querySelectorAll('tbody tr')].forEach((row,index)=>{
-      const kit=(window.allKits||[])[index];if(!kit)return;
+      const kit=(allKits||[])[index];if(!kit)return;
       row.dataset.productId=String(kit.id);
       row.dataset.search=rawKitSearch(kit);
       row.dataset.categories=categoryIds(kit).join(',');
@@ -215,7 +215,7 @@
     const search=document.getElementById('adminInventorySearch'),category=document.getElementById('adminInventoryCategory'),status=document.getElementById('adminInventoryStatus'),sort=document.getElementById('adminInventorySort');
     if(search)inventoryState.query=search.value;if(category)inventoryState.category=category.value;if(status)inventoryState.status=status.value;if(sort)inventoryState.sort=sort.value;
     const query=clean(inventoryState.query),tbody=panel.querySelector('.admin-table-wrap tbody');if(!tbody)return;
-    const rows=[...tbody.querySelectorAll('tr[data-product-id]')],kitMap=new Map((window.allKits||[]).map(kit=>[String(kit.id),kit]));
+    const rows=[...tbody.querySelectorAll('tr[data-product-id]')],kitMap=new Map((allKits||[]).map(kit=>[String(kit.id),kit]));
     rows.forEach(row=>{
       const cats=(row.dataset.categories||'').split(',').filter(Boolean);
       row.hidden=!((!query||(row.dataset.search||'').includes(query))&&(inventoryState.category==='all'||cats.includes(String(inventoryState.category)))&&(inventoryState.status==='all'||row.dataset.stock===inventoryState.status));
@@ -283,7 +283,7 @@
     const table=panel.querySelector('.admin-orders-table');if(!table)return;
     table.insertAdjacentHTML('beforebegin',orderToolbarHTML());
     [...table.querySelectorAll('tbody .admin-order-row')].forEach((row,index)=>{
-      const order=(window.adminOrders||[])[index];if(!order)return;
+      const order=(adminOrders||[])[index];if(!order)return;
       row.dataset.orderId=String(order.id);
       row.dataset.search=orderSearchText(order);
       row.dataset.status=String(order.status||'');
@@ -298,7 +298,7 @@
     const search=document.getElementById('adminOrderSearch'),status=document.getElementById('adminOrderStatusFilter'),payment=document.getElementById('adminOrderPaymentFilter'),kind=document.getElementById('adminOrderKindFilter'),sort=document.getElementById('adminOrderSort');
     if(search)orderState.query=search.value;if(status)orderState.status=status.value;if(payment)orderState.payment=payment.value;if(kind)orderState.kind=kind.value;if(sort)orderState.sort=sort.value;
     const query=clean(orderState.query),tbody=panel.querySelector('.admin-orders-table tbody');if(!tbody)return;
-    const rows=[...tbody.querySelectorAll('.admin-order-row[data-order-id]')],orderMap=new Map((window.adminOrders||[]).map(order=>[String(order.id),order]));
+    const rows=[...tbody.querySelectorAll('.admin-order-row[data-order-id]')],orderMap=new Map((adminOrders||[]).map(order=>[String(order.id),order]));
     rows.forEach(row=>{
       const match=(!query||(row.dataset.search||'').includes(query))&&(orderState.status==='all'||row.dataset.status===orderState.status)&&(orderState.payment==='all'||row.dataset.payment===orderState.payment)&&(orderState.kind==='all'||row.dataset.kind===orderState.kind);
       row.hidden=!match;row._artyOrder=orderMap.get(row.dataset.orderId);
