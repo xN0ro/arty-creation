@@ -1914,6 +1914,7 @@
   "Voir nos options": "Explore our",
   "d’événements privés": "private event options",
   "Événements à réserver": "Events available to book",
+  "Choisissez votre expérience, consultez les détails et réservez directement en ligne.": "Choose your experience, view the details, and book directly online.",
   "Toile de 9 × 12 po déjà tracée": "Pre-traced 9 × 12 in canvas",
   "Thématique personnalisée": "Personalized theme",
   "Sacs, tabliers ou casquettes, au choix": "Your choice of bags, aprons or caps",
