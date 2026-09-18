@@ -368,6 +368,7 @@ function adminPermissionRequirement(req) {
   if (path.startsWith('crm/customers')) return 'customers';
   if (path.startsWith('crm/leads')) return 'leads';
   if (path.startsWith('crm')) return 'crm_dashboard';
+  if (/^event-requests\/[^/]+\/payment-link$/.test(path)) return ['events','leads'];
   if (path === 'stats' || path === 'analytics') return 'dashboard';
   if (path === 'storage') return 'settings';
   if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
@@ -2784,6 +2785,10 @@ app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, re
   const db = readDB();
   const request = (db.eventRequests || []).find(item => item.id === parseInt(req.params.id));
   if (!request) return res.status(404).json({ error:I18n.t('Demande non trouvée') });
+  const hasEventsPermission=req.session?.role==='admin'||(req.session?.permissions||[]).includes('events');
+  if(!hasEventsPermission&&!sessionHasCrmManagerAccess(req.session)&&String(request.crm?.owner||'').trim().toLowerCase()!==String(req.session?.email||'').trim().toLowerCase()){
+    return res.status(403).json({error:I18n.t('Ce prospect ne vous est pas assigné')});
+  }
   if (!isStripeEnabled()) return res.status(503).json({ error:I18n.t('Stripe doit être configuré avant de créer un lien de paiement') });
   const quoteAmount = money(Math.max(0, Number(req.body.quoteAmount ?? request.quoteAmount) || 0));
   if (quoteAmount < 0.5) return res.status(400).json({ error:I18n.t('Entrez un montant de devis valide') });
