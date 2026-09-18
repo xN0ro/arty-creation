@@ -85,11 +85,14 @@ function crmRawLeadItem(db,kind,id){
   const collection=kind==='event'?(db.eventRequests||[]):kind==='contact'?(db.contactRequests||[]):kind==='manual'?(db.crmLeads||[]):[];
   return collection.find(item=>String(item.id)===String(id))||null;
 }
+function googleCalendarIntegration(db){
+  return db.crmIntegrations?.googleCalendar||{};
+}
 async function syncCrmCalendar(db,lead){
   const item=crmRawLeadItem(db,lead.kind,lead.id);if(!item)return{action:'missing'};
   item.crm=item.crm||{};const prior=item.crm.calendar||{};
   try{
-    const result=await googleCalendar.syncFollowUp(lead,prior);
+    const result=await googleCalendar.syncFollowUp(lead,prior,googleCalendarIntegration(db));
     item.crm.calendar={eventId:String(result.eventId||''),htmlLink:String(result.htmlLink||prior.htmlLink||''),status:String(result.action||''),syncedAt:new Date().toISOString(),error:''};
     return result;
   }catch(error){
@@ -180,6 +183,37 @@ function installExtensionRoutes(app){
   app.get('/api/marketing-config',(req,res)=>res.json(getMarketingConfig()));
   app.get('/api/admin/marketing-config',adminOnly,(req,res)=>res.json(getMarketingConfig()));
   app.put('/api/admin/marketing-config',adminOnly,(req,res)=>{const db=readDb(),config=marketingCore.normalizeMarketingConfig(req.body||{});db.marketingConfig=config;writeDb(db);res.json({success:true,config})});
+  app.get('/api/admin/crm/google-calendar/status',adminOnly,(req,res)=>{
+    if(req.extensionSession?.role!=='admin')return res.status(403).json({error:crmError(req,'Accès propriétaire requis','Owner access required')});
+    res.json(googleCalendar.status(googleCalendarIntegration(readDb())));
+  });
+  app.post('/api/admin/crm/google-calendar/connect',adminOnly,(req,res)=>{
+    if(req.extensionSession?.role!=='admin')return res.status(403).json({error:crmError(req,'Accès propriétaire requis','Owner access required')});
+    if(!googleCalendar.oauthReady())return res.status(503).json({error:crmError(req,'Google Calendar OAuth doit être configuré dans Render','Google Calendar OAuth must be configured in Render')});
+    const db=readDb(),rawState=crypto.randomBytes(32).toString('hex'),stateHash=hashToken(rawState),now=Date.now();
+    db.googleCalendarOAuthStates=(db.googleCalendarOAuthStates||[]).filter(item=>Number(item.expiresAt||0)>now);
+    db.googleCalendarOAuthStates.push({stateHash,email:crmSessionEmail(req),createdAt:now,expiresAt:now+10*60*1000});
+    writeDb(db);
+    res.json({url:googleCalendar.authorizationUrl(rawState)});
+  });
+  app.post('/api/admin/crm/google-calendar/disconnect',adminOnly,(req,res)=>{
+    if(req.extensionSession?.role!=='admin')return res.status(403).json({error:crmError(req,'Accès propriétaire requis','Owner access required')});
+    const db=readDb();db.crmIntegrations=db.crmIntegrations||{};delete db.crmIntegrations.googleCalendar;writeDb(db);res.json({success:true});
+  });
+  app.get('/api/google-calendar/oauth/callback',async(req,res)=>{
+    try{
+      const state=String(req.query?.state||''),code=String(req.query?.code||''),db=readDb(),now=Date.now(),stateHash=hashToken(state);
+      const found=(db.googleCalendarOAuthStates||[]).find(item=>item.stateHash===stateHash&&Number(item.expiresAt||0)>now);
+      if(!found||!code)throw new Error('Google Calendar authorization could not be verified.');
+      const integration=await googleCalendar.exchangeCode(code);
+      db.crmIntegrations=db.crmIntegrations||{};db.crmIntegrations.googleCalendar={...integration,connectedBy:found.email||'',updatedAt:new Date().toISOString()};
+      db.googleCalendarOAuthStates=(db.googleCalendarOAuthStates||[]).filter(item=>item.stateHash!==stateHash&&Number(item.expiresAt||0)>now);
+      writeDb(db);
+      res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>ARTY Google Calendar</title></head><body style="font-family:Arial,sans-serif;padding:40px;text-align:center"><h2>Google Calendar connected</h2><p>You can close this window and return to ARTY.</p><script>try{window.opener&&window.opener.postMessage({type:'ARTY_GOOGLE_CALENDAR_CONNECTED'},location.origin);setTimeout(()=>window.close(),1200)}catch(e){}</script></body></html>`);
+    }catch(error){
+      res.status(400).type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>ARTY Google Calendar</title></head><body style="font-family:Arial,sans-serif;padding:40px;text-align:center"><h2>Google Calendar connection failed</h2><p>${escapeHtml(error.message||'Unknown error')}</p></body></html>`);
+    }
+  });
   app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(crmScopedDb(readDb(),req))));
   app.get('/api/admin/crm/action-center',adminOnly,(req,res)=>{
     const db=readDb(),data=crmCore.crmActionCenter(crmScopedDb(db,req)),permissions=new Set(req.extensionSession?.permissions||[]);
