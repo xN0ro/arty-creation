@@ -171,6 +171,7 @@ function installExtensionRoutes(app){
     res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-leads.csv"');res.send('\uFEFF'+body);
   });
   app.get('/api/admin/crm/export/backup.json',adminOnly,(req,res)=>{
+    if(req.extensionSession?.role!=='admin')return res.status(403).json({error:crmError(req,'Accès propriétaire requis','Owner access required')});
     const db=readDb(),backup={version:2,exportedAt:new Date().toISOString(),customers:crmCore.buildCustomerIndex(db),leads:crmCore.buildLeads(db),crmCustomers:db.crmCustomers||{},crmLeads:db.crmLeads||[]};
     res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-crm-backup.json"');res.send(JSON.stringify(backup,null,2));
   });
