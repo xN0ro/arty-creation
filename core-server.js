@@ -327,7 +327,7 @@ function cleanExpiredSessions(db) {
   return db.sessions.length !== before;
 }
 
-const ADMIN_PERMISSION_KEYS = ['dashboard','crm_dashboard','customers','leads','account_management','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
+const ADMIN_PERMISSION_KEYS = ['dashboard','crm_dashboard','customers','leads','crm_manager','account_management','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
 
 function normalizeStaffPermissions(value) {
   const allowed = new Set(ADMIN_PERMISSION_KEYS);
@@ -391,6 +391,16 @@ function sessionHasAdminPermission(session, requirement) {
   const owned = new Set(Array.isArray(session.permissions) ? session.permissions : []);
   if (Array.isArray(requirement)) return requirement.some(permission => owned.has(permission));
   return owned.has(requirement);
+}
+function sessionHasCrmManagerAccess(session) {
+  return session?.role === 'admin' || (session?.role === 'staff' && Array.isArray(session.permissions) && session.permissions.includes('crm_manager'));
+}
+function sessionCanAccessCrmCustomer(db, session, email) {
+  if (sessionHasCrmManagerAccess(session)) return true;
+  if (session?.role !== 'staff') return false;
+  const key=String(email||'').trim().toLowerCase(),actor=String(session.email||'').trim().toLowerCase();
+  const customer=crmCore.buildCustomerIndex(db).find(item=>String(item.email||'').trim().toLowerCase()===key);
+  return Boolean(customer&&(customer.owners||[]).some(owner=>String(owner||'').trim().toLowerCase()===actor));
 }
 function fullAdminOnly(req, res, next) {
   const s = getSession(req);
@@ -792,6 +802,7 @@ app.delete('/api/admin/access-grants/:id', fullAdminOnly, (req,res) => {
 });
 app.patch('/api/admin/crm/customers/:email/account', adminOnly, (req,res) => {
   const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!sessionCanAccessCrmCustomer(db,req.session,email))return res.status(403).json({error:I18n.t('Ce client ne vous est pas assigné')});
   if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
   if(req.body?.name!==undefined)user.name=String(req.body.name||'').replace(/\s+/g,' ').trim().slice(0,100);
   if(req.body?.phone!==undefined)user.phone=String(req.body.phone||'').replace(/\s+/g,' ').trim().slice(0,30);
@@ -800,6 +811,7 @@ app.patch('/api/admin/crm/customers/:email/account', adminOnly, (req,res) => {
 });
 app.post('/api/admin/crm/customers/:email/disable', adminOnly, (req,res) => {
   const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!sessionCanAccessCrmCustomer(db,req.session,email))return res.status(403).json({error:I18n.t('Ce client ne vous est pas assigné')});
   if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
   if(user.role==='admin'||(db.adminEmails||[]).map(v=>String(v).toLowerCase()).includes(email))return res.status(400).json({error:I18n.t('Un compte propriétaire ne peut pas être désactivé ici')});
   const disabled=req.body?.disabled!==false,now=new Date().toISOString();
@@ -809,6 +821,7 @@ app.post('/api/admin/crm/customers/:email/disable', adminOnly, (req,res) => {
 });
 app.post('/api/admin/crm/customers/:email/password-reset', adminOnly, async (req,res) => {
   const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!sessionCanAccessCrmCustomer(db,req.session,email))return res.status(403).json({error:I18n.t('Ce client ne vous est pas assigné')});
   if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
   if(user.provider!=='local'&&!String(user.linkedProviders||[]).includes('local'))return res.status(400).json({error:I18n.t('Ce compte utilise Google pour la connexion')});
   cleanExpiredPasswordResets(db);const rawToken=crypto.randomBytes(32).toString('hex'),now=new Date();
@@ -817,6 +830,7 @@ app.post('/api/admin/crm/customers/:email/password-reset', adminOnly, async (req
 });
 app.post('/api/admin/crm/customers/:email/resend-welcome', adminOnly, async (req,res) => {
   const db=readDB(),email=String(req.params.email||'').trim().toLowerCase(),user=(db.users||[]).find(u=>String(u.email||'').trim().toLowerCase()===email);
+  if(!sessionCanAccessCrmCustomer(db,req.session,email))return res.status(403).json({error:I18n.t('Ce client ne vous est pas assigné')});
   if(!user)return res.status(404).json({error:I18n.t('Compte introuvable')});
   const result=await sendAccountWelcomeEmail(user,Date.now().toString(36));res.json({success:true,emailStatus:result.status});
 });
@@ -1237,7 +1251,7 @@ function sendStaffAccessInviteEmail(grant, token) {
   const siteUrl = normalizePublicUrl();
   const inviteUrl = `${siteUrl}/api/staff-invite/accept?token=${encodeURIComponent(token)}`;
   const permissionLabels = {
-    dashboard:'Dashboard & analytics', crm_dashboard:'CRM overview', customers:'Customers', leads:'Leads & sales', account_management:'Account security', products:'Products', inventory:'Inventory', promotions:'Promotions',
+    dashboard:'Dashboard & analytics', crm_dashboard:'CRM overview', customers:'Customers', leads:'Leads & sales', crm_manager:'Sales manager — full CRM team view', account_management:'Account security', products:'Products', inventory:'Inventory', promotions:'Promotions',
     orders:'Orders & refunds', support:'Customer support', events:'Events & tickets', categories:'Categories',
     marketing:'Marketing', settings:'Site settings'
   };
