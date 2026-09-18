@@ -27,7 +27,16 @@ function crmMeta(raw={}){
   const status=CRM_LEAD_STATUSES.includes(String(raw.status||''))?String(raw.status):'new';
   return {
     status,
-    nextFollowUp:text(raw.nextFollowUp,30),
+    nextFollowUp:text(raw.nextFollowUp,40),
+    followUpType:['call','email','meeting','quote','other'].includes(String(raw.followUpType||''))?String(raw.followUpType):'call',
+    followUpDuration:Math.max(5,Math.min(480,Number(raw.followUpDuration)||30)),
+    calendar:{
+      eventId:text(raw.calendar?.eventId,240),
+      htmlLink:text(raw.calendar?.htmlLink,1000),
+      status:text(raw.calendar?.status,80),
+      syncedAt:text(raw.calendar?.syncedAt,60),
+      error:text(raw.calendar?.error,1000)
+    },
     owner:text(raw.owner,240),
     tags:list(raw.tags),
     adminNote:text(raw.adminNote,3000),
@@ -194,7 +203,7 @@ function createManualLead(db,input={},actor=''){
     id,reference:id,name,email,phone,title,eventType:text(input.eventType,180),preferredDate:text(input.preferredDate,30),
     value:money(input.value),source:text(input.source||'manual',80),campaign:text(input.campaign,140),medium:text(input.medium,80),message:text(input.message,3000),
     createdAt,updatedAt:createdAt,
-    crm:{status:CRM_LEAD_STATUSES.includes(String(input.status||''))?String(input.status):'new',nextFollowUp:text(input.nextFollowUp,30),owner:text(input.owner,240),tags:list(input.tags),adminNote:text(input.adminNote,3000),lostReason:'',finalValue:0,wonAt:'',lostAt:'',createdBy:text(actor,240),updatedBy:text(actor,240),updatedAt:createdAt,statusHistory:[{status:'new',at:createdAt,by:text(actor,240)}]}
+    crm:{status:CRM_LEAD_STATUSES.includes(String(input.status||''))?String(input.status):'new',nextFollowUp:text(input.nextFollowUp,40),followUpType:['call','email','meeting','quote','other'].includes(String(input.followUpType||''))?String(input.followUpType):'call',followUpDuration:Math.max(5,Math.min(480,Number(input.followUpDuration)||30)),calendar:{eventId:'',htmlLink:'',status:'',syncedAt:'',error:''},owner:text(input.owner,240),tags:list(input.tags),adminNote:text(input.adminNote,3000),lostReason:'',finalValue:0,wonAt:'',lostAt:'',createdBy:text(actor,240),updatedBy:text(actor,240),updatedAt:createdAt,statusHistory:[{status:'new',at:createdAt,by:text(actor,240)}]}
   };
   db.crmLeads.push(lead);return leadFromManual(lead);
 }
@@ -233,7 +242,11 @@ function updateLead(db,kind,id,patch={},actor=''){
   else if(nextStatus==='lost'){lostAt=lostAt||now;wonAt='';lostReason=CRM_LOST_REASONS.includes(String(patch.lostReason||''))?String(patch.lostReason):lostReason}
   else {wonAt='';lostAt='';if(nextStatus!=='lost')lostReason=''}
   item.crm={
-    ...current,status:nextStatus,nextFollowUp:text(patch.nextFollowUp??current.nextFollowUp,30),owner:text(patch.owner??current.owner,240),
+    ...current,status:nextStatus,nextFollowUp:text(patch.nextFollowUp??current.nextFollowUp,40),
+    followUpType:['call','email','meeting','quote','other'].includes(String(patch.followUpType??current.followUpType))?String(patch.followUpType??current.followUpType):current.followUpType,
+    followUpDuration:Math.max(5,Math.min(480,Number(patch.followUpDuration??current.followUpDuration)||30)),
+    calendar:current.calendar,
+    owner:text(patch.owner??current.owner,240),
     tags:patch.tags===undefined?current.tags:list(patch.tags),adminNote:text(patch.adminNote??current.adminNote,3000),
     lostReason,finalValue:patch.finalValue===undefined?current.finalValue:money(patch.finalValue),wonAt,lostAt,
     createdBy:current.createdBy||text(actor,240),updatedBy:text(actor,240),updatedAt:now,statusHistory:history.slice(-100)
