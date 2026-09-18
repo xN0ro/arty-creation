@@ -1,6 +1,9 @@
 /* English catalog. French source messages are stable keys. */
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.ARTY_EN=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){return {
   "Accès admin requis": "Administrator access required",
+  "Ce compte est temporairement désactivé. Contactez ARTY pour obtenir de l’aide.": "This account is temporarily disabled. Contact ARTY for assistance.",
+  "Un compte propriétaire ne peut pas être désactivé ici": "An owner account cannot be disabled here",
+  "Ce compte utilise Google pour la connexion": "This account uses Google to sign in",
   "Le lien de réinitialisation est incomplet": "The password reset link is incomplete",
   "Populaire": "Popular",
   "{0} place{1} restante{2}": "{0} spot{1} left",
