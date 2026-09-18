@@ -2491,7 +2491,7 @@ app.patch('/api/admin/support-requests/:id', adminOnly, async (req, res) => {
   const db = readDB();
   const request = (db.supportRequests || []).find(item => String(item.id) === String(req.params.id));
   if (!request) return res.status(404).json({ error: I18n.t('Demande non trouvée') });
-  const now=new Date().toISOString(),previousStatus=String(request.status||'nouvelle'),previousReply=String(request.adminReply||'');
+  const now=new Date().toISOString(),previousStatus=String(request.status||'nouvelle'),previousReply=String(request.adminReply||''),previousAssignedTo=String(request.assignedTo||'');
   const status = String(req.body.status ?? request.status ?? 'nouvelle').trim().toLowerCase();
   const priority=String(req.body.priority ?? request.priority ?? 'normal').trim().toLowerCase();
   const assignedTo=String(req.body.assignedTo ?? request.assignedTo ?? '').trim().toLowerCase().slice(0,240);
@@ -2505,7 +2505,7 @@ app.patch('/api/admin/support-requests/:id', adminOnly, async (req, res) => {
   request.status=status;request.priority=priority;request.assignedTo=assignedTo;request.adminReply=adminReply;request.updatedAt=now;
   request.history=Array.isArray(request.history)?request.history:[];
   if(previousStatus!==status)request.history.push({type:'status',from:previousStatus,to:status,at:now,by:req.session.email||'admin'});
-  if(String(request.assignedTo||'')!==String(req.body.previousAssignedTo||request.assignedTo||''))request.history.push({type:'assignment',from:'',to:assignedTo,at:now,by:req.session.email||'admin'});
+  if(previousAssignedTo!==assignedTo)request.history.push({type:'assignment',from:previousAssignedTo,to:assignedTo,at:now,by:req.session.email||'admin'});
   if(status==='fermée')request.closedAt=request.closedAt||now;else request.closedAt='';
   if(adminReply&&adminReply!==previousReply){
     request.repliedAt=now;request.firstResponseAt=request.firstResponseAt||now;
