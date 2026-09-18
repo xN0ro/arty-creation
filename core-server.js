@@ -45,6 +45,7 @@ const DEFAULT_DB = {
   inventoryMovements: [],
   bundleDealRules: [],
   productTemplates: [],
+  counters: { eventId: 0 },
   announcement: {
     enabled: true,
     message: 'Livraison gratuite pour toute commande de 75 $ et plus'
@@ -166,6 +167,9 @@ function normalizeDB(db = {}) {
     inventoryMovements: Array.isArray(db.inventoryMovements) ? db.inventoryMovements : [],
     bundleDealRules: Array.isArray(db.bundleDealRules) ? db.bundleDealRules : [],
     productTemplates: Array.isArray(db.productTemplates) ? db.productTemplates : [],
+    counters: db.counters && typeof db.counters === 'object'
+      ? { ...db.counters, eventId: Math.max(0, Number(db.counters.eventId) || 0) }
+      : { eventId: 0 },
     announcement: db.announcement && typeof db.announcement === 'object'
       ? {
           enabled: db.announcement.enabled === true,
@@ -178,6 +182,50 @@ function normalizeDB(db = {}) {
 
 function safeReadJSON(filePath) {
   return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+}
+
+function newEventUid() {
+  return `EVT-${crypto.randomBytes(10).toString('hex').toUpperCase()}`;
+}
+function maxReferencedEventId(db) {
+  const values = [];
+  for (const event of (db.events || [])) values.push(Number(event.id) || 0);
+  for (const booking of (db.bookings || [])) values.push(Number(booking.eventId) || 0);
+  for (const order of (db.orders || [])) {
+    for (const item of (order.items || [])) if (item?.type === 'event-ticket') values.push(Number(item.eventId) || 0);
+  }
+  return values.length ? Math.max(...values, 0) : 0;
+}
+function ensureEventIdentityState(db) {
+  let changed = false;
+  db.counters = db.counters && typeof db.counters === 'object' ? db.counters : {};
+  const maxSeen = maxReferencedEventId(db);
+  const currentCounter = Math.max(0, Number(db.counters.eventId) || 0);
+  if (currentCounter < maxSeen) { db.counters.eventId = maxSeen; changed = true; }
+  else db.counters.eventId = currentCounter;
+  for (const event of (db.events || [])) {
+    if (!event.uid) { event.uid = newEventUid(); changed = true; }
+  }
+  return changed;
+}
+function nextEventId(db) {
+  ensureEventIdentityState(db);
+  db.counters.eventId = Math.max(Number(db.counters.eventId) || 0, maxReferencedEventId(db)) + 1;
+  return db.counters.eventId;
+}
+function bookingBelongsToEvent(booking, event) {
+  if (!booking || !event || Number(booking.eventId) !== Number(event.id)) return false;
+  if (booking.eventUid && event.uid) return String(booking.eventUid) === String(event.uid);
+  const eventCreatedAt = Date.parse(event.createdAt || '');
+  const bookedAt = Date.parse(booking.bookedAt || '');
+  // Legacy records only had numeric event IDs. A booking cannot legitimately predate
+  // the event it belongs to, so this safely rejects bookings from deleted/reused IDs.
+  if (Number.isFinite(eventCreatedAt) && Number.isFinite(bookedAt) && bookedAt < eventCreatedAt - 1000) return false;
+  return true;
+}
+function findEventForBooking(db, booking) {
+  const event = (db.events || []).find(item => Number(item.id) === Number(booking?.eventId));
+  return bookingBelongsToEvent(booking, event) ? event : null;
 }
 
 function writeDB(data) {
@@ -202,12 +250,14 @@ function initializeDB() {
   if (fs.existsSync(DB_PATH)) {
     try {
       const db = normalizeDB(safeReadJSON(DB_PATH));
+      ensureEventIdentityState(db);
       writeDB(db);
       return;
     } catch (err) {
       console.error('DB file is unreadable. Trying backup...', err.message);
       if (fs.existsSync(DB_BACKUP_PATH)) {
         const backup = normalizeDB(safeReadJSON(DB_BACKUP_PATH));
+        ensureEventIdentityState(backup);
         writeDB(backup);
         return;
       }
@@ -218,7 +268,9 @@ function initializeDB() {
   const bundledSeedPath = path.join(APP_DATA_DIR, 'db.json');
   if (fs.existsSync(bundledSeedPath) && bundledSeedPath !== DB_PATH) {
     try {
-      writeDB(normalizeDB(safeReadJSON(bundledSeedPath)));
+      const seeded = normalizeDB(safeReadJSON(bundledSeedPath));
+      ensureEventIdentityState(seeded);
+      writeDB(seeded);
       console.log(`Arty DB seeded from ${bundledSeedPath}`);
       return;
     } catch (err) {
@@ -1064,7 +1116,7 @@ function findTicketRecord(db, value) {
   for (const booking of (db.bookings || [])) {
     ensureBookingTickets(db, booking);
     const ticket = (booking.tickets || []).find(item => String(item.id).toUpperCase() === needle || String(item.code).toUpperCase() === needle);
-    if (ticket) return { booking, ticket, event: (db.events || []).find(event => event.id === booking.eventId) || null };
+    if (ticket) return { booking, ticket, event: findEventForBooking(db, booking) };
   }
   return null;
 }
@@ -1227,6 +1279,7 @@ function ensurePaidOrderBookings(db, order) {
       locale:I18n.normalize(order.locale),
       userId:order.userId || null,
       eventId:group.eventId,
+      eventUid:event.uid,
       name:String(order.customer?.name || '').trim(),
       email:String(order.customer?.email || order.guestEmail || '').trim().toLowerCase(),
       phone:String(order.customer?.phone || '').trim(),
@@ -1255,7 +1308,7 @@ async function deliverPaidOrderTickets(orderId, reason = 'payment') {
   for (const bookingId of (order.ticketBookingIds || [])) {
     db = readDB();
     const booking = (db.bookings || []).find(item => String(item.id) === String(bookingId));
-    const event = (db.events || []).find(item => Number(item.id) === Number(booking?.eventId));
+    const event = findEventForBooking(db, booking);
     if (!booking || !event) continue;
     issuedTickets.push(...(booking.tickets || []).map(ticket => ({ id:ticket.id, code:ticket.code, admissions:Math.max(1,parseInt(ticket.admissions)||1), holderName:ticket.holderName, bookingId:booking.id, eventId:booking.eventId })));
     if (booking.emailDelivery?.status === 'sent') continue;
@@ -1508,6 +1561,7 @@ app.post('/api/bookings', optionalAuth, async (req, res) => {
     id: `BKG-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
     userId: req.session?.userId || null,
     eventId: parseInt(eventId),
+    eventUid: ev.uid || '',
     name: String(name).trim(),
     email: String(email).trim().toLowerCase(),
     phone: String(phone || '').trim(),
@@ -1535,7 +1589,7 @@ app.post('/api/bookings', optionalAuth, async (req, res) => {
 app.get('/api/bookings/mine', auth, (req, res) => {
   const db = readDB();
   const changed = ensureAllBookingTickets(db); if (changed) writeDB(db);
-  res.json((db.bookings || []).filter(b => b.userId === req.session.userId).map(b => publicBookingView(b, (db.events || []).find(e => e.id === b.eventId))).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+  res.json((db.bookings || []).filter(b => b.userId === req.session.userId).map(b => publicBookingView(b, findEventForBooking(db, b))).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
 });
 app.get('/api/tickets/:code', (req, res) => {
   const db = readDB(); const record = findTicketRecord(db, req.params.code);
@@ -2269,7 +2323,7 @@ app.post('/api/admin/events', adminOnly, (req, res) => {
   const db = readDB();
   const { title, date } = req.body;
   if (!title || !date) return res.status(400).json({ error: I18n.t('Titre et date requis') });
-  const ev = { id: (db.events || []).length > 0 ? Math.max(...db.events.map(e => e.id)) + 1 : 1, ...normalizeEventPayload(req.body), createdAt: new Date().toISOString() };
+  const ev = { id: nextEventId(db), uid: newEventUid(), ...normalizeEventPayload(req.body), createdAt: new Date().toISOString() };
   if (!db.events) db.events = [];
   db.events.push(ev);
   writeDB(db);
@@ -2287,7 +2341,10 @@ app.delete('/api/admin/events/:id', adminOnly, (req, res) => { const db=readDB()
 app.get('/api/admin/bookings', adminOnly, (req, res) => {
   const db = readDB();
   const changed = ensureAllBookingTickets(db); if (changed) writeDB(db);
-  res.json((db.bookings || []).map(b => ({ ...b, event: (db.events || []).find(e => e.id === b.eventId) || null })).sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
+  res.json((db.bookings || [])
+    .map(b => ({ ...b, event: findEventForBooking(db, b) }))
+    .filter(b => b.event)
+    .sort((a,b) => new Date(b.bookedAt) - new Date(a.bookedAt)));
 });
 function updateBookingAttendanceStatus(booking) {
   const checked = (booking.tickets || []).filter(ticket => ticket.status === 'checked_in').reduce((sum,ticket) => sum + Math.max(1,parseInt(ticket.admissions)||1), 0);
@@ -2320,7 +2377,7 @@ app.patch('/api/admin/tickets/:ticketId', adminOnly, (req, res) => {
 app.post('/api/admin/bookings/:id/resend-ticket', adminOnly, async (req, res) => {
   const db = readDB(); const booking = (db.bookings || []).find(item => String(item.id) === String(req.params.id));
   if (!booking) return res.status(404).json({ error:I18n.t('Réservation introuvable') });
-  const event = (db.events || []).find(item => item.id === booking.eventId);
+  const event = findEventForBooking(db, booking);
   if (!event) return res.status(404).json({ error:I18n.t('Événement introuvable') });
   ensureBookingTickets(db, booking);
   writeDB(db);
