@@ -124,7 +124,14 @@
 
   function interceptOrderAttribution(){
     if(typeof window.artyFetch!=='function'||window.artyFetch.__marketingWrapped)return;const original=window.artyFetch;
-    const wrapped=async function(input,options={}){const path=typeof input==='string'?input.split('?')[0]:'';if(path==='/api/orders'&&String(options.method||'GET').toUpperCase()==='POST'&&options.body){try{const body=JSON.parse(options.body);body.marketingAttribution=orderAttribution();options={...options,body:JSON.stringify(body)}}catch{}}return original.call(this,input,options)};wrapped.__marketingWrapped=true;window.artyFetch=wrapped;
+    const wrapped=async function(input,options={}){
+      const path=typeof input==='string'?input.split('?')[0]:'',method=String(options.method||'GET').toUpperCase();
+      const attributedPost=method==='POST'&&['/api/orders','/api/event-requests','/api/contact'].includes(path);
+      if(attributedPost&&options.body){try{const body=JSON.parse(options.body);body.marketingAttribution=orderAttribution();options={...options,body:JSON.stringify(body)}}catch{}}
+      const response=await original.call(this,input,options);
+      if(response?.ok&&method==='POST'&&(path==='/api/event-requests'||path==='/api/contact'))track('lead',{lead_type:path==='/api/event-requests'?'event':'contact',currency:'CAD'});
+      return response;
+    };wrapped.__marketingWrapped=true;window.artyFetch=wrapped;
   }
 
   function pageEntities(){return[{kind:'product',title:'Produits',items:Array.isArray(allKits)?allKits:[]},{kind:'event',title:'Événements',items:Array.isArray(allEvents)?allEvents:[]},{kind:'collection',title:'Catégories',items:Array.isArray(allCategories)?allCategories:[]}]}
