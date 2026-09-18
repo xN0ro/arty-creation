@@ -2477,7 +2477,19 @@ function renderProfileSupport(){
   orderSelect.innerHTML=I18n.html`<option value="">Aucune commande</option>${profileOrders.map(order=>`<option value="${safeAttr(order.id)}">${safeText(order.id)} · ${profileDate(order.createdAt)}</option>`).join('')}`;
   const openCount=profileSupportRequests.filter(request=>request.status!=='fermée').length,count=document.getElementById('profileSupportCount');if(count)count.textContent=openCount;
   if(!profileSupportRequests.length){wrap.innerHTML=I18n.html('<div class="account-support-empty"><p>Aucune demande envoyée.</p></div>');return}
-  wrap.innerHTML=profileSupportRequests.map(request=>{const meta=supportStatusMeta(request.status);return `<article class="account-ticket"><div class="account-ticket-head"><div><span>${safeText(request.id)}</span><small>${profileDate(request.createdAt)}</small></div><b class="account-ticket-status ${meta.className}">${safeText(meta.label)}</b></div><h4>${safeText(request.subject)}</h4><p>${safeText(request.message)}</p>${request.orderId?I18n.html`<span class="account-ticket-order">Commande ${safeText(request.orderId)}</span>`:''}${request.adminReply?I18n.html`<div class="account-support-reply"><strong>Réponse de l’équipe ARTY</strong><p>${safeText(request.adminReply)}</p><small>${profileDate(request.repliedAt||request.updatedAt,true)}</small></div>`:''}</article>`}).join('');
+  wrap.innerHTML=profileSupportRequests.map(request=>{
+    const meta=supportStatusMeta(request.status),messages=Array.isArray(request.messages)&&request.messages.length?request.messages:[{role:'customer',body:request.message,at:request.createdAt},{role:'staff',body:request.adminReply,at:request.repliedAt||request.updatedAt}].filter(x=>x.body);
+    const thread=messages.map(message=>`<div class="account-support-thread-message ${message.role==='staff'?'staff':'customer'}"><div><strong>${message.role==='staff'?safeText(I18n.t('Équipe ARTY')):safeText(I18n.t('Vous'))}</strong><small>${profileDate(message.at,true)}</small></div><p>${safeText(message.body)}</p></div>`).join('');
+    return `<article class="account-ticket account-ticket-thread"><div class="account-ticket-head"><div><span>${safeText(request.id)}</span><small>${profileDate(request.createdAt)}</small></div><b class="account-ticket-status ${meta.className}">${safeText(meta.label)}</b></div><h4>${safeText(request.subject)}</h4>${request.orderId?I18n.html`<span class="account-ticket-order">Commande ${safeText(request.orderId)}</span>`:''}<div class="account-support-thread">${thread}</div>${request.status!=='fermée'?`<div class="account-support-customer-reply"><textarea id="supportCustomerReply-${safeAttr(request.id)}" rows="3" maxlength="2400" placeholder="${safeAttr(I18n.t('Ajouter une réponse…'))}"></textarea><button type="button" class="btn btn-ghost btn-sm" onclick="replyProfileSupport('${safeAttr(request.id)}')">${safeText(I18n.t('Répondre'))}</button></div>`:`<div class="account-support-closed-note">${safeText(I18n.t('Cette demande est fermée.'))}</div>`}</article>`;
+  }).join('');
+}
+async function replyProfileSupport(id){
+  const field=document.getElementById(`supportCustomerReply-${id}`),message=field?.value.trim()||'';if(message.length<2)return showToast(I18n.t('Ajoutez un message'),'error');
+  try{
+    const r=await artyFetch(`/api/support-requests/${encodeURIComponent(id)}/reply`,{method:'POST',headers:authH(),body:JSON.stringify({message})}),d=await r.json().catch(()=>({}));
+    if(!r.ok)return showToast(d.error||I18n.t('Réponse impossible'),'error');
+    await loadProfileSupport();renderProfileSupport();showToast(I18n.t('Votre réponse a été envoyée'),'success');
+  }catch{showToast(I18n.t('Erreur de connexion'),'error')}
 }
 async function submitProfileSupport(event){
   event?.preventDefault();const topic=document.getElementById('supportTopic')?.value,orderId=document.getElementById('supportOrderId')?.value,subject=document.getElementById('supportSubject')?.value.trim(),message=document.getElementById('supportMessage')?.value.trim(),button=document.getElementById('supportSubmitButton');
