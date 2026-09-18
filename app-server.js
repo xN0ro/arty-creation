@@ -26,7 +26,16 @@ function readDb(){try{return JSON.parse(fs.readFileSync(resolveDbPath(),'utf8'))
 function writeDb(db){const file=resolveDbPath(),dir=path.dirname(file);if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const tmp=`${file}.${process.pid}.${Date.now()}.ext.tmp`;fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,file)}
 function hashToken(token){return crypto.createHash('sha256').update(String(token||'')).digest('hex')}
 function extensionGrant(db,email){const normalized=String(email||'').trim().toLowerCase();return(db.adminAccessGrants||[]).find(grant=>grant.active!==false&&String(grant.email||'').trim().toLowerCase()===normalized&&(grant.emailVerifiedAt||grant.acceptedAt))||null}
-function extensionPermission(req){const path=String(req.originalUrl||req.url||'').split('?')[0];if(path.includes('/admin/crm'))return'dashboard';if(path.includes('/marketing-config'))return'marketing';if(path.includes('/commerce-config'))return'settings';if(path.includes('/studio-config'))return'products';return''}
+function extensionPermission(req){
+  const route=String(req.originalUrl||req.url||'').split('?')[0];
+  if(route.includes('/admin/crm/customers'))return'customers';
+  if(route.includes('/admin/crm/leads')||route.includes('/admin/crm/team')||route.includes('/admin/crm/export/leads'))return'leads';
+  if(route.includes('/admin/crm')||route.includes('/admin/crm/export'))return'crm_dashboard';
+  if(route.includes('/marketing-config'))return'marketing';
+  if(route.includes('/commerce-config'))return'settings';
+  if(route.includes('/studio-config'))return'products';
+  return'';
+}
 function adminOnly(req,res,next){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');
   if(!token)return res.status(401).json({error:'Non authentifié'});
@@ -40,6 +49,10 @@ function adminOnly(req,res,next){
   req.extensionSession={...session,role:'staff',email,permissions:grant.permissions||[]};next();
 }
 function text(value,max=160){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
+function crmError(req,fr,en){return requestLanguage(req)==='en'?en:fr}
+function csvCell(value){const s=String(value??'');return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function csv(rows,columns){return [columns.map(c=>csvCell(c.label)).join(','),...rows.map(row=>columns.map(c=>csvCell(typeof c.value==='function'?c.value(row):row[c.value])).join(','))].join('\r\n')}
+
 function num(value,fallback=0,min=0,max=100000){const n=Number(value);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback}
 function slug(value,fallback=`product-${Date.now()}`){const cleaned=String(value||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);return cleaned||fallback}
 function normalizeSizes(raw,basePrice){const list=Array.isArray(raw)?raw:[];const out=list.slice(0,20).map((size,index)=>({id:slug(size.id||size.labelFr||size.labelEn,`size-${index+1}`),labelFr:text(size.labelFr||size.label||`Format ${index+1}`,80),labelEn:text(size.labelEn||size.labelFr||size.label||`Size ${index+1}`,80),price:num(size.price,basePrice,0,100000)})).filter(size=>size.labelFr||size.labelEn);return out.length?out:[{id:'standard',labelFr:'Format standard',labelEn:'Standard size',price:basePrice}]}
@@ -123,12 +136,44 @@ function installExtensionRoutes(app){
   app.get('/api/admin/marketing-config',adminOnly,(req,res)=>res.json(getMarketingConfig()));
   app.put('/api/admin/marketing-config',adminOnly,(req,res)=>{const db=readDb(),config=marketingCore.normalizeMarketingConfig(req.body||{});db.marketingConfig=config;writeDb(db);res.json({success:true,config})});
   app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(readDb())));
+  app.get('/api/admin/crm/action-center',adminOnly,(req,res)=>res.json(crmCore.crmActionCenter(readDb())));
+  app.get('/api/admin/crm/reporting',adminOnly,(req,res)=>res.json(crmCore.crmReporting(readDb())));
+  app.get('/api/admin/crm/team',adminOnly,(req,res)=>{
+    const db=readDb(),seen=new Set(),team=[];
+    for(const email of (db.adminEmails||[])){const key=String(email||'').toLowerCase();if(!key||seen.has(key))continue;seen.add(key);const user=(db.users||[]).find(u=>String(u.email||'').toLowerCase()===key);team.push({email:key,name:user?.name||key,role:'admin'})}
+    for(const grant of (db.adminAccessGrants||[])){const key=String(grant.email||'').toLowerCase();if(!key||seen.has(key)||grant.active===false||!(grant.permissions||[]).includes('leads'))continue;seen.add(key);team.push({email:key,name:grant.name||key,role:'staff'})}
+    res.json(team.sort((a,b)=>a.name.localeCompare(b.name)));
+  });
   app.get('/api/admin/crm/customers',adminOnly,(req,res)=>res.json(crmCore.buildCustomerIndex(readDb())));
-  app.get('/api/admin/crm/customers/:email',adminOnly,(req,res)=>{const detail=crmCore.customerDetail(readDb(),req.params.email);if(!detail)return res.status(404).json({error:'Customer not found'});res.json(detail)});
-  app.put('/api/admin/crm/customers/:email/tags',adminOnly,(req,res)=>{const db=readDb(),meta=crmCore.updateCustomerTags(db,req.params.email,req.body?.tags);if(!meta)return res.status(400).json({error:'Invalid customer'});writeDb(db);res.json({success:true,tags:meta.tags||[]})});
-  app.post('/api/admin/crm/customers/:email/notes',adminOnly,(req,res)=>{const db=readDb(),note=crmCore.addCustomerNote(db,req.params.email,req.body?.note,req.extensionSession?.email||'admin');if(!note)return res.status(400).json({error:'Note required'});writeDb(db);res.json({success:true,note})});
+  app.get('/api/admin/crm/customers/:email',adminOnly,(req,res)=>{const detail=crmCore.customerDetail(readDb(),req.params.email);if(!detail)return res.status(404).json({error:crmError(req,'Client introuvable','Customer not found')});res.json(detail)});
+  app.put('/api/admin/crm/customers/:email/tags',adminOnly,(req,res)=>{const db=readDb(),meta=crmCore.updateCustomerTags(db,req.params.email,req.body?.tags);if(!meta)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,tags:meta.tags||[]})});
+  app.post('/api/admin/crm/customers/:email/notes',adminOnly,(req,res)=>{const db=readDb(),note=crmCore.addCustomerNote(db,req.params.email,req.body?.note,req.extensionSession?.email||'admin');if(!note)return res.status(400).json({error:crmError(req,'Une note est requise','A note is required')});writeDb(db);res.json({success:true,note})});
+  app.put('/api/admin/crm/customers/:email/preferences',adminOnly,(req,res)=>{const db=readDb(),preferences=crmCore.updateCustomerPreferences(db,req.params.email,req.body||{},req.extensionSession?.email||'admin');if(!preferences)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,preferences})});
   app.get('/api/admin/crm/leads',adminOnly,(req,res)=>res.json(crmCore.buildLeads(readDb())));
-  app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,(req,res)=>{const db=readDb(),lead=crmCore.updateLead(db,req.params.kind,req.params.id,req.body||{},req.extensionSession?.email||'admin');if(!lead)return res.status(404).json({error:'Lead not found'});writeDb(db);res.json({success:true,lead})});
+  app.post('/api/admin/crm/leads',adminOnly,(req,res)=>{const db=readDb(),lead=crmCore.createManualLead(db,req.body||{},req.extensionSession?.email||'admin');if(!lead)return res.status(400).json({error:crmError(req,'Nom et courriel requis','Name and email are required')});writeDb(db);res.json({success:true,lead})});
+  app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,(req,res)=>{const db=readDb(),lead=crmCore.updateLead(db,req.params.kind,req.params.id,req.body||{},req.extensionSession?.email||'admin');if(!lead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});writeDb(db);res.json({success:true,lead})});
+  app.get('/api/admin/crm/export/customers.csv',adminOnly,(req,res)=>{
+    const rows=crmCore.buildCustomerIndex(readDb()),body=csv(rows,[
+      {label:'Name',value:'name'},{label:'Email',value:'email'},{label:'Phone',value:'phone'},{label:'Account',value:r=>r.hasAccount?'yes':'no'},
+      {label:'Disabled',value:r=>r.disabled?'yes':'no'},{label:'Orders',value:'orderCount'},{label:'Paid orders',value:'paidOrderCount'},
+      {label:'Lifetime spend',value:'lifetimeSpend'},{label:'Events',value:'eventRequestCount'},{label:'Last activity',value:'lastActivity'},
+      {label:'Tags',value:r=>(r.tags||[]).join('|')},{label:'Preferred language',value:'preferredLanguage'},{label:'Marketing consent',value:r=>r.marketingConsent?'yes':'no'}
+    ]);
+    res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-customers.csv"');res.send('\uFEFF'+body);
+  });
+  app.get('/api/admin/crm/export/leads.csv',adminOnly,(req,res)=>{
+    const rows=crmCore.buildLeads(readDb()),body=csv(rows,[
+      {label:'Reference',value:'reference'},{label:'Name',value:'name'},{label:'Email',value:'email'},{label:'Phone',value:'phone'},
+      {label:'Title',value:'title'},{label:'Status',value:'status'},{label:'Owner',value:'owner'},{label:'Expected value',value:'expectedValue'},
+      {label:'Final value',value:'finalValue'},{label:'Source',value:'source'},{label:'Campaign',value:'campaign'},{label:'Next follow-up',value:'nextFollowUp'},
+      {label:'Lost reason',value:'lostReason'},{label:'Created',value:'createdAt'},{label:'Won at',value:'wonAt'},{label:'Tags',value:r=>(r.tags||[]).join('|')}
+    ]);
+    res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-leads.csv"');res.send('\uFEFF'+body);
+  });
+  app.get('/api/admin/crm/export/backup.json',adminOnly,(req,res)=>{
+    const db=readDb(),backup={version:2,exportedAt:new Date().toISOString(),customers:crmCore.buildCustomerIndex(db),leads:crmCore.buildLeads(db),crmCustomers:db.crmCustomers||{},crmLeads:db.crmLeads||[]};
+    res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-crm-backup.json"');res.send(JSON.stringify(backup,null,2));
+  });
 }
 
 function wrappedExpress(...args){
