@@ -241,7 +241,7 @@ function filteredLeads(){
 }
 function leadCard(l){
   const overdue=l.nextFollowUp&&l.nextFollowUp.slice(0,10)<new Date().toISOString().slice(0,10)&&!['won','lost'].includes(l.status);
-  return `<article class="crm-kanban-card ${overdue?'overdue':''}" draggable="true" ondragstart="ARTYCRM.dragStart(event,'${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')" onclick="ARTYCRM.openLeadEditor('${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')"><div class="crm-card-top"><span>${esc(l.reference||l.key)}</span><b>${money(l.finalValue||l.value||l.expectedValue)}</b></div><h4>${esc(l.name||l.email)}</h4><p>${esc(l.title||'')}</p><div class="crm-card-tags">${l.owner?`<span>${esc(state.team.find(t=>t.email===l.owner)?.name||l.owner)}</span>`:''}${l.source?`<span>${esc(l.source)}</span>`:''}${(l.tags||[]).slice(0,2).map(x=>`<span>${esc(x)}</span>`).join('')}</div>${l.nextFollowUp?`<small class="crm-follow ${overdue?'late':''}">${overdue?T('En retard','Overdue'):T('Suivi','Follow-up')}: ${date(l.nextFollowUp)}</small>`:''}${l.status==='lost'&&l.lostReason?`<small class="crm-lost-reason">${esc(lostLabel(l.lostReason))}</small>`:''}</article>`;
+  return `<article class="crm-kanban-card ${overdue?'overdue':''}" draggable="true" ondragstart="ARTYCRM.dragStart(event,'${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')" onclick="ARTYCRM.openLeadActions('${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')"><div class="crm-card-top"><span>${esc(l.reference||l.key)}</span><b>${money(l.finalValue||l.value||l.expectedValue)}</b></div><h4>${esc(l.name||l.email)}</h4><p>${esc(l.title||'')}</p><div class="crm-card-tags">${l.owner?`<span>${esc(state.team.find(t=>t.email===l.owner)?.name||l.owner)}</span>`:''}${l.source?`<span>${esc(l.source)}</span>`:''}${(l.tags||[]).slice(0,2).map(x=>`<span>${esc(x)}</span>`).join('')}</div>${l.nextFollowUp?`<small class="crm-follow ${overdue?'late':''}">${overdue?T('En retard','Overdue'):T('Suivi','Follow-up')}: ${dateTime(l.nextFollowUp)}</small>`:''}${l.status==='lost'&&l.lostReason?`<small class="crm-lost-reason">${esc(lostLabel(l.lostReason))}</small>`:''}</article>`;
 }
 function renderLeads(){
   const p=document.getElementById('adminCrmLeadsPanel');if(!p||!has('leads'))return;
@@ -253,6 +253,116 @@ function renderLeads(){
     <div class="crm-kanban">${statusOrder.map(s=>`<section class="crm-kanban-col" data-stage="${s}" ondragover="event.preventDefault()" ondrop="ARTYCRM.dropStage(event,'${s}')"><header><span class="crm-stage-dot ${s}"></span><strong>${esc(statusLabel(s))}</strong><b>${leads.filter(l=>l.status===s).length}</b></header><div class="crm-kanban-list">${leads.filter(l=>l.status===s).map(leadCard).join('')||`<div class="crm-drop-empty">${T('Déposez ici','Drop here')}</div>`}</div></section>`).join('')}</div>`;
 }
 function ownerOptions(selected=''){return `<option value="">${T('Non assigné','Unassigned')}</option>${state.team.map(t=>`<option value="${attr(t.email)}" ${selected===t.email?'selected':''}>${esc(t.name)}${t.role==='admin'?' · '+T('Admin','Admin'):''}</option>`).join('')}`}
+function modalLead(kind,idEncoded){
+  const id=decodeURIComponent(idEncoded);
+  return state.leads.find(l=>l.kind===kind&&String(l.id)===String(id))||null;
+}
+function showLeadModal(){
+  const m=document.getElementById('crmLeadModal');if(m)m.hidden=false;document.body.classList.add('crm-modal-open');
+}
+function openLeadActions(kind,idEncoded){
+  const lead=modalLead(kind,idEncoded);if(!lead)return;
+  state.editingLead={...lead};renderLeadActions();showLeadModal();
+}
+function leadPrimaryValue(l){return money(l.finalValue||l.expectedValue||l.value||0)}
+function renderLeadActions(){
+  const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l)return;
+  const terminal=['won','lost'].includes(l.status);
+  host.innerHTML=`<div class="crm-action-profile">
+    <div class="crm-editor-head"><span>${esc(statusLabel(l.status))}</span><h2>${esc(l.name||l.email)}</h2><p>${esc(l.title||'')} ${l.reference?'· '+esc(l.reference):''}</p></div>
+    <div class="crm-action-summary">
+      <div><small>${T('Valeur','Value')}</small><strong>${leadPrimaryValue(l)}</strong></div>
+      <div><small>${T('Responsable','Owner')}</small><strong>${esc(state.team.find(t=>t.email===l.owner)?.name||l.owner||T('Non assigné','Unassigned'))}</strong></div>
+      <div><small>${T('Prochain suivi','Next follow-up')}</small><strong>${l.nextFollowUp?esc(dateTime(l.nextFollowUp)):T('Aucun','None')}</strong></div>
+      <div><small>${T('Paiement','Payment')}</small><strong>${esc(l.quotePaymentStatus||'—')}</strong></div>
+    </div>
+    <div class="crm-quick-actions">
+      ${!terminal?`<button class="crm-action-tile primary" onclick="ARTYCRM.renderFollowUpAction()"><span>↗</span><strong>${T('Planifier un suivi','Schedule follow-up')}</strong><small>${T('Date, heure et rappel Google Calendar','Date, time and Google Calendar reminder')}</small></button>`:''}
+      ${l.kind==='event'&&l.status!=='won'?`<button class="crm-action-tile quote" onclick="ARTYCRM.renderQuoteAction()"><span>$</span><strong>${T('Envoyer un devis','Send quote')}</strong><small>${T('Courriel avec paiement Stripe sécurisé','Email with secure Stripe payment')}</small></button>`:''}
+      <button class="crm-action-tile" onclick="ARTYCRM.emailLead()"><span>@</span><strong>${T('Envoyer un courriel','Email client')}</strong><small>${esc(l.email||'')}</small></button>
+      ${l.phone?`<button class="crm-action-tile" onclick="ARTYCRM.callLead()"><span>☎</span><strong>${T('Appeler','Call')}</strong><small>${esc(l.phone)}</small></button>`:''}
+      <button class="crm-action-tile" onclick="ARTYCRM.openLeadCalendar()"><span>▣</span><strong>${T('Google Calendar','Google Calendar')}</strong><small>${l.nextFollowUp?T('Ouvrir ce suivi','Open this follow-up'):T('Ouvrir le calendrier','Open calendar')}</small></button>
+      ${l.status==='new'?`<button class="crm-action-tile" onclick="ARTYCRM.quickLeadStatus('contacted')"><span>✓</span><strong>${T('Marquer contacté','Mark contacted')}</strong><small>${T('Met à jour le pipeline','Updates the pipeline')}</small></button>`:''}
+      ${!terminal?`<button class="crm-action-tile danger" onclick="ARTYCRM.renderLostAction()"><span>×</span><strong>${T('Marquer perdu','Mark lost')}</strong><small>${T('Enregistrer la raison','Record the reason')}</small></button>`:''}
+      <button class="crm-action-tile secondary" onclick="ARTYCRM.renderLeadEditor()"><span>⋯</span><strong>${T('Modifier les détails','Edit details')}</strong><small>${T('Champs avancés du prospect','Advanced lead fields')}</small></button>
+    </div>
+    ${l.kind==='event'&&l.paymentLinkUrl?`<div class="crm-secure-link"><div><strong>${T('Lien de devis sécurisé','Secure quote link')}</strong><small>${T('Le client a reçu ce lien par courriel.','The customer received this link by email.')}</small></div><button class="btn btn-ghost btn-sm" onclick="ARTYCRM.openSecureQuote()">${T('Ouvrir','Open')}</button></div>`:''}
+    <div class="crm-action-footer"><button class="btn btn-ghost" onclick="ARTYCRM.closeLeadEditor()">${T('Fermer','Close')}</button></div>
+  </div>`;
+}
+function renderFollowUpAction(){
+  const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l)return;
+  host.innerHTML=`<div class="crm-editor-head"><span>${T('Action','Action')}</span><h2>${T('Planifier un suivi','Schedule follow-up')}</h2><p>${esc(l.name||l.email)}</p></div>
+    <div class="crm-action-form">
+      <label>${T('Date et heure','Date & time')}<input id="quickFollowDate" type="datetime-local" value="${attr((l.nextFollowUp||'').slice(0,16))}"></label>
+      <label>${T('Type','Type')}<select id="quickFollowType"><option value="call" ${(l.followUpType||'call')==='call'?'selected':''}>${T('Appel','Call')}</option><option value="email" ${l.followUpType==='email'?'selected':''}>${T('Courriel','Email')}</option><option value="meeting" ${l.followUpType==='meeting'?'selected':''}>${T('Réunion','Meeting')}</option><option value="quote" ${l.followUpType==='quote'?'selected':''}>${T('Suivi devis','Quote follow-up')}</option><option value="other" ${l.followUpType==='other'?'selected':''}>${T('Autre','Other')}</option></select></label>
+      <label>${T('Durée','Duration')}<select id="quickFollowDuration">${[15,30,45,60,90,120].map(m=>`<option value="${m}" ${Number(l.followUpDuration||30)===m?'selected':''}>${m} min</option>`).join('')}</select></label>
+      <label>${T('Responsable','Owner')}<select id="quickFollowOwner">${ownerOptions(l.owner||currentUser?.email||'')}</select></label>
+      <label class="wide">${T('Note interne','Internal note')}<textarea id="quickFollowNote" rows="3">${esc(l.adminNote||'')}</textarea></label>
+    </div>
+    <div class="crm-form-note">${T('En enregistrant, ARTY crée ou met à jour automatiquement le rendez-vous dans Google Calendar.','Saving automatically creates or updates the appointment in Google Calendar.')}</div>
+    <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="ARTYCRM.renderLeadActions()">${T('Retour','Back')}</button>${l.nextFollowUp?`<button class="btn btn-ghost" onclick="ARTYCRM.clearFollowUp()">${T('Supprimer le suivi','Remove follow-up')}</button>`:''}<button class="btn btn-orange" onclick="ARTYCRM.saveFollowUpAction()">${T('Planifier','Schedule')}</button></div>`;
+}
+async function saveFollowUpAction(){
+  const l=state.editingLead,dateValue=document.getElementById('quickFollowDate')?.value||'';
+  if(!l||!dateValue)return showToast(T('Choisissez une date et une heure','Choose a date and time'),'error');
+  const body={nextFollowUp:dateValue,followUpType:document.getElementById('quickFollowType')?.value||'call',followUpDuration:Number(document.getElementById('quickFollowDuration')?.value)||30,owner:document.getElementById('quickFollowOwner')?.value||currentUser?.email||'',adminNote:document.getElementById('quickFollowNote')?.value||''};
+  try{
+    const result=await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify(body)});
+    await refreshLeadAfterAction(l.kind,l.id);
+    showToast(result?.calendarSync?.action==='error'?T('Suivi enregistré; vérifiez Google Calendar','Follow-up saved; check Google Calendar'):T('Suivi ajouté à Google Calendar','Follow-up added to Google Calendar'),result?.calendarSync?.action==='error'?'warning':'success');
+    renderLeadActions();
+  }catch(e){showToast(e.message,'error')}
+}
+async function clearFollowUp(){
+  const l=state.editingLead;if(!l)return;
+  try{await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify({nextFollowUp:''})});await refreshLeadAfterAction(l.kind,l.id);showToast(T('Suivi supprimé','Follow-up removed'),'success');renderLeadActions()}catch(e){showToast(e.message,'error')}
+}
+function renderQuoteAction(){
+  const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l||l.kind!=='event')return;
+  host.innerHTML=`<div class="crm-editor-head"><span>${T('Devis sécurisé','Secure quote')}</span><h2>${T('Envoyer le devis au client','Send quote to client')}</h2><p>${esc(l.name||l.email)} · ${esc(l.email||'')}</p></div>
+    <div class="crm-quote-banner"><div><strong>${T('Paiement Stripe sécurisé','Secure Stripe payment')}</strong><small>${T('ARTY génère un lien personnel valable 30 jours et l’envoie par courriel. Après paiement, le prospect passe automatiquement à Gagné.','ARTY generates a personal 30-day link and emails it. After payment, the lead automatically becomes Won.')}</small></div></div>
+    <div class="crm-action-form">
+      <label>${T('Montant du devis (CAD)','Quote amount (CAD)')}<input id="quickQuoteAmount" type="number" min=".50" step=".01" value="${Number(l.expectedValue||l.value||0)||''}" placeholder="500.00"></label>
+      <label class="wide">${T('Description visible au client','Description shown to client')}<textarea id="quickQuoteDescription" rows="6" placeholder="${T('Ex.: Expérience artistique privée pour 20 personnes, matériel inclus…','E.g. Private art experience for 20 guests, materials included…')}">${esc(l.quoteDescription||'')}</textarea></label>
+    </div>
+    <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="ARTYCRM.renderLeadActions()">${T('Retour','Back')}</button><button class="btn btn-orange" onclick="ARTYCRM.sendQuoteAction()">${T('Envoyer le devis sécurisé','Send secure quote')}</button></div>`;
+}
+async function sendQuoteAction(){
+  const l=state.editingLead,amount=Number(document.getElementById('quickQuoteAmount')?.value)||0,quoteDescription=document.getElementById('quickQuoteDescription')?.value.trim()||'';
+  if(!l||l.kind!=='event')return;if(amount<.5)return showToast(T('Entrez un montant valide','Enter a valid amount'),'error');
+  if(!confirm(T('Envoyer ce devis au client par courriel maintenant?','Send this quote to the customer by email now?')))return;
+  try{
+    const result=await api('/api/admin/event-requests/'+encodeURIComponent(l.id)+'/payment-link',{method:'POST',body:JSON.stringify({quoteAmount:amount,quoteDescription})});
+    await refreshLeadAfterAction(l.kind,l.id);
+    showToast(result.emailStatus==='sent'?T('Devis envoyé. Le client peut maintenant payer en ligne.','Quote sent. The customer can now pay online.'):T('Lien créé, mais vérifiez la livraison du courriel.','Link created, but check email delivery.'),result.emailStatus==='sent'?'success':'warning');
+    renderLeadActions();
+  }catch(e){showToast(e.message,'error')}
+}
+function renderLostAction(){
+  const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l)return;
+  host.innerHTML=`<div class="crm-editor-head"><span>${T('Pipeline','Pipeline')}</span><h2>${T('Marquer ce prospect perdu','Mark this lead lost')}</h2><p>${esc(l.name||l.email)}</p></div>
+    <div class="crm-action-form"><label class="wide">${T('Raison','Reason')}<select id="quickLostReason"><option value="">—</option>${['price','no_response','date_unavailable','cancelled','not_fit','competitor','other'].map(x=>`<option value="${x}">${esc(lostLabel(x))}</option>`).join('')}</select></label></div>
+    <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="ARTYCRM.renderLeadActions()">${T('Retour','Back')}</button><button class="btn btn-orange" onclick="ARTYCRM.saveLostAction()">${T('Marquer perdu','Mark lost')}</button></div>`;
+}
+async function saveLostAction(){
+  const reason=document.getElementById('quickLostReason')?.value||'';if(!reason)return showToast(T('Choisissez une raison','Choose a reason'),'error');
+  await quickLeadStatus('lost',{lostReason:reason});
+}
+async function quickLeadStatus(status,extra={}){
+  const l=state.editingLead;if(!l)return;
+  try{await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify({status,...extra})});await refreshLeadAfterAction(l.kind,l.id);showToast(T('Pipeline mis à jour','Pipeline updated'),'success');renderLeadActions()}catch(e){showToast(e.message,'error')}
+}
+async function refreshLeadAfterAction(kind,id){
+  await Promise.all([loadLeads(),loadOverview(),loadCustomers()]);
+  const refreshed=state.leads.find(x=>x.kind===kind&&String(x.id)===String(id));if(refreshed)state.editingLead={...refreshed};
+  renderLeads();
+}
+function emailLead(){const l=state.editingLead;if(l?.email)window.location.href='mailto:'+encodeURIComponent(l.email)}
+function callLead(){const l=state.editingLead;if(l?.phone)window.location.href='tel:'+String(l.phone).replace(/[^+0-9]/g,'')}
+function openLeadCalendar(){const l=state.editingLead,url=l?.calendar?.htmlLink||'https://calendar.google.com/calendar/u/0/r';window.open(url,'_blank','noopener')}
+function openSecureQuote(){const url=state.editingLead?.paymentLinkUrl;if(url)window.open(url,'_blank','noopener')}
+
 function openLeadEditor(kind,idEncoded,forcedStatus=''){
   const id=decodeURIComponent(idEncoded),lead=kind?state.leads.find(l=>l.kind===kind&&String(l.id)===String(id)):null;
   state.editingLead=lead?{...lead}:{kind:'manual',id:'',status:'new',name:'',email:'',phone:'',title:'',eventType:'',preferredDate:'',expectedValue:0,value:0,finalValue:0,source:'manual',campaign:'',owner:currentUser?.email||'',nextFollowUp:'',followUpType:'call',followUpDuration:30,tags:[],adminNote:'',lostReason:'',message:''};
@@ -317,7 +427,7 @@ async function dropStage(event,status){
 }
 function openLeadByKey(kind,idEncoded){
   if(!has('leads'))return;
-  section('leads').then(()=>openLeadEditor(kind,idEncoded));
+  section('leads').then(()=>openLeadActions(kind,idEncoded));
 }
 
 async function download(type){
@@ -398,7 +508,7 @@ window.ARTYCRM={
   searchCustomers:q=>{state.customerQuery=q;renderCustomers()},filterCustomers:v=>{state.customerFilter=v;renderCustomers()},
   searchLeads:q=>{state.leadQuery=q;renderLeads()},filterOwner:v=>{state.leadOwner=v;renderLeads()},filterStatus:v=>{state.leadStatus=v;renderLeads()},
   saveCustomerTags,addCustomerNote,saveAccount,toggleAccount,sendPasswordReset,resendWelcome,
-  newLead,openLeadEditor,closeLeadEditor,saveLeadEditor,dragStart,dropStage,openLeadByKey,download
+  newLead,openLeadActions,openLeadEditor,renderLeadEditor,renderLeadActions,renderFollowUpAction,saveFollowUpAction,clearFollowUp,renderQuoteAction,sendQuoteAction,renderLostAction,saveLostAction,quickLeadStatus,emailLead,callLead,openLeadCalendar,openSecureQuote,closeLeadEditor,saveLeadEditor,dragStart,dropStage,openLeadByKey,download
 };
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
