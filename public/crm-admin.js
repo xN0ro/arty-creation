@@ -235,7 +235,7 @@ function renderLeads(){
 function ownerOptions(selected=''){return `<option value="">${T('Non assigné','Unassigned')}</option>${state.team.map(t=>`<option value="${attr(t.email)}" ${selected===t.email?'selected':''}>${esc(t.name)}${t.role==='admin'?' · '+T('Admin','Admin'):''}</option>`).join('')}`}
 function openLeadEditor(kind,idEncoded,forcedStatus=''){
   const id=decodeURIComponent(idEncoded),lead=kind?state.leads.find(l=>l.kind===kind&&String(l.id)===String(id)):null;
-  state.editingLead=lead?{...lead}:{kind:'manual',id:'',status:'new',name:'',email:'',phone:'',title:'',eventType:'',preferredDate:'',expectedValue:0,value:0,finalValue:0,source:'manual',campaign:'',owner:currentUser?.email||'',nextFollowUp:'',tags:[],adminNote:'',lostReason:'',message:''};
+  state.editingLead=lead?{...lead}:{kind:'manual',id:'',status:'new',name:'',email:'',phone:'',title:'',eventType:'',preferredDate:'',expectedValue:0,value:0,finalValue:0,source:'manual',campaign:'',owner:currentUser?.email||'',nextFollowUp:'',followUpType:'call',followUpDuration:30,tags:[],adminNote:'',lostReason:'',message:''};
   if(forcedStatus)state.editingLead.status=forcedStatus;
   renderLeadEditor();const m=document.getElementById('crmLeadModal');m.hidden=false;document.body.classList.add('crm-modal-open');
 }
@@ -253,7 +253,9 @@ function renderLeadEditor(){
       <label>${T('Responsable','Owner')}<select id="leadOwner">${ownerOptions(l.owner||'')}</select></label>
       <label>${T('Valeur estimée','Expected value')}<input id="leadValue" type="number" min="0" step="0.01" value="${Number(l.expectedValue||l.value||0)}" ${manual?'':'disabled'}></label>
       <label>${T('Valeur finale','Final value')}<input id="leadFinalValue" type="number" min="0" step="0.01" value="${Number(l.finalValue||0)}"></label>
-      <label>${T('Prochain suivi','Next follow-up')}<input id="leadFollow" type="date" value="${attr((l.nextFollowUp||'').slice(0,10))}"></label>
+      <label>${T('Prochain suivi','Next follow-up')}<input id="leadFollow" type="datetime-local" value="${attr((l.nextFollowUp||'').slice(0,16))}"></label>
+      <label>${T('Type de suivi','Follow-up type')}<select id="leadFollowType"><option value="call" ${(l.followUpType||'call')==='call'?'selected':''}>${T('Appel','Call')}</option><option value="email" ${l.followUpType==='email'?'selected':''}>${T('Courriel','Email')}</option><option value="meeting" ${l.followUpType==='meeting'?'selected':''}>${T('Réunion','Meeting')}</option><option value="quote" ${l.followUpType==='quote'?'selected':''}>${T('Suivi devis','Quote follow-up')}</option><option value="other" ${l.followUpType==='other'?'selected':''}>${T('Autre','Other')}</option></select></label>
+      <label>${T('Durée','Duration')}<select id="leadFollowDuration">${[15,30,45,60,90,120].map(m=>`<option value="${m}" ${Number(l.followUpDuration||30)===m?'selected':''}>${m} min</option>`).join('')}</select></label>
       <label>${T('Date souhaitée','Preferred date')}<input id="leadPreferredDate" type="date" value="${attr((l.preferredDate||'').slice(0,10))}" ${manual?'':'disabled'}></label>
       <label>${T('Source','Source')}<input id="leadSource" value="${attr(l.source||'')}" ${manual?'':'disabled'} placeholder="Instagram, phone, referral"></label>
       <label>${T('Campagne','Campaign')}<input id="leadCampaign" value="${attr(l.campaign||'')}" ${manual?'':'disabled'}></label>
@@ -271,6 +273,8 @@ async function saveLeadEditor(){
     status:document.getElementById('leadStatus')?.value||'new',
     owner:document.getElementById('leadOwner')?.value||'',
     nextFollowUp:document.getElementById('leadFollow')?.value||'',
+    followUpType:document.getElementById('leadFollowType')?.value||'call',
+    followUpDuration:Number(document.getElementById('leadFollowDuration')?.value)||30,
     finalValue:Number(document.getElementById('leadFinalValue')?.value)||0,
     lostReason:document.getElementById('leadLostReason')?.value||'',
     tags:(document.getElementById('leadTags')?.value||'').split(',').map(x=>x.trim()).filter(Boolean),
@@ -279,9 +283,10 @@ async function saveLeadEditor(){
   if(manual)Object.assign(body,{name:document.getElementById('leadName')?.value||'',email:document.getElementById('leadEmail')?.value||'',phone:document.getElementById('leadPhone')?.value||'',title:document.getElementById('leadTitle')?.value||'',preferredDate:document.getElementById('leadPreferredDate')?.value||'',value:Number(document.getElementById('leadValue')?.value)||0,source:document.getElementById('leadSource')?.value||'',campaign:document.getElementById('leadCampaign')?.value||'',message:document.getElementById('leadMessage')?.value||''});
   if(body.status==='lost'&&!body.lostReason)return showToast(T('Choisissez une raison pour le prospect perdu','Choose a lost reason'),'error');
   try{
-    if(isNew)await api('/api/admin/crm/leads',{method:'POST',body:JSON.stringify(body)});
-    else await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify(body)});
-    showToast(isNew?T('Prospect créé','Lead created'):T('Prospect mis à jour','Lead updated'),'success');closeLeadEditor();await Promise.all([loadLeads(),loadOverview(),loadCustomers()]);renderLeads();
+    const result=isNew?await api('/api/admin/crm/leads',{method:'POST',body:JSON.stringify(body)}):await api('/api/admin/crm/leads/'+encodeURIComponent(l.kind)+'/'+encodeURIComponent(l.id),{method:'PATCH',body:JSON.stringify(body)});
+    const calendarState=result?.calendarSync?.action;
+    const message=calendarState==='error'?T('Prospect enregistré; synchronisation Google Calendar à vérifier','Lead saved; Google Calendar sync needs attention'):isNew?T('Prospect créé','Lead created'):T('Prospect mis à jour','Lead updated');
+    showToast(message,calendarState==='error'?'warning':'success');closeLeadEditor();await Promise.all([loadLeads(),loadOverview(),loadCustomers()]);renderLeads();
   }catch(e){showToast(e.message,'error')}
 }
 function dragStart(event,kind,idEncoded){state.dragLead={kind,id:decodeURIComponent(idEncoded)};event.dataTransfer.effectAllowed='move'}
