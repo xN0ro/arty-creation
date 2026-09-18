@@ -325,7 +325,7 @@ function cleanExpiredSessions(db) {
   return db.sessions.length !== before;
 }
 
-const ADMIN_PERMISSION_KEYS = ['dashboard','crm_dashboard','customers','leads','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
+const ADMIN_PERMISSION_KEYS = ['dashboard','crm_dashboard','customers','leads','account_management','products','inventory','promotions','orders','support','events','categories','marketing','settings'];
 
 function normalizeStaffPermissions(value) {
   const allowed = new Set(ADMIN_PERMISSION_KEYS);
@@ -362,6 +362,7 @@ function adminPermissionRequirement(req) {
   const path = String(req.originalUrl || req.url || '').split('?')[0].replace(/^\/api\/admin\/?/,'');
   const method = String(req.method || 'GET').toUpperCase();
   if (path.startsWith('access-grants')) return '__owner';
+  if (path.startsWith('crm/customers') && (path.endsWith('/disable') || path.endsWith('/password-reset') || path.endsWith('/resend-welcome'))) return 'account_management';
   if (path.startsWith('crm/customers')) return 'customers';
   if (path.startsWith('crm/leads')) return 'leads';
   if (path.startsWith('crm')) return 'crm_dashboard';
@@ -1234,7 +1235,7 @@ function sendStaffAccessInviteEmail(grant, token) {
   const siteUrl = normalizePublicUrl();
   const inviteUrl = `${siteUrl}/api/staff-invite/accept?token=${encodeURIComponent(token)}`;
   const permissionLabels = {
-    dashboard:'Dashboard & analytics', crm_dashboard:'CRM overview', customers:'Customers', leads:'Leads & sales', products:'Products', inventory:'Inventory', promotions:'Promotions',
+    dashboard:'Dashboard & analytics', crm_dashboard:'CRM overview', customers:'Customers', leads:'Leads & sales', account_management:'Account security', products:'Products', inventory:'Inventory', promotions:'Promotions',
     orders:'Orders & refunds', support:'Customer support', events:'Events & tickets', categories:'Categories',
     marketing:'Marketing', settings:'Site settings'
   };
