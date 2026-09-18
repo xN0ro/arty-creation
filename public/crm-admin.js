@@ -5,7 +5,7 @@
 const state={
   summary:null,actions:null,reporting:null,customers:[],leads:[],team:[],customer:null,
   customerQuery:'',customerFilter:'all',leadQuery:'',leadOwner:'all',leadStatus:'all',
-  dragLead:null,editingLead:null
+  dragLead:null,editingLead:null,activeSection:'overview'
 };
 const EN=()=>{try{return I18n.language?.()==='en'}catch{return false}};
 const T=(fr,en)=>EN()?en:fr;
@@ -47,10 +47,10 @@ async function api(path,opts={}){
   if(!r.ok)throw new Error(d.error||T('Erreur CRM','CRM error'));
   return d;
 }
-function addTab(key,label,afterSelector){
-  const tabs=document.querySelector('.admin-tabs');if(!tabs||tabs.querySelector('[data-crm-tab="'+key+'"]'))return;
-  const b=document.createElement('button');b.type='button';b.className='admin-tab';b.dataset.crmTab=key;b.textContent=label;b.setAttribute('onclick',`switchAdminTab('${key}',this)`);
-  const after=tabs.querySelector(afterSelector)||tabs.querySelector('.admin-tab[onclick*="dashboard"]');if(after)after.insertAdjacentElement('afterend',b);else tabs.appendChild(b);
+function addCrmTab(){
+  const tabs=document.querySelector('.admin-tabs');if(!tabs||tabs.querySelector('[data-crm-main]'))return;
+  const b=document.createElement('button');b.type='button';b.className='admin-tab';b.dataset.crmMain='1';b.textContent='CRM';b.setAttribute('onclick',"switchAdminTab('crm',this)");
+  const after=tabs.querySelector('.admin-tab[onclick*="dashboard"]');if(after)after.insertAdjacentElement('afterend',b);else tabs.prepend(b);
 }
 function ensurePanels(){
   const container=document.querySelector('.admin-pro-container')||document.querySelector('#page-admin .container');if(!container)return;
@@ -60,11 +60,23 @@ function ensurePanels(){
     const anchor=document.getElementById(after);anchor?.insertAdjacentElement('afterend',p)||container.appendChild(p);
   }
 }
+function defaultSection(){
+  if(has('crm_dashboard'))return'overview';
+  if(has('leads'))return'leads';
+  if(has('customers'))return'customers';
+  return'overview';
+}
+function crmNav(active){
+  const items=[];
+  if(has('crm_dashboard'))items.push(['overview',T('Aperçu','Overview'),T('Actions, suivis et statistiques','Actions, follow-ups & stats')]);
+  if(has('leads'))items.push(['leads',T('Prospects','Leads'),T('Pipeline et ventes','Pipeline & sales')]);
+  if(has('customers'))items.push(['customers',T('Clients','Customers'),T('Profils et historique','Profiles & history')]);
+  return `<div class="crm-workspace-head"><div><span>ARTY CRM</span><strong>${T('Espace ventes','Sales workspace')}</strong></div><nav class="crm-subnav" aria-label="${T('Navigation CRM','CRM navigation')}">${items.map(([key,label,sub])=>`<button type="button" class="${active===key?'active':''}" onclick="ARTYCRM.section('${key}')"><span>${esc(label)}</span><small>${esc(sub)}</small></button>`).join('')}</nav></div>`;
+}
 function ensure(){
   if(!currentUser||!['admin','staff'].includes(currentUser.role))return;
-  if(has('crm_dashboard'))addTab('crmOverview',T('CRM','CRM'),'.admin-tab[onclick*="dashboard"]');
-  if(has('customers'))addTab('crmCustomers',T('Clients','Customers'),'[data-crm-tab="crmOverview"]');
-  if(has('leads'))addTab('crmLeads',T('Prospects','Leads'),'[data-crm-tab="crmCustomers"]');
+  document.querySelectorAll('[data-crm-tab]').forEach(el=>el.remove());
+  if(has('crm_dashboard')||has('customers')||has('leads'))addCrmTab();
   ensurePanels();styles();ensureModal();
 }
 function ensureModal(){
@@ -98,7 +110,7 @@ function actionLeadCard(l,kind=''){
 function renderOverview(){
   const p=document.getElementById('adminCrmOverviewPanel');if(!p||!has('crm_dashboard'))return;
   const s=state.summary||{},a=state.actions||{},r=state.reporting||{rates:{},totals:{},sources:[],eventTypes:[]};
-  p.innerHTML=`
+  p.innerHTML=`${crmNav('overview')}
     <div class="crm-head"><div><span>CRM</span><h2>${T('Centre d’action ventes','Sales action centre')}</h2><p>${T('Ce qui demande votre attention aujourd’hui, puis les indicateurs qui expliquent ce qui transforme les prospects en ventes.','What needs attention today, followed by the metrics that explain what turns leads into sales.')}</p></div><div class="crm-head-actions">${currentUser?.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="ARTYCRM.download('backup')">${T('Sauvegarde CRM','CRM backup')}</button>`:''}</div></div>
     <div class="crm-stats">${stat(T('Nouveaux prospects','New leads'),s.newLeads||0)}${stat(T('Suivis en retard','Overdue follow-ups'),s.followUpsDue||0)}${stat(T('Suivis aujourd’hui','Follow-ups today'),s.followUpsToday||0)}${stat(T('Pipeline ouvert','Open pipeline'),money(s.openPipelineValue||0))}</div>
     <div class="crm-action-grid">
@@ -142,7 +154,7 @@ function customerVisible(c){
 function renderCustomers(){
   const p=document.getElementById('adminCrmCustomersPanel');if(!p||!has('customers'))return;
   const rows=state.customers.filter(customerVisible);
-  p.innerHTML=`
+  p.innerHTML=`${crmNav('customers')}
     <div class="crm-head"><div><span>CRM</span><h2>${T('Clients','Customers')}</h2><p>${T('Historique complet, comptes, commandes, événements, préférences et notes internes.','Complete history, accounts, orders, events, preferences and internal notes.')}</p></div><div class="crm-head-actions"><button class="btn btn-ghost btn-sm" onclick="ARTYCRM.download('customers')">${T('Exporter CSV','Export CSV')}</button></div></div>
     <div class="crm-toolbar"><input type="search" value="${attr(state.customerQuery)}" placeholder="${T('Rechercher nom, courriel, téléphone ou étiquette…','Search name, email, phone or tag…')}" oninput="ARTYCRM.searchCustomers(this.value)"><select onchange="ARTYCRM.filterCustomers(this.value)"><option value="all">${T('Tous les contacts','All contacts')}</option><option value="accounts" ${state.customerFilter==='accounts'?'selected':''}>${T('Comptes ARTY','ARTY accounts')}</option><option value="leads" ${state.customerFilter==='leads'?'selected':''}>${T('Avec prospect','With leads')}</option><option value="repeat" ${state.customerFilter==='repeat'?'selected':''}>${T('Clients récurrents','Repeat customers')}</option><option value="disabled" ${state.customerFilter==='disabled'?'selected':''}>${T('Comptes désactivés','Disabled accounts')}</option></select></div>
     <div class="crm-layout"><div class="crm-list"><div class="crm-table-head"><span>${T('Client','Customer')}</span><span>${T('Activité','Activity')}</span><span>${T('Valeur','Value')}</span></div>
@@ -213,7 +225,7 @@ function leadCard(l){
 function renderLeads(){
   const p=document.getElementById('adminCrmLeadsPanel');if(!p||!has('leads'))return;
   const leads=filteredLeads(),s=state.summary||{};
-  p.innerHTML=`
+  p.innerHTML=`${crmNav('leads')}
     <div class="crm-head"><div><span>CRM</span><h2>${T('Pipeline de ventes','Sales pipeline')}</h2><p>${T('Glissez les cartes entre les étapes, assignez un responsable et gardez chaque suivi visible.','Drag cards between stages, assign an owner and keep every follow-up visible.')}</p></div><div class="crm-head-actions"><button class="btn btn-ghost btn-sm" onclick="ARTYCRM.download('leads')">${T('Exporter CSV','Export CSV')}</button><button class="btn btn-orange btn-sm" onclick="ARTYCRM.newLead()">＋ ${T('Ajouter un prospect','Add lead')}</button></div></div>
     <div class="crm-stats">${stat(T('Nouveaux','New'),s.newLeads||state.leads.filter(l=>l.status==='new').length)}${stat(T('Suivis en retard','Overdue'),s.followUpsDue||0)}${stat(T('Pipeline','Pipeline'),money(s.openPipelineValue||0))}${stat(T('Gagné','Won'),money(s.wonValue||0))}</div>
     <div class="crm-toolbar"><input type="search" value="${attr(state.leadQuery)}" placeholder="${T('Rechercher un prospect…','Search leads…')}" oninput="ARTYCRM.searchLeads(this.value)"><select onchange="ARTYCRM.filterOwner(this.value)"><option value="all">${T('Toute l’équipe','All team')}</option>${state.team.map(t=>`<option value="${attr(t.email)}" ${state.leadOwner===t.email?'selected':''}>${esc(t.name)}</option>`).join('')}</select><select onchange="ARTYCRM.filterStatus(this.value)"><option value="all">${T('Toutes les étapes','All stages')}</option>${statusOrder.map(s=>`<option value="${s}" ${state.leadStatus===s?'selected':''}>${esc(statusLabel(s))}</option>`).join('')}</select></div>
@@ -279,7 +291,7 @@ async function dropStage(event,status){
 }
 function openLeadByKey(kind,idEncoded){
   if(!has('leads'))return;
-  showTab('crmLeads',document.querySelector('[data-crm-tab="crmLeads"]')).then(()=>openLeadEditor(kind,idEncoded));
+  section('leads').then(()=>openLeadEditor(kind,idEncoded));
 }
 
 async function download(type){
@@ -289,13 +301,27 @@ async function download(type){
     const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=type==='customers'?'arty-customers.csv':type==='leads'?'arty-leads.csv':'arty-crm-backup.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){showToast(e.message,'error')}
 }
-async function showTab(tab,button){
-  ensure();document.querySelectorAll('.admin-tab').forEach(x=>x.classList.remove('active'));button?.classList.add('active');
+async function section(next){
+  if(next==='overview'&&!has('crm_dashboard'))next=defaultSection();
+  if(next==='leads'&&!has('leads'))next=defaultSection();
+  if(next==='customers'&&!has('customers'))next=defaultSection();
+  state.activeSection=next;
+  document.querySelectorAll('#page-admin [id^="adminCrm"][id$="Panel"]').forEach(x=>x.style.display='none');
+  if(next==='overview'){
+    const panel=document.getElementById('adminCrmOverviewPanel');if(panel)panel.style.display='block';
+    await loadOverview();renderOverview();
+  }else if(next==='leads'){
+    const panel=document.getElementById('adminCrmLeadsPanel');if(panel)panel.style.display='block';
+    await Promise.all([loadLeads(),loadOverview()]);renderLeads();
+  }else{
+    const panel=document.getElementById('adminCrmCustomersPanel');if(panel)panel.style.display='block';
+    await loadCustomers();renderCustomers();
+  }
+}
+async function showCrm(button){
+  ensure();document.querySelectorAll('.admin-tab').forEach(x=>x.classList.remove('active'));(button||document.querySelector('[data-crm-main]'))?.classList.add('active');
   document.querySelectorAll('#page-admin [id^="admin"][id$="Panel"]').forEach(x=>x.style.display='none');
-  const id=tab==='crmOverview'?'adminCrmOverviewPanel':tab==='crmCustomers'?'adminCrmCustomersPanel':'adminCrmLeadsPanel',panel=document.getElementById(id);if(panel)panel.style.display='block';
-  if(tab==='crmOverview'){await loadOverview();renderOverview()}
-  if(tab==='crmCustomers'){await loadCustomers();renderCustomers()}
-  if(tab==='crmLeads'){await Promise.all([loadLeads(),loadOverview()]);renderLeads()}
+  await section(state.activeSection&&((state.activeSection==='overview'&&has('crm_dashboard'))||(state.activeSection==='leads'&&has('leads'))||(state.activeSection==='customers'&&has('customers')))?state.activeSection:defaultSection());
 }
 
 function install(){
@@ -303,7 +329,7 @@ function install(){
   const base=window.switchAdminTab;
   if(typeof base==='function'&&!base.__crmV2Wrapped){
     const wrapped=function(tab,button,...rest){
-      if(tab==='crmOverview'||tab==='crmCustomers'||tab==='crmLeads')return showTab(tab,button);
+      if(tab==='crm')return showCrm(button);
       return base.call(this,tab,button,...rest);
     };wrapped.__crmV2Wrapped=true;window.switchAdminTab=wrapped;
   }
@@ -316,6 +342,7 @@ function install(){
 function styles(){
   if(document.getElementById('artyCrmStyles'))return;
   const s=document.createElement('style');s.id='artyCrmStyles';s.textContent=`
+  .crm-workspace-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 18px;border:1px solid var(--border-light);border-radius:18px;background:linear-gradient(135deg,#fff,#f6fbfb)}.crm-workspace-head>div{display:grid;gap:2px;min-width:max-content}.crm-workspace-head>div span{font-size:.64rem;letter-spacing:.12em;font-weight:900;color:var(--teal)}.crm-workspace-head>div strong{font-size:.98rem}.crm-subnav{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.crm-subnav button{display:grid;gap:1px;min-width:130px;padding:9px 12px;border:1px solid var(--border-light);border-radius:12px;background:#fff;text-align:left;color:inherit;cursor:pointer}.crm-subnav button:hover{border-color:rgba(27,154,170,.35)}.crm-subnav button.active{border-color:var(--teal);background:var(--teal-pale)}.crm-subnav span{font-size:.75rem;font-weight:900}.crm-subnav small{font-size:.59rem;color:var(--text-light)}
   .crm-head{display:flex;justify-content:space-between;align-items:end;gap:18px;margin:8px 0 18px}.crm-head>div:first-child>span{font-size:.73rem;font-weight:900;letter-spacing:.1em;color:var(--teal)}.crm-head h2{margin:2px 0;font-size:1.7rem}.crm-head p{margin:0;color:var(--text-light);max-width:760px}.crm-head-actions{display:flex;gap:8px;flex-wrap:wrap}
   .crm-stats,.crm-report-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.crm-report-stats{grid-template-columns:repeat(5,minmax(0,1fr))}.crm-stat{padding:15px 16px;border:1px solid var(--border-light);border-radius:16px;background:#fff;box-shadow:0 5px 18px rgba(44,36,24,.025)}.crm-stat span,.crm-stat small{display:block;color:var(--text-light);font-size:.72rem}.crm-stat strong{display:block;font-size:1.35rem;margin:3px 0}
   .crm-section{padding:18px;border:1px solid var(--border-light);border-radius:18px;background:#fff}.crm-section-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:14px}.crm-section-head h3,.crm-section h4{margin:0}.crm-section-head p{margin:3px 0 0;color:var(--text-light);font-size:.78rem}.crm-action-grid,.crm-report-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}.crm-action-block{padding:11px 0;border-top:1px solid var(--border-light)}.crm-action-block:first-of-type{border-top:0}.crm-action-block>h4{font-size:.78rem;margin-bottom:7px}.crm-action-row{display:flex;justify-content:space-between;gap:12px;width:100%;padding:10px;border:0;border-radius:11px;background:transparent;text-align:left;color:inherit;cursor:pointer}.crm-action-row:hover{background:var(--bg2)}.crm-action-row span{display:grid}.crm-action-row small{color:var(--text-light);font-size:.69rem}.crm-action-row b{text-align:right}.crm-mini-alert{display:flex;align-items:center;gap:10px;padding:14px;border-radius:12px;background:var(--orange-pale,#fff5ea)}.crm-mini-alert strong{font-size:1.6rem}.crm-mini-alert span{font-size:.8rem}.crm-operation-row{display:flex;justify-content:space-between;gap:12px;padding:9px 5px;border-bottom:1px solid var(--border-light)}.crm-operation-row:last-child{border-bottom:0}.crm-operation-row span{display:grid}.crm-operation-row small{font-size:.68rem;color:var(--text-light)}.crm-operation-row b{font-size:.78rem;text-align:right}
@@ -328,12 +355,12 @@ function styles(){
   .crm-modal[hidden]{display:none}.crm-modal{position:fixed;inset:0;z-index:10030;display:grid;place-items:center;padding:20px}.crm-modal-backdrop{position:absolute;inset:0;border:0;background:rgba(25,22,18,.55)}.crm-modal-sheet{position:relative;width:min(760px,100%);max-height:92vh;overflow:auto;padding:22px;border-radius:20px;background:#fff;box-shadow:0 24px 70px rgba(0,0,0,.2)}.crm-modal-close{position:absolute;right:12px;top:10px;border:0;background:transparent;font-size:1.8rem;cursor:pointer}.crm-editor-head>span{font-size:.68rem;font-weight:900;color:var(--teal)}.crm-editor-head h2{margin:3px 0}.crm-editor-head p{margin:0 0 15px;color:var(--text-light)}.crm-editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.crm-editor-grid label.wide{grid-column:1/-1}.crm-editor-grid input:disabled{background:#f5f4f0;color:#777}.crm-editor-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}.crm-modal-open{overflow:hidden}
   .crm-empty{padding:24px;text-align:center;color:var(--text-light)}.crm-empty.compact{padding:12px;font-size:.74rem}
   @media(max-width:1100px){.crm-stats,.crm-report-stats{grid-template-columns:repeat(2,1fr)}.crm-action-grid,.crm-report-grid,.crm-layout{grid-template-columns:1fr}.crm-detail{max-height:none}}
-  @media(max-width:680px){.crm-head{align-items:stretch;flex-direction:column}.crm-head-actions>*{flex:1}.crm-stats,.crm-report-stats{grid-template-columns:1fr 1fr}.crm-table-head{display:none}.crm-customer-row{grid-template-columns:1fr}.crm-account-form,.crm-preference-grid,.crm-editor-grid{grid-template-columns:1fr}.crm-editor-grid label.wide{grid-column:auto}.crm-detail{padding:14px}.crm-modal{padding:8px}.crm-modal-sheet{padding:18px 14px}.crm-report-table>div{grid-template-columns:1.2fr .5fr .65fr .75fr;font-size:.66rem}}
+  @media(max-width:680px){.crm-workspace-head{align-items:stretch;flex-direction:column}.crm-subnav{display:grid;grid-template-columns:1fr}.crm-subnav button{width:100%}.crm-head{align-items:stretch;flex-direction:column}.crm-head-actions>*{flex:1}.crm-stats,.crm-report-stats{grid-template-columns:1fr 1fr}.crm-table-head{display:none}.crm-customer-row{grid-template-columns:1fr}.crm-account-form,.crm-preference-grid,.crm-editor-grid{grid-template-columns:1fr}.crm-editor-grid label.wide{grid-column:auto}.crm-detail{padding:14px}.crm-modal{padding:8px}.crm-modal-sheet{padding:18px 14px}.crm-report-table>div{grid-template-columns:1.2fr .5fr .65fr .75fr;font-size:.66rem}}
   `;document.head.appendChild(s);
 }
 
 window.ARTYCRM={
-  install,loadAll,renderOverview,renderCustomers,renderLeads,openCustomer,
+  install,loadAll,renderOverview,renderCustomers,renderLeads,openCustomer,section,
   searchCustomers:q=>{state.customerQuery=q;renderCustomers()},filterCustomers:v=>{state.customerFilter=v;renderCustomers()},
   searchLeads:q=>{state.leadQuery=q;renderLeads()},filterOwner:v=>{state.leadOwner=v;renderLeads()},filterStatus:v=>{state.leadStatus=v;renderLeads()},
   saveCustomerTags,addCustomerNote,saveAccount,toggleAccount,sendPasswordReset,resendWelcome,
