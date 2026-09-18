@@ -84,3 +84,38 @@ test('lost reasons are stored only for lost leads',()=>{
   lead=crm.updateLead(db,'event',10,{status:'contacted'},'sales@example.com');
   assert.equal(lead.lostReason,'');
 });
+
+
+test('event workflow automatically advances CRM without regressing later sales work',()=>{
+  const db=fixture();
+  let lead=crm.syncEventWorkflow(db,10,'request_created','system:event-request');
+  assert.equal(lead.status,'quote_sent');
+  lead=crm.syncEventWorkflow(db,10,'contacted','sales@example.com');
+  assert.equal(lead.status,'quote_sent');
+  lead=crm.syncEventWorkflow(db,10,'quote_sent','sales@example.com');
+  assert.equal(lead.status,'quote_sent');
+});
+
+test('quote and payment workflow automatically moves qualified to quote sent to won',()=>{
+  const db=fixture();
+  db.eventRequests[0].crm={status:'new'};
+  let lead=crm.syncEventWorkflow(db,10,'quote_drafted','sales@example.com');
+  assert.equal(lead.status,'qualified');
+  lead=crm.syncEventWorkflow(db,10,'quote_sent','sales@example.com');
+  assert.equal(lead.status,'quote_sent');
+  db.eventRequests[0].quotePaymentStatus='paid';
+  db.eventRequests[0].paymentAmountReceived=525;
+  lead=crm.syncEventWorkflow(db,10,'payment_succeeded','system:stripe-webhook');
+  assert.equal(lead.status,'won');
+  assert.equal(lead.finalValue,525);
+  assert.ok(lead.wonAt);
+});
+
+test('a paid event overrides a manually lost stage because successful payment is authoritative',()=>{
+  const db=fixture();
+  db.eventRequests[0].crm={status:'lost',lostReason:'price'};
+  db.eventRequests[0].paymentAmountReceived=450;
+  const lead=crm.syncEventWorkflow(db,10,'payment_succeeded','system:stripe-webhook');
+  assert.equal(lead.status,'won');
+  assert.equal(lead.lostReason,'');
+});
