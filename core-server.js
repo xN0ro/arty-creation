@@ -2034,7 +2034,7 @@ async function syncEventRequestCalendar(db, requestId) {
   if(!lead)return { action:'missing' };
   request.crm=request.crm||{};const prior=request.crm.calendar||{};
   try {
-    const result=await googleCalendar.syncFollowUp(lead,prior);
+    const result=await googleCalendar.syncFollowUp(lead,prior,db.crmIntegrations?.googleCalendar||{});
     request.crm.calendar={eventId:String(result.eventId||''),htmlLink:String(result.htmlLink||prior.htmlLink||''),status:String(result.action||''),syncedAt:new Date().toISOString(),error:''};
     return result;
   } catch (error) {
