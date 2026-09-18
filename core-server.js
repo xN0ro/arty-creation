@@ -379,7 +379,7 @@ function adminPermissionRequirement(req) {
   if (path === 'inventory' || path.startsWith('inventory/')) return 'inventory';
   if (path.startsWith('discounts') || path.startsWith('bundle-deals')) return 'promotions';
   if (path.startsWith('orders') || path.startsWith('refunds')) return 'orders';
-  if (path.startsWith('support-requests')) return 'support';
+  if (path.startsWith('support-requests') || path.startsWith('support/')) return 'support';
   if (path.startsWith('events') || path.startsWith('bookings') || path.startsWith('tickets') || path.startsWith('event-requests') || path.startsWith('event-options')) return 'events';
   if (path.startsWith('categories')) return method === 'GET' ? ['categories','products','promotions'] : 'categories';
   if (path.startsWith('marketing-config')) return 'marketing';
