@@ -379,6 +379,40 @@ function switchImg(th,src){document.getElementById('pMainImg').src=src;document.
 function chgQty(d){const i=document.getElementById('pQty');if(!i)return;i.value=Math.min(10,Math.max(1,parseInt(i.value)+d))}
 
 // ===== EVENT DETAIL PAGE =====
+function eventShareUrl(id){
+  try{
+    const marketingUrl=window.ARTYMarketing?.publicUrl?.('event',id);
+    if(marketingUrl)return marketingUrl;
+  }catch{}
+  if(location.pathname.startsWith('/events/'))return location.href;
+  return `${location.origin}/?#/event/${encodeURIComponent(id)}`;
+}
+async function shareEvent(id){
+  const ev=allEvents.find(item=>String(item.id)===String(id));
+  if(!ev)return;
+  const url=eventShareUrl(id);
+  const title=I18n.field(ev,'title')||ev.title||'ARTY';
+  const text=I18n.language?.()==='en'
+    ? `Join me at ${title} by ARTY.`
+    : `Rejoignez-moi à ${title} avec ARTY.`;
+  try{
+    if(navigator.share){
+      await navigator.share({title,text,url});
+      return;
+    }
+  }catch(error){
+    if(error?.name==='AbortError')return;
+  }
+  try{
+    await navigator.clipboard.writeText(url);
+    showToast(I18n.t('Lien de l’événement copié!'),'success');
+  }catch{
+    window.prompt(I18n.t('Copiez le lien de l’événement'),url);
+  }
+}
+function eventShareIcon(){
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="19" r="2.5"></circle><path d="m8.2 10.8 7.5-4.4M8.2 13.2l7.5 4.4"></path></svg>';
+}
 function renderEventPage(id){
   const ev=allEvents.find(k=>k.id===id);
   const c=document.getElementById('eventPageContent');
@@ -393,6 +427,7 @@ function renderEventPage(id){
     <div class="event-detail-modern">
       <div class="event-detail-media">
         <img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" class="event-detail-img">
+        <button type="button" class="event-share-button" onclick="shareEvent(${ev.id})" aria-label="${safeAttr(I18n.t('Partager cet événement'))}">${eventShareIcon()}<span>${safeText(I18n.t('Partager'))}</span></button>
         <div class="event-detail-floating-card">
           <span>${left>0?left:'0'}</span>
           <small>place${left!==1?'s':''} disponible${left!==1?'s':''}</small>
@@ -407,7 +442,7 @@ function renderEventPage(id){
         <div class="event-detail-meta">
           <span class="event-meta-tag">⏱ ${safeText(ev.duration||I18n.t('2 heures'))}</span>
           <span class="event-meta-tag">📍 ${safeText(ev.location||I18n.t('Lieu à confirmer'))}</span>
-          <span class="event-meta-tag">👥 Max ${max||20} personnes</span>
+          ${ev.showMaxCapacity?`<span class="event-meta-tag event-capacity-public">${eventExperienceIcon('people')} ${safeText(I18n.t('Maximum'))} ${max||20} ${safeText(I18n.t('personnes'))}</span>`:''}
         </div>
         ${includes.length?I18n.html`<div class="event-includes-box"><h3>Inclus dans l’événement</h3><ul>${includes.map(i=>`<li>${safeText(i)}</li>`).join('')}</ul></div>`:''}
         <div class="event-spots-info">
@@ -1068,7 +1103,7 @@ function renderAdminEvents(){
       <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!, Montréal"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg" placeholder="/images/evenement.jpg ou URL"></div></div>
       <div class="form-group"><label>Inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peintures, pinceaux, tutoriel, collation"></div>
       <div class="form-group"><label>Note importante</label><input type="text" id="aEvHostNote" placeholder="Ex: Arrivez 10 minutes avant le début."></div>
-      <label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label>
+      <div class="admin-event-visibility-options"><label class="catalog-check"><input type="checkbox" id="aEvShowCapacity"> Afficher la capacité maximale publiquement</label><small>La capacité reste utilisée pour limiter les ventes même si elle est masquée aux clients.</small></div><label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveEv()">Sauvegarder l’événement</button><button class="btn btn-ghost" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div>
     </div>
     <div class="admin-section-title"><h3>Événements publiables</h3><p>Un événement avec statut “Publié” sera visible aux clients et disponible à la réservation.</p></div>
@@ -1080,7 +1115,7 @@ function renderAdminEvents(){
 }
 async function saveEv(){
   const eid=document.getElementById('editEvId').value;
-  const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value,eventType:document.getElementById('aEvType').value,status:document.getElementById('aEvStatus').value,includes:document.getElementById('aEvIncludes').value,hostNote:document.getElementById('aEvHostNote').value,featured:document.getElementById('aEvFeatured').checked};
+  const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value,eventType:document.getElementById('aEvType').value,status:document.getElementById('aEvStatus').value,includes:document.getElementById('aEvIncludes').value,hostNote:document.getElementById('aEvHostNote').value,showMaxCapacity:!!document.getElementById('aEvShowCapacity')?.checked,featured:document.getElementById('aEvFeatured').checked};
   if(!p.title||!p.date)return showToast(I18n.t('Titre et date requis'),'error');
   const r=await artyFetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});
   const d=await r.json().catch(()=>({}));
@@ -1105,12 +1140,13 @@ function editEv(id){
   document.getElementById('aEvImg').value=e.image||'';
   document.getElementById('aEvIncludes').value=eventIncludes(e).join(', ');
   document.getElementById('aEvHostNote').value=e.hostNote||'';
+  const showCapacity=document.getElementById('aEvShowCapacity');if(showCapacity)showCapacity.checked=!!e.showMaxCapacity;
   document.getElementById('aEvFeatured').checked=!!e.featured;
   document.getElementById('evFormTitle').textContent=I18n.t('Modifier l’événement');
   document.getElementById('cancelEv').style.display='inline-flex';
   document.querySelector('.admin-event-builder')?.scrollIntoView({behavior:'smooth',block:'start'});
 }
-function resetEvForm(){['editEvId','aEvTitle','aEvDate','aEvDesc','aEvDur','aEvPrice','aEvSpots','aEvLoc','aEvImg','aEvIncludes','aEvHostNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const t=document.getElementById('aEvTime');if(t)t.value='18:00';const type=document.getElementById('aEvType');if(type)type.value='Atelier public';const status=document.getElementById('aEvStatus');if(status)status.value='published';const feat=document.getElementById('aEvFeatured');if(feat)feat.checked=false;document.getElementById('evFormTitle').textContent=I18n.t('Publier un événement');document.getElementById('cancelEv').style.display='none'}
+function resetEvForm(){['editEvId','aEvTitle','aEvDate','aEvDesc','aEvDur','aEvPrice','aEvSpots','aEvLoc','aEvImg','aEvIncludes','aEvHostNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const t=document.getElementById('aEvTime');if(t)t.value='18:00';const type=document.getElementById('aEvType');if(type)type.value='Atelier public';const status=document.getElementById('aEvStatus');if(status)status.value='published';const cap=document.getElementById('aEvShowCapacity');if(cap)cap.checked=false;const feat=document.getElementById('aEvFeatured');if(feat)feat.checked=false;document.getElementById('evFormTitle').textContent=I18n.t('Publier un événement');document.getElementById('cancelEv').style.display='none'}
 async function deleteEv(id){if(!confirm(I18n.t('Supprimer cet événement?')))return;await artyFetch(`/api/admin/events/${id}`,{method:'DELETE',headers:authH()});showToast(I18n.t('Supprimé'),'success');await loadEvents();await loadAdminData()}
 async function updateEventRequestStatus(id,status){await artyFetch(`/api/admin/event-requests/${id}`,{method:'PATCH',headers:authH(),body:JSON.stringify({status})});showToast(I18n.t('Demande mise à jour'),'success');await loadAdminData()}
 async function deleteEventRequest(id){if(!confirm(I18n.t('Supprimer cette demande?')))return;await artyFetch(`/api/admin/event-requests/${id}`,{method:'DELETE',headers:authH()});showToast(I18n.t('Demande supprimée'),'success');await loadAdminData()}
@@ -2650,7 +2686,7 @@ function renderAdminEvents(){
       <div class="admin-table-wrap admin-guest-table"><table class="admin-table"><thead><tr><th>Participant et billet</th><th>Acheteur</th><th>Présence</th><th>Action</th></tr></thead><tbody>${guestRows||I18n.html('<tr><td colspan="4" class="admin-muted">Aucun billet pour cet événement.</td></tr>')}</tbody></table></div>
       ${selectedBookings.length?I18n.html`<details class="admin-booking-contacts"><summary>Coordonnées et envoi des billets (${selectedBookings.length})</summary><div>${bookingContacts}</div></details>`:''}
     </section>
-    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
+    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><div class="admin-event-visibility-options"><label class="catalog-check"><input type="checkbox" id="aEvShowCapacity"> Afficher la capacité maximale publiquement</label><small>La capacité reste utilisée pour limiter les ventes même si elle est masquée aux clients.</small></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
     <div class="admin-section-title"><h3>Demandes d’événements privés</h3><p>Demandes sur mesure à traiter par votre équipe.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Client</th><th>Projet</th><th>Lieu</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${requestRows||I18n.html('<tr><td colspan="5" class="admin-muted">Aucune demande privée.</td></tr>')}</tbody></table></div>`;
 }
 
