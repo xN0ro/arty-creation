@@ -1055,7 +1055,14 @@ function supportMessages(request) {
 function supportAdminView(db, request) {
   const email=String(request.customer?.email||'').trim().toLowerCase();
   const customer=crmCore.customerDetail(db,email);
-  const order=request.orderId?(db.orders||[]).find(order=>String(order.id)===String(request.orderId)):null;
+  const linkedOrders=(db.orders||[]).filter(order=>order.userId===request.userId||String(order.customer?.email||'').trim().toLowerCase()===email);
+  const order=request.orderId?(db.orders||[]).find(item=>String(item.id)===String(request.orderId)):null;
+  const spend=linkedOrders.filter(order=>order.paymentStatus==='paid'||['payée','préparation','expédiée','livrée'].includes(String(order.status||''))).reduce((sum,order)=>sum+Number(order.total||0),0);
+  const activityDates=[
+    customer?.summary?.lastActivity||'',
+    ...linkedOrders.map(order=>order.updatedAt||order.createdAt||''),
+    request.updatedAt||request.createdAt||''
+  ].filter(Boolean).sort();
   return {
     ...request,
     priority:SUPPORT_PRIORITIES.includes(String(request.priority||''))?request.priority:'normal',
@@ -1063,14 +1070,14 @@ function supportAdminView(db, request) {
     internalNotes:Array.isArray(request.internalNotes)?request.internalNotes:[],
     history:Array.isArray(request.history)?request.history:[],
     messages:supportMessages(request),
-    customerContext:customer?{
-      hasAccount:!!customer.summary?.hasAccount,
-      orderCount:Number(customer.summary?.orderCount||0),
-      lifetimeSpend:Number(customer.summary?.lifetimeSpend||0),
-      leadCount:Number(customer.summary?.leadCount||0),
-      tags:customer.summary?.tags||[],
-      lastActivity:customer.summary?.lastActivity||''
-    }:null,
+    customerContext:{
+      hasAccount:!!customer?.summary?.hasAccount,
+      orderCount:Math.max(Number(customer?.summary?.orderCount||0),linkedOrders.length),
+      lifetimeSpend:Math.max(Number(customer?.summary?.lifetimeSpend||0),spend),
+      leadCount:Number(customer?.summary?.leadCount||0),
+      tags:customer?.summary?.tags||[],
+      lastActivity:activityDates.length?activityDates[activityDates.length-1]:''
+    },
     orderContext:order?{
       id:order.id,status:order.status||'',paymentStatus:order.paymentStatus||'',total:Number(order.total||0),
       createdAt:order.createdAt||'',tracking:order.tracking||{}
@@ -2502,6 +2509,7 @@ app.patch('/api/admin/support-requests/:id', adminOnly, async (req, res) => {
     const validAssignee=(db.adminEmails||[]).map(x=>String(x).toLowerCase()).includes(assignedTo)||(db.adminAccessGrants||[]).some(grant=>grant.active!==false&&String(grant.email||'').toLowerCase()===assignedTo&&(grant.permissions||[]).includes('support'));
     if(!validAssignee)return res.status(400).json({error:I18n.t('Responsable support invalide')});
   }
+  request.messages=Array.isArray(request.messages)?request.messages:supportMessages({...request,adminReply:previousReply});
   request.status=status;request.priority=priority;request.assignedTo=assignedTo;request.adminReply=adminReply;request.updatedAt=now;
   request.history=Array.isArray(request.history)?request.history:[];
   if(previousStatus!==status)request.history.push({type:'status',from:previousStatus,to:status,at:now,by:req.session.email||'admin'});
@@ -2509,7 +2517,6 @@ app.patch('/api/admin/support-requests/:id', adminOnly, async (req, res) => {
   if(status==='fermée')request.closedAt=request.closedAt||now;else request.closedAt='';
   if(adminReply&&adminReply!==previousReply){
     request.repliedAt=now;request.firstResponseAt=request.firstResponseAt||now;
-    request.messages=Array.isArray(request.messages)?request.messages:supportMessages(request);
     request.messages.push({id:`MSG-${Date.now().toString(36).toUpperCase()}-S`,role:'staff',body:adminReply,at:now,by:req.session.email||'ARTY'});
     request.history.push({type:'staff_reply',from:previousStatus,to:status,at:now,by:req.session.email||'admin'});
   }
@@ -2521,8 +2528,9 @@ app.post('/api/admin/support-requests/:id/reply',adminOnly,async(req,res)=>{
   const db=readDB(),request=(db.supportRequests||[]).find(item=>String(item.id)===String(req.params.id));
   if(!request)return res.status(404).json({error:I18n.t('Demande non trouvée')});
   const message=String(req.body.message||'').trim().slice(0,2400);if(message.length<2)return res.status(400).json({error:I18n.t('Ajoutez une réponse')});
-  const now=new Date().toISOString(),previous=request.status||'nouvelle';
-  request.adminReply=message;request.messages=Array.isArray(request.messages)?request.messages:supportMessages(request);
+  const now=new Date().toISOString(),previous=request.status||'nouvelle',previousReply=String(request.adminReply||'');
+  request.messages=Array.isArray(request.messages)?request.messages:supportMessages({...request,adminReply:previousReply});
+  request.adminReply=message;
   request.messages.push({id:`MSG-${Date.now().toString(36).toUpperCase()}-S`,role:'staff',body:message,at:now,by:req.session.email||'ARTY'});
   request.status=SUPPORT_STATUSES.includes(String(req.body.status||''))?String(req.body.status):'répondue';
   request.repliedAt=now;request.firstResponseAt=request.firstResponseAt||now;request.updatedAt=now;
