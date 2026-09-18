@@ -3,7 +3,7 @@
 'use strict';
 
 const state={
-  summary:null,actions:null,reporting:null,customers:[],leads:[],team:[],customer:null,
+  summary:null,actions:null,reporting:null,googleCalendar:null,customers:[],leads:[],team:[],customer:null,
   customerQuery:'',customerFilter:'all',leadQuery:'',leadOwner:'all',leadStatus:'all',
   dragLead:null,editingLead:null,activeSection:'overview'
 };
@@ -89,8 +89,10 @@ function ensureModal(){
 async function loadOverview(){
   if(!has('crm_dashboard'))return;
   try{
-    const [summary,actions,reporting]=await Promise.all([api('/api/admin/crm/summary'),api('/api/admin/crm/action-center'),api('/api/admin/crm/reporting')]);
-    state.summary=summary;state.actions=actions;state.reporting=reporting;
+    const jobs=[api('/api/admin/crm/summary'),api('/api/admin/crm/action-center'),api('/api/admin/crm/reporting')];
+    if(currentUser?.role==='admin')jobs.push(api('/api/admin/crm/google-calendar/status').catch(()=>null));
+    const [summary,actions,reporting,googleCalendarStatus]=await Promise.all(jobs);
+    state.summary=summary;state.actions=actions;state.reporting=reporting;if(currentUser?.role==='admin')state.googleCalendar=googleCalendarStatus;
   }catch(e){console.error('CRM overview',e)}
 }
 async function loadCustomers(){
@@ -107,11 +109,29 @@ function stat(label,value,sub=''){return `<div class="crm-stat"><span>${esc(labe
 function actionLeadCard(l,kind=''){
   return `<button class="crm-action-row" onclick="ARTYCRM.openLeadByKey('${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')"><span><strong>${esc(l.name||l.email)}</strong><small>${esc(l.title||'')} · ${esc(l.email||'')}</small></span><span><b>${money(l.value||l.expectedValue)}</b><small>${l.nextFollowUp?date(l.nextFollowUp):esc(kind)}</small></span></button>`;
 }
+function googleCalendarCard(){
+  const g=state.googleCalendar||{},connected=g.connected===true;
+  if(!g.oauthConfigured&&!connected)return `<section class="crm-calendar-card warning"><div><span>GOOGLE CALENDAR</span><strong>${T('Configuration requise','Setup required')}</strong><small>${T('Ajoutez le Client ID et le Client Secret Google Calendar dans Render, puis revenez ici.','Add the Google Calendar Client ID and Client Secret in Render, then come back here.')}</small></div></section>`;
+  return `<section class="crm-calendar-card ${connected?'connected':''}"><div><span>GOOGLE CALENDAR</span><strong>${connected?T('Connecté','Connected'):T('Prêt à connecter','Ready to connect')}</strong><small>${connected?(g.connectedEmail?esc(g.connectedEmail)+' · ':'')+T('Les suivis CRM se synchronisent automatiquement.','CRM follow-ups sync automatically.'):T('Connectez le compte Google Workspace du gestionnaire une seule fois.','Connect the manager Google Workspace account once.')}</small></div><div class="crm-calendar-actions">${connected?`<button class="btn btn-ghost btn-sm" onclick="ARTYCRM.connectGoogleCalendar()">${T('Reconnecter','Reconnect')}</button><button class="btn btn-ghost btn-sm" onclick="ARTYCRM.disconnectGoogleCalendar()">${T('Déconnecter','Disconnect')}</button>`:`<button class="btn btn-orange btn-sm" onclick="ARTYCRM.connectGoogleCalendar()">${T('Connecter Google Calendar','Connect Google Calendar')}</button>`}</div></section>`;
+}
+async function connectGoogleCalendar(){
+  try{
+    const result=await api('/api/admin/crm/google-calendar/connect',{method:'POST',body:'{}'});
+    if(!result.url)throw new Error(T('Lien Google manquant','Google authorization link missing'));
+    const popup=window.open(result.url,'artyGoogleCalendar','width=560,height=720,resizable=yes,scrollbars=yes');
+    if(!popup)window.location.href=result.url;
+  }catch(e){showToast(e.message,'error')}
+}
+async function disconnectGoogleCalendar(){
+  if(!confirm(T('Déconnecter Google Calendar du CRM?','Disconnect Google Calendar from CRM?')))return;
+  try{await api('/api/admin/crm/google-calendar/disconnect',{method:'POST',body:'{}'});state.googleCalendar=null;await loadOverview();renderOverview();showToast(T('Google Calendar déconnecté','Google Calendar disconnected'),'success')}catch(e){showToast(e.message,'error')}
+}
 function renderOverview(){
   const p=document.getElementById('adminCrmOverviewPanel');if(!p||!has('crm_dashboard'))return;
   const s=state.summary||{},a=state.actions||{},r=state.reporting||{rates:{},totals:{},sources:[],eventTypes:[]};
   p.innerHTML=`${crmNav('overview')}
     <div class="crm-head"><div><span>CRM</span><h2>${T('Centre d’action ventes','Sales action centre')}</h2><p>${T('Ce qui demande votre attention aujourd’hui, puis les indicateurs qui expliquent ce qui transforme les prospects en ventes.','What needs attention today, followed by the metrics that explain what turns leads into sales.')}</p></div><div class="crm-head-actions">${currentUser?.role==='admin'?`<button class="btn btn-ghost btn-sm" onclick="ARTYCRM.download('backup')">${T('Sauvegarde CRM','CRM backup')}</button>`:''}</div></div>
+    ${currentUser?.role==='admin'?googleCalendarCard():''}
     <div class="crm-stats">${stat(T('Nouveaux prospects','New leads'),s.newLeads||0)}${stat(T('Suivis en retard','Overdue follow-ups'),s.followUpsDue||0)}${stat(T('Suivis aujourd’hui','Follow-ups today'),s.followUpsToday||0)}${stat(T('Pipeline ouvert','Open pipeline'),money(s.openPipelineValue||0))}</div>
     <div class="crm-action-grid">
       <section class="crm-section"><div class="crm-section-head"><div><h3>${T('À faire maintenant','Do now')}</h3><p>${T('Suivis en retard et prospects nouveaux.','Overdue follow-ups and new leads.')}</p></div></div>
@@ -332,6 +352,13 @@ async function showCrm(button){
 
 function install(){
   ensure();
+  if(!window.__ARTY_GOOGLE_CALENDAR_LISTENER__){
+    window.__ARTY_GOOGLE_CALENDAR_LISTENER__=true;
+    window.addEventListener('message',async event=>{
+      if(event.origin!==location.origin||event.data?.type!=='ARTY_GOOGLE_CALENDAR_CONNECTED')return;
+      await loadOverview();if(state.activeSection==='overview')renderOverview();showToast(T('Google Calendar connecté','Google Calendar connected'),'success');
+    });
+  }
   const base=window.switchAdminTab;
   if(typeof base==='function'&&!base.__crmV2Wrapped){
     const wrapped=function(tab,button,...rest){
@@ -348,6 +375,7 @@ function install(){
 function styles(){
   if(document.getElementById('artyCrmStyles'))return;
   const s=document.createElement('style');s.id='artyCrmStyles';s.textContent=`
+  .crm-calendar-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;margin:0 0 16px;border:1px solid var(--border-light);border-radius:16px;background:#fff}.crm-calendar-card>div:first-child{display:grid;gap:2px}.crm-calendar-card span{font-size:.61rem;font-weight:900;letter-spacing:.11em;color:var(--teal)}.crm-calendar-card strong{font-size:.86rem}.crm-calendar-card small{font-size:.68rem;color:var(--text-light)}.crm-calendar-card.connected{background:var(--teal-pale);border-color:rgba(27,154,170,.28)}.crm-calendar-card.warning{background:#fff8ed}.crm-calendar-actions{display:flex;gap:7px;flex-wrap:wrap}
   .crm-workspace-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 16px;margin:0 0 18px;border:1px solid var(--border-light);border-radius:18px;background:linear-gradient(135deg,#fff,#f6fbfb)}.crm-workspace-head>div{display:grid;gap:2px;min-width:max-content}.crm-workspace-head>div span{font-size:.64rem;letter-spacing:.12em;font-weight:900;color:var(--teal)}.crm-workspace-head>div strong{font-size:.98rem}.crm-subnav{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.crm-subnav button{display:grid;gap:1px;min-width:130px;padding:9px 12px;border:1px solid var(--border-light);border-radius:12px;background:#fff;text-align:left;color:inherit;cursor:pointer}.crm-subnav button:hover{border-color:rgba(27,154,170,.35)}.crm-subnav button.active{border-color:var(--teal);background:var(--teal-pale)}.crm-subnav span{font-size:.75rem;font-weight:900}.crm-subnav small{font-size:.59rem;color:var(--text-light)}
   .crm-head{display:flex;justify-content:space-between;align-items:end;gap:18px;margin:8px 0 18px}.crm-head>div:first-child>span{font-size:.73rem;font-weight:900;letter-spacing:.1em;color:var(--teal)}.crm-head h2{margin:2px 0;font-size:1.7rem}.crm-head p{margin:0;color:var(--text-light);max-width:760px}.crm-head-actions{display:flex;gap:8px;flex-wrap:wrap}
   .crm-stats,.crm-report-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}.crm-report-stats{grid-template-columns:repeat(5,minmax(0,1fr))}.crm-stat{padding:15px 16px;border:1px solid var(--border-light);border-radius:16px;background:#fff;box-shadow:0 5px 18px rgba(44,36,24,.025)}.crm-stat span,.crm-stat small{display:block;color:var(--text-light);font-size:.72rem}.crm-stat strong{display:block;font-size:1.35rem;margin:3px 0}
@@ -366,7 +394,7 @@ function styles(){
 }
 
 window.ARTYCRM={
-  install,loadAll,renderOverview,renderCustomers,renderLeads,openCustomer,section,
+  install,loadAll,renderOverview,renderCustomers,renderLeads,openCustomer,section,connectGoogleCalendar,disconnectGoogleCalendar,
   searchCustomers:q=>{state.customerQuery=q;renderCustomers()},filterCustomers:v=>{state.customerFilter=v;renderCustomers()},
   searchLeads:q=>{state.leadQuery=q;renderLeads()},filterOwner:v=>{state.leadOwner=v;renderLeads()},filterStatus:v=>{state.leadStatus=v;renderLeads()},
   saveCustomerTags,addCustomerNote,saveAccount,toggleAccount,sendPasswordReset,resendWelcome,
