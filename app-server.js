@@ -28,7 +28,7 @@ function hashToken(token){return crypto.createHash('sha256').update(String(token
 function extensionGrant(db,email){const normalized=String(email||'').trim().toLowerCase();return(db.adminAccessGrants||[]).find(grant=>grant.active!==false&&String(grant.email||'').trim().toLowerCase()===normalized&&(grant.emailVerifiedAt||grant.acceptedAt))||null}
 function extensionPermission(req){
   const route=String(req.originalUrl||req.url||'').split('?')[0];
-  if(route.includes('/admin/crm/customers'))return'customers';
+  if(route.includes('/admin/crm/customers')||route.includes('/admin/crm/export/customers'))return'customers';
   if(route.includes('/admin/crm/leads')||route.includes('/admin/crm/team')||route.includes('/admin/crm/export/leads'))return'leads';
   if(route.includes('/admin/crm')||route.includes('/admin/crm/export'))return'crm_dashboard';
   if(route.includes('/marketing-config'))return'marketing';
