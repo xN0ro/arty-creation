@@ -198,6 +198,30 @@ function createManualLead(db,input={},actor=''){
   };
   db.crmLeads.push(lead);return leadFromManual(lead);
 }
+function syncEventWorkflow(db,id,signal,actor='system',options={}){
+  const request=(db.eventRequests||[]).find(item=>String(item.id)===String(id));
+  if(!request)return null;
+  const signalMap={
+    request_created:'new',
+    contacted:'contacted',
+    quote_drafted:'qualified',
+    quote_sent:'quote_sent',
+    payment_pending:'quote_sent',
+    payment_succeeded:'won',
+    manual_paid:'won'
+  };
+  const desired=signalMap[String(signal||'')];
+  if(!desired)return leadFromEvent(request);
+  const current=crmMeta(request.crm);
+  const rank={new:0,contacted:1,qualified:2,quote_sent:3,follow_up:4,won:5,lost:5};
+  if(desired==='won'){
+    return updateLead(db,'event',id,{status:'won',finalValue:money(request.paymentAmountReceived||request.quoteAmount||current.finalValue||0)},actor);
+  }
+  if(current.status==='won')return leadFromEvent(request);
+  if(current.status==='lost'&&!options.reopen)return leadFromEvent(request);
+  if((rank[current.status]??0)>(rank[desired]??0)&&!options.allowRegression)return leadFromEvent(request);
+  return updateLead(db,'event',id,{status:desired},actor);
+}
 function updateLead(db,kind,id,patch={},actor=''){
   const collection=kind==='event'?(db.eventRequests||[]):kind==='contact'?(db.contactRequests||[]):kind==='manual'?(db.crmLeads||[]):null;if(!collection)return null;
   const item=collection.find(x=>String(x.id)===String(id));if(!item)return null;
@@ -294,5 +318,5 @@ function crmReporting(db={}){
 
 module.exports={
   CRM_LEAD_STATUSES,CRM_LOST_REASONS,emailKey,crmMeta,cleanAttribution,buildCustomerIndex,customerDetail,buildLeads,crmSummary,
-  createManualLead,updateLead,updateCustomerTags,addCustomerNote,updateCustomerPreferences,crmActionCenter,crmReporting
+  createManualLead,updateLead,syncEventWorkflow,updateCustomerTags,addCustomerNote,updateCustomerPreferences,crmActionCenter,crmReporting
 };
