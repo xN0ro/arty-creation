@@ -118,8 +118,8 @@
     table.insertAdjacentHTML('beforebegin',productToolbarHTML());
     const management=panel.querySelector('#adminProductManagement');
     if(management)panel.insertBefore(management,panel.firstChild);
-    if(management)management.insertAdjacentElement('afterend',table);
-    table.insertAdjacentElement('afterend',editor);
+    if(management)management.insertAdjacentElement('afterend',editor);
+    editor.insertAdjacentElement('afterend',table);
     editor.id='adminProductEditor';
     editor.hidden=!productEditorOpen;
     const cancel=document.getElementById('cancelKit');
