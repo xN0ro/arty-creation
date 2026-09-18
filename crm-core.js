@@ -165,7 +165,7 @@ function leadBase(kind,id,name,email,phone,title,createdAt,rawCrm={}){
 function leadFromEvent(request){
   const base=leadBase('event',request.id,request.name,request.email,request.phone,request.eventType||request.eventName||'Event',request.createdAt,request.crm);
   const attribution=cleanAttribution(request.marketingAttribution),touch=attribution.lastTouch||attribution.firstTouch||{};
-  return {...base,reference:request.reference||'',value:money(base.finalValue||request.quoteAmount),expectedValue:money(request.quoteAmount),operationalStatus:request.status||'',quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||''};
+  return {...base,reference:request.reference||'',value:money(base.finalValue||request.quoteAmount),expectedValue:money(request.quoteAmount),quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.status||'',quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||''};
 }
 function leadFromContact(contact){
   const base=leadBase('contact',contact.id,contact.name,contact.email,contact.phone,contact.channel==='events'?'Event inquiry':'General inquiry',contact.createdAt,contact.crm);
