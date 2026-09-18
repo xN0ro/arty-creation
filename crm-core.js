@@ -103,8 +103,8 @@ function buildCustomerIndex(db={}){
   for(const order of orders){const c=ensure(orderEmail(order,usersById),orderName(order,usersById),order?.customer?.phone);if(c)c.orders.push(order)}
   for(const request of eventRequests){const c=ensure(request.email,request.name,request.phone);if(c)c.eventRequests.push(request)}
   for(const booking of bookings){const c=ensure(booking.email||booking.customer?.email,booking.name||booking.customer?.name,booking.phone||booking.customer?.phone);if(c)c.bookings.push(booking)}
-  for(const contact of contacts){const c=ensure(contact.email,contact.name,contact.phone);if(c)c.contacts.push(contact)}
-  for(const lead of manualLeads){const c=ensure(lead.email,lead.name,lead.phone);if(c)c.manualLeads.push(lead)}
+  for(const contact of contacts){if(contact.convertedEventRequestId)continue;const c=ensure(contact.email,contact.name,contact.phone);if(c)c.contacts.push(contact)}
+  for(const lead of manualLeads){if(lead.convertedEventRequestId)continue;const c=ensure(lead.email,lead.name,lead.phone);if(c)c.manualLeads.push(lead)}
 
   return Array.from(map.values()).map(c=>{
     const paid=c.orders.filter(paidOrder),lifetimeSpend=money(paid.reduce((sum,o)=>sum+Number(o.total||0),0));
@@ -140,8 +140,8 @@ function customerDetail(db={},key=''){
   const orders=(db.orders||[]).filter(o=>orderEmail(o,usersById)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const eventRequests=(db.eventRequests||[]).filter(r=>emailKey(r.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const bookings=(db.bookings||[]).filter(b=>emailKey(b.email||b.customer?.email)===email).sort((a,b)=>String(b.bookedAt||b.createdAt||'').localeCompare(String(a.bookedAt||a.createdAt||'')));
-  const contacts=(db.contactRequests||[]).filter(c=>emailKey(c.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
-  const manualLeads=(db.crmLeads||[]).filter(l=>emailKey(l.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const contacts=(db.contactRequests||[]).filter(c=>!c.convertedEventRequestId&&emailKey(c.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const manualLeads=(db.crmLeads||[]).filter(l=>!l.convertedEventRequestId&&emailKey(l.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const meta=customerMeta(db,email),timeline=[];
   if(user?.createdAt)timeline.push({type:'account',at:user.createdAt,label:'account_created',id:String(user.id)});
   if(user?.lastLoginAt)timeline.push({type:'login',at:user.lastLoginAt,label:'last_login',id:String(user.id)});
@@ -178,8 +178,8 @@ function leadFromManual(lead){
 }
 function buildLeads(db={}){
   const eventLeads=(db.eventRequests||[]).map(leadFromEvent);
-  const contactLeads=(db.contactRequests||[]).filter(c=>['contact','events'].includes(String(c.channel||'contact'))).map(leadFromContact);
-  const manualLeads=(db.crmLeads||[]).map(leadFromManual);
+  const contactLeads=(db.contactRequests||[]).filter(c=>!c.convertedEventRequestId&&['contact','events'].includes(String(c.channel||'contact'))).map(leadFromContact);
+  const manualLeads=(db.crmLeads||[]).filter(l=>!l.convertedEventRequestId).map(leadFromManual);
   return [...eventLeads,...contactLeads,...manualLeads].sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
 }
 function crmSummary(db={}){
