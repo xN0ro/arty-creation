@@ -54,7 +54,7 @@ function crmError(req,fr,en){return requestLanguage(req)==='en'?en:fr}
 function csvCell(value){const s=String(value??'');return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 function csv(rows,columns){return [columns.map(c=>csvCell(c.label)).join(','),...rows.map(row=>columns.map(c=>csvCell(typeof c.value==='function'?c.value(row):row[c.value])).join(','))].join('\r\n')}
 function crmSessionEmail(req){return String(req.extensionSession?.email||'').trim().toLowerCase()}
-function crmStaffScoped(req){return req.extensionSession?.role==='staff'}
+function crmStaffScoped(req){return req.extensionSession?.role==='staff'&&!(req.extensionSession?.permissions||[]).includes('crm_manager')}
 function crmLeadRows(db,req){
   const rows=crmCore.buildLeads(db);
   if(!crmStaffScoped(req))return rows;
