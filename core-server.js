@@ -680,17 +680,18 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
   const hasEventTickets = pricing.items.some(item => item.type === 'event-ticket');
   if (hasEventTickets && !isTicketPaymentEnabled()) return res.status(503).json({ error: I18n.t('Le paiement sécurisé des billets doit être entièrement configuré avant la vente') });
   const orderId = 'ARTY-' + Date.now().toString(36).toUpperCase();
-  const inventoryResult = reserveInventoryForItems(db, pricing.items, orderId);
+  const stripeEnabled = isStripeEnabled();
+  const paymentEnvironment = stripeEnabled ? stripeEnvironment() : 'manual';
+  const isTestOrder = stripeEnabled && paymentEnvironment === 'test';
+  const inventoryResult = isTestOrder ? { success:true } : reserveInventoryForItems(db, pricing.items, orderId);
   if (inventoryResult.error) return res.status(400).json({ error: inventoryResult.error });
-  const eventSeatResult = reserveEventSeatsForItems(db, pricing.items);
+  const eventSeatResult = isTestOrder ? { success:true, reserved:0 } : reserveEventSeatsForItems(db, pricing.items);
   if (eventSeatResult.error) {
     releaseInventoryForItems(db, pricing.items, orderId, I18n.t('Réservation de billets impossible'));
     return res.status(400).json({ error: eventSeatResult.error });
   }
 
   const createdAt = new Date().toISOString();
-  const stripeEnabled = isStripeEnabled();
-  const paymentEnvironment = stripeEnabled ? stripeEnvironment() : 'manual';
   const order = {
     id: orderId,
     locale: req.locale,
@@ -717,11 +718,11 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     paymentStatus: 'pending',
     paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
     paymentEnvironment,
-    isTest: stripeEnabled && paymentEnvironment === 'test',
+    isTest: isTestOrder,
     paymentReference: '',
-    inventoryReserved: true,
+    inventoryReserved: !isTestOrder,
     inventoryRestocked: false,
-    eventSeatsReserved: eventSeatResult.reserved > 0,
+    eventSeatsReserved: !isTestOrder && eventSeatResult.reserved > 0,
     eventSeatsReleased: false,
     ticketBookingIds: [],
     refundStatus: 'none',
