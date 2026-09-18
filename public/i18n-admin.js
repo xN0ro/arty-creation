@@ -103,7 +103,8 @@ englishAdminHook('applyProductTemplate',()=>{
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
     ['studio-admin.js','artyStudioAdminEnhancements'],
     ['commerce-client.js','artyCommerceEnhancements'],
-    ['commerce-profile-fix.js','artyCommerceProfileEnhancement']
+    ['commerce-profile-fix.js','artyCommerceProfileEnhancement'],
+    ['admin-management-enhancements.js?v=20260918-admin-scale-1','artyAdminManagementEnhancements']
   ];
   const next=()=>{
     const item=queue.shift();if(!item)return;
