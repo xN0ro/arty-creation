@@ -70,6 +70,26 @@ test('sales staff only receive assigned CRM leads and customers',async()=>{
   assert.equal((await request('/admin/crm/customers/other%40example.test',{token:sales.data.token})).status,403);
 });
 
+test('sales staff can convert their manual lead to a quote-ready event without a duplicate pipeline card',async()=>{
+  const db=server.readDB();
+  db.crmLeads.push({
+    id:'LEAD-PHONE-1',reference:'LEAD-PHONE-1',name:'Phone Lead',email:'phone@example.test',phone:'555-0199',title:'Private event',
+    eventType:'Private event',preferredDate:'2026-10-10',value:600,source:'phone',campaign:'',medium:'',message:'Interested in a private ARTY event.',
+    createdAt:'2026-09-18T14:00:00Z',updatedAt:'2026-09-18T14:00:00Z',
+    crm:{status:'contacted',owner:'sales@example.test',nextFollowUp:'',tags:[],adminNote:'',statusHistory:[]}
+  });
+  server.writeDB(db);
+  const sales=await login('sales@example.test');
+  const converted=await request('/admin/crm/leads/manual/LEAD-PHONE-1/convert-event',{method:'POST',body:{eventType:'Private event',guests:12,preferredDate:'2026-10-10'},token:sales.data.token});
+  assert.equal(converted.status,200);
+  assert.equal(converted.data.lead.kind,'event');
+  assert.equal(converted.data.lead.email,'phone@example.test');
+  const leads=await request('/admin/crm/leads',{token:sales.data.token});
+  assert.equal(leads.status,200);
+  assert.equal(leads.data.filter(item=>item.email==='phone@example.test').length,1);
+  assert.equal(leads.data.find(item=>item.email==='phone@example.test').kind,'event');
+});
+
 test('assigned sales staff can reach secure quote creation but cannot quote another rep lead',async()=>{
   const sales=await login('sales@example.test');
   const own=await request('/admin/event-requests/101/payment-link',{method:'POST',body:{quoteAmount:250,quoteDescription:'Corporate ARTY event'},token:sales.data.token});
