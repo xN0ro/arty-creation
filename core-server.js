@@ -2065,6 +2065,7 @@ app.post('/api/event-requests', async (req, res) => {
     expertBrief,
     message:String(body.notes || body.message || '').trim().slice(0, 3000),
     contactPreference:['email','phone'].includes(body.contactPreference) ? body.contactPreference : 'email',
+    marketingAttribution: body.marketingAttribution && typeof body.marketingAttribution === 'object' ? body.marketingAttribution : {},
     status:'nouvelle',
     adminNote:'',
     quoteAmount:0,
@@ -2191,8 +2192,30 @@ app.post('/api/contact', async (req, res) => {
   const channel = contactChannel(req.body?.channel);
   if (!name || !validEmail(email) || message.length < 10) return res.status(400).json({ error:I18n.t('Ajoutez votre nom, un courriel valide et un message détaillé') });
   const id = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const contact = { locale:req.locale, id, reference:`MSG-${Date.now().toString(36).toUpperCase()}`, name, email, message, channel };
+  const contact = {
+    locale:req.locale,
+    id,
+    reference:`MSG-${Date.now().toString(36).toUpperCase()}`,
+    name,
+    email,
+    message,
+    channel,
+    marketingAttribution:req.body?.marketingAttribution && typeof req.body.marketingAttribution === 'object' ? req.body.marketingAttribution : {},
+    createdAt:new Date().toISOString(),
+    crm:{status:'new',nextFollowUp:'',owner:'',tags:[],adminNote:'',updatedAt:new Date().toISOString()}
+  };
+  const db = readDB();
+  db.contactRequests = Array.isArray(db.contactRequests) ? db.contactRequests : [];
+  db.contactRequests.push(contact);
+  writeDB(db);
   const [customerEmail, adminEmail] = await Promise.all([sendContactReceiptEmail(contact), sendContactAdminEmail(contact)]);
+  const latest = readDB();
+  const saved = (latest.contactRequests || []).find(item => String(item.id) === String(contact.id));
+  if (saved) {
+    saved.emailDelivery = { customer:customerEmail.status, admin:adminEmail.status, sentAt:new Date().toISOString() };
+    saved.updatedAt = new Date().toISOString();
+    writeDB(latest);
+  }
   if (adminEmail.status !== 'sent') {
     console.error('Contact email delivery failed:', adminEmail.error || adminEmail.status);
     return res.status(503).json({ error:I18n.t('Votre message n’a pas pu être transmis. Écrivez-nous directement à ') + businessEmailAddress(channel) });
