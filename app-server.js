@@ -8,6 +8,7 @@ const realExpress=require('express');
 const commerceCore=require('./commerce-core');
 const marketingCore=require('./marketing-core');
 const crmCore=require('./crm-core');
+const googleCalendar=require('./google-calendar');
 
 const DEFAULT_STUDIO_CONFIG={
   version:1,
@@ -52,6 +53,50 @@ function text(value,max=160){return String(value??'').replace(/\s+/g,' ').trim()
 function crmError(req,fr,en){return requestLanguage(req)==='en'?en:fr}
 function csvCell(value){const s=String(value??'');return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 function csv(rows,columns){return [columns.map(c=>csvCell(c.label)).join(','),...rows.map(row=>columns.map(c=>csvCell(typeof c.value==='function'?c.value(row):row[c.value])).join(','))].join('\r\n')}
+function crmSessionEmail(req){return String(req.extensionSession?.email||'').trim().toLowerCase()}
+function crmStaffScoped(req){return req.extensionSession?.role==='staff'}
+function crmLeadRows(db,req){
+  const rows=crmCore.buildLeads(db);
+  if(!crmStaffScoped(req))return rows;
+  const email=crmSessionEmail(req);
+  return rows.filter(lead=>String(lead.owner||'').trim().toLowerCase()===email);
+}
+function crmCustomerRows(db,req){
+  const rows=crmCore.buildCustomerIndex(db);
+  if(!crmStaffScoped(req))return rows;
+  const email=crmSessionEmail(req);
+  return rows.filter(customer=>(customer.owners||[]).map(x=>String(x||'').trim().toLowerCase()).includes(email));
+}
+function crmScopedDb(db,req){
+  if(!crmStaffScoped(req))return db;
+  const email=crmSessionEmail(req),owned=item=>String(item?.crm?.owner||'').trim().toLowerCase()===email;
+  return{...db,eventRequests:(db.eventRequests||[]).filter(owned),contactRequests:(db.contactRequests||[]).filter(owned),crmLeads:(db.crmLeads||[]).filter(owned)};
+}
+function crmCanAccessCustomer(db,email,req){
+  if(!crmStaffScoped(req))return true;
+  const key=String(email||'').trim().toLowerCase();
+  return crmCustomerRows(db,req).some(customer=>String(customer.email||'').trim().toLowerCase()===key);
+}
+function crmCanAccessLead(db,kind,id,req){
+  if(!crmStaffScoped(req))return true;
+  return crmLeadRows(db,req).some(lead=>String(lead.kind)===String(kind)&&String(lead.id)===String(id));
+}
+function crmRawLeadItem(db,kind,id){
+  const collection=kind==='event'?(db.eventRequests||[]):kind==='contact'?(db.contactRequests||[]):kind==='manual'?(db.crmLeads||[]):[];
+  return collection.find(item=>String(item.id)===String(id))||null;
+}
+async function syncCrmCalendar(db,lead){
+  const item=crmRawLeadItem(db,lead.kind,lead.id);if(!item)return{action:'missing'};
+  item.crm=item.crm||{};const prior=item.crm.calendar||{};
+  try{
+    const result=await googleCalendar.syncFollowUp(lead,prior);
+    item.crm.calendar={eventId:String(result.eventId||''),htmlLink:String(result.htmlLink||prior.htmlLink||''),status:String(result.action||''),syncedAt:new Date().toISOString(),error:''};
+    return result;
+  }catch(error){
+    item.crm.calendar={...prior,status:'error',syncedAt:new Date().toISOString(),error:String(error.message||error).slice(0,1000)};
+    return{action:'error',error:String(error.message||error)};
+  }
+}
 
 function num(value,fallback=0,min=0,max=100000){const n=Number(value);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback}
 function slug(value,fallback=`product-${Date.now()}`){const cleaned=String(value||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);return cleaned||fallback}
@@ -135,30 +180,52 @@ function installExtensionRoutes(app){
   app.get('/api/marketing-config',(req,res)=>res.json(getMarketingConfig()));
   app.get('/api/admin/marketing-config',adminOnly,(req,res)=>res.json(getMarketingConfig()));
   app.put('/api/admin/marketing-config',adminOnly,(req,res)=>{const db=readDb(),config=marketingCore.normalizeMarketingConfig(req.body||{});db.marketingConfig=config;writeDb(db);res.json({success:true,config})});
-  app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(readDb())));
+  app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(crmScopedDb(readDb(),req))));
   app.get('/api/admin/crm/action-center',adminOnly,(req,res)=>{
-    const data=crmCore.crmActionCenter(readDb()),permissions=new Set(req.extensionSession?.permissions||[]);
+    const db=readDb(),data=crmCore.crmActionCenter(crmScopedDb(db,req)),permissions=new Set(req.extensionSession?.permissions||[]);
     if(req.extensionSession?.role!=='admin'&&!permissions.has('orders')){data.recentOrders=[];data.paymentPending=data.eventPaymentsPending;data.orderPaymentsPending=0}
     if(req.extensionSession?.role!=='admin'&&!permissions.has('inventory'))data.lowInventory=[];
     res.json(data);
   });
-  app.get('/api/admin/crm/reporting',adminOnly,(req,res)=>res.json(crmCore.crmReporting(readDb())));
+  app.get('/api/admin/crm/reporting',adminOnly,(req,res)=>res.json(crmCore.crmReporting(crmScopedDb(readDb(),req))));
   app.get('/api/admin/crm/team',adminOnly,(req,res)=>{
+    if(crmStaffScoped(req))return res.json([{email:crmSessionEmail(req),name:crmSessionEmail(req),role:'staff'}]);
     const db=readDb(),seen=new Set(),team=[];
     for(const email of (db.adminEmails||[])){const key=String(email||'').toLowerCase();if(!key||seen.has(key))continue;seen.add(key);const user=(db.users||[]).find(u=>String(u.email||'').toLowerCase()===key);team.push({email:key,name:user?.name||key,role:'admin'})}
     for(const grant of (db.adminAccessGrants||[])){const key=String(grant.email||'').toLowerCase();if(!key||seen.has(key)||grant.active===false||!(grant.permissions||[]).includes('leads'))continue;seen.add(key);team.push({email:key,name:grant.name||key,role:'staff'})}
     res.json(team.sort((a,b)=>a.name.localeCompare(b.name)));
   });
-  app.get('/api/admin/crm/customers',adminOnly,(req,res)=>res.json(crmCore.buildCustomerIndex(readDb())));
-  app.get('/api/admin/crm/customers/:email',adminOnly,(req,res)=>{const detail=crmCore.customerDetail(readDb(),req.params.email);if(!detail)return res.status(404).json({error:crmError(req,'Client introuvable','Customer not found')});res.json(detail)});
-  app.put('/api/admin/crm/customers/:email/tags',adminOnly,(req,res)=>{const db=readDb(),meta=crmCore.updateCustomerTags(db,req.params.email,req.body?.tags);if(!meta)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,tags:meta.tags||[]})});
-  app.post('/api/admin/crm/customers/:email/notes',adminOnly,(req,res)=>{const db=readDb(),note=crmCore.addCustomerNote(db,req.params.email,req.body?.note,req.extensionSession?.email||'admin');if(!note)return res.status(400).json({error:crmError(req,'Une note est requise','A note is required')});writeDb(db);res.json({success:true,note})});
-  app.put('/api/admin/crm/customers/:email/preferences',adminOnly,(req,res)=>{const db=readDb(),preferences=crmCore.updateCustomerPreferences(db,req.params.email,req.body||{},req.extensionSession?.email||'admin');if(!preferences)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,preferences})});
-  app.get('/api/admin/crm/leads',adminOnly,(req,res)=>res.json(crmCore.buildLeads(readDb())));
-  app.post('/api/admin/crm/leads',adminOnly,(req,res)=>{const db=readDb(),lead=crmCore.createManualLead(db,req.body||{},req.extensionSession?.email||'admin');if(!lead)return res.status(400).json({error:crmError(req,'Nom et courriel requis','Name and email are required')});writeDb(db);res.json({success:true,lead})});
-  app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,(req,res)=>{const db=readDb(),lead=crmCore.updateLead(db,req.params.kind,req.params.id,req.body||{},req.extensionSession?.email||'admin');if(!lead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});writeDb(db);res.json({success:true,lead})});
+  app.get('/api/admin/crm/customers',adminOnly,(req,res)=>res.json(crmCustomerRows(readDb(),req)));
+  app.get('/api/admin/crm/customers/:email',adminOnly,(req,res)=>{
+    const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
+    const detail=crmCore.customerDetail(db,req.params.email);if(!detail)return res.status(404).json({error:crmError(req,'Client introuvable','Customer not found')});res.json(detail);
+  });
+  app.put('/api/admin/crm/customers/:email/tags',adminOnly,(req,res)=>{
+    const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
+    const meta=crmCore.updateCustomerTags(db,req.params.email,req.body?.tags);if(!meta)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,tags:meta.tags||[]});
+  });
+  app.post('/api/admin/crm/customers/:email/notes',adminOnly,(req,res)=>{
+    const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
+    const note=crmCore.addCustomerNote(db,req.params.email,req.body?.note,crmSessionEmail(req)||'admin');if(!note)return res.status(400).json({error:crmError(req,'Une note est requise','A note is required')});writeDb(db);res.json({success:true,note});
+  });
+  app.put('/api/admin/crm/customers/:email/preferences',adminOnly,(req,res)=>{
+    const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
+    const preferences=crmCore.updateCustomerPreferences(db,req.params.email,req.body||{},crmSessionEmail(req)||'admin');if(!preferences)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,preferences});
+  });
+  app.get('/api/admin/crm/leads',adminOnly,(req,res)=>res.json(crmLeadRows(readDb(),req)));
+  app.post('/api/admin/crm/leads',adminOnly,async(req,res)=>{
+    const db=readDb(),body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
+    const lead=crmCore.createManualLead(db,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(400).json({error:crmError(req,'Nom et courriel requis','Name and email are required')});
+    const calendarSync=await syncCrmCalendar(db,lead);writeDb(db);res.json({success:true,lead,calendarSync});
+  });
+  app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,async(req,res)=>{
+    const db=readDb();if(!crmCanAccessLead(db,req.params.kind,req.params.id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
+    const body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
+    const lead=crmCore.updateLead(db,req.params.kind,req.params.id,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
+    const calendarSync=await syncCrmCalendar(db,lead);writeDb(db);res.json({success:true,lead,calendarSync});
+  });
   app.get('/api/admin/crm/export/customers.csv',adminOnly,(req,res)=>{
-    const rows=crmCore.buildCustomerIndex(readDb()),body=csv(rows,[
+    const rows=crmCustomerRows(readDb(),req),body=csv(rows,[
       {label:'Name',value:'name'},{label:'Email',value:'email'},{label:'Phone',value:'phone'},{label:'Account',value:r=>r.hasAccount?'yes':'no'},
       {label:'Disabled',value:r=>r.disabled?'yes':'no'},{label:'Orders',value:'orderCount'},{label:'Paid orders',value:'paidOrderCount'},
       {label:'Lifetime spend',value:'lifetimeSpend'},{label:'Events',value:'eventRequestCount'},{label:'Last activity',value:'lastActivity'},
@@ -167,7 +234,7 @@ function installExtensionRoutes(app){
     res.setHeader('Content-Type','text/csv; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-customers.csv"');res.send('\uFEFF'+body);
   });
   app.get('/api/admin/crm/export/leads.csv',adminOnly,(req,res)=>{
-    const rows=crmCore.buildLeads(readDb()),body=csv(rows,[
+    const rows=crmLeadRows(readDb(),req),body=csv(rows,[
       {label:'Reference',value:'reference'},{label:'Name',value:'name'},{label:'Email',value:'email'},{label:'Phone',value:'phone'},
       {label:'Title',value:'title'},{label:'Status',value:'status'},{label:'Owner',value:'owner'},{label:'Expected value',value:'expectedValue'},
       {label:'Final value',value:'finalValue'},{label:'Source',value:'source'},{label:'Campaign',value:'campaign'},{label:'Next follow-up',value:'nextFollowUp'},
