@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');
+const crmCore = require('./crm-core');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -2004,6 +2005,9 @@ function syncEventRequestFromStripePaymentIntent(db, paymentIntent, source = 'st
     request.status = 'payée';
     request.quotePaidAt = request.quotePaidAt || new Date().toISOString();
     request.paymentAmountReceived = money((Number(paymentIntent.amount_received) || 0) / 100);
+    crmCore.syncEventWorkflow(db, request.id, 'payment_succeeded', `system:${source}`);
+  } else if (['processing','requires_payment_method','requires_action','requires_confirmation'].includes(String(paymentIntent.status || ''))) {
+    crmCore.syncEventWorkflow(db, request.id, 'payment_pending', `system:${source}`);
   }
   request.updatedAt = new Date().toISOString();
   return request;
@@ -2136,6 +2140,7 @@ app.post('/api/event-requests', async (req, res) => {
   };
   db.eventRequests = db.eventRequests || [];
   db.eventRequests.push(request);
+  crmCore.syncEventWorkflow(db, request.id, 'request_created', 'system:event-request');
   writeDB(db);
   const delivery = await deliverEventRequestEmails(request);
   res.json({ success:true, reference:request.reference, emailStatus:delivery.customer });
@@ -2172,6 +2177,7 @@ app.post('/api/event-quotes/:token/payment', async (req, res) => {
     if (!paymentIntent) paymentIntent = await createStripePaymentIntentForEventQuote(request);
     request.paymentReference = paymentIntent.id || '';
     request.quotePaymentStatus = paymentIntent.status === 'processing' ? 'processing' : 'pending';
+    crmCore.syncEventWorkflow(db, request.id, 'payment_pending', 'system:payment-started');
     request.updatedAt = new Date().toISOString();
     writeDB(db);
     res.json({ success:true, publishableKey:process.env.STRIPE_PUBLISHABLE_KEY || '', clientSecret:paymentIntent.client_secret || '', paymentIntentId:paymentIntent.id || '', quote:publicEventQuoteView(request) });
@@ -2734,6 +2740,10 @@ app.patch('/api/admin/event-requests/:id', adminOnly, (req, res) => {
     quoteAmount,
     updatedAt:new Date().toISOString()
   };
+  const workflowRequest=db.eventRequests[i];
+  if (nextStatus === 'payée') crmCore.syncEventWorkflow(db, workflowRequest.id, 'manual_paid', req.session.email || 'admin');
+  else if (nextStatus === 'devis préparé' || quoteAmount > 0) crmCore.syncEventWorkflow(db, workflowRequest.id, 'quote_drafted', req.session.email || 'admin');
+  else if (nextStatus === 'contactée') crmCore.syncEventWorkflow(db, workflowRequest.id, 'contacted', req.session.email || 'admin');
   writeDB(db);
   res.json({ success: true, request: db.eventRequests[i] });
 });
@@ -2762,6 +2772,7 @@ app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, re
   const saved = (latest.eventRequests || []).find(item => item.id === request.id);
   if (saved) {
     saved.quoteEmailDelivery = { status:emailResult.status, providerId:emailResult.id || '', error:emailResult.error || '', sentAt:emailResult.status === 'sent' ? new Date().toISOString() : '' };
+    if (emailResult.status === 'sent') crmCore.syncEventWorkflow(latest, saved.id, 'quote_sent', req.session.email || 'admin', { reopen:true });
     writeDB(latest);
   }
   res.json({ success:true, request:saved || request, paymentLink:request.paymentLinkUrl, emailStatus:emailResult.status });
