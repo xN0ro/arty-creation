@@ -689,6 +689,8 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
   }
 
   const createdAt = new Date().toISOString();
+  const stripeEnabled = isStripeEnabled();
+  const paymentEnvironment = stripeEnabled ? stripeEnvironment() : 'manual';
   const order = {
     id: orderId,
     locale: req.locale,
@@ -714,6 +716,8 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     tracking: { carrier: '', number: '', url: '', estimatedDelivery: '', updatedAt: '' },
     paymentStatus: 'pending',
     paymentProvider: process.env.PAYMENT_PROVIDER || 'not_connected',
+    paymentEnvironment,
+    isTest: stripeEnabled && paymentEnvironment === 'test',
     paymentReference: '',
     inventoryReserved: true,
     inventoryRestocked: false,
@@ -726,7 +730,6 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     updatedAt: createdAt
   };
 
-  const stripeEnabled = isStripeEnabled();
   let payment = {
     status: 'provider_not_connected',
     provider: order.paymentProvider,
@@ -2037,13 +2040,44 @@ function normalizeEventPayload(body, existing = {}) {
 }
 
 // ========== ADMIN ==========
-app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:(db.orders||[]).length,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
+app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:a.ordersCount,totalTestOrders:a.testOrdersCount,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
 app.get('/api/admin/kits', adminOnly, (req, res) => { const db=readDB(); res.json((db.kits||[]).map(k => enrichPublicKit(k, db))); });
 
 app.get('/api/admin/orders', adminOnly, (req, res) => {
   const db = readDB();
   res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+});
+app.patch('/api/admin/orders/:id/test', adminOnly, (req, res) => {
+  const db = readDB();
+  const order = (db.orders || []).find(item => String(item.id) === String(req.params.id));
+  if (!order) return res.status(404).json({ error:I18n.t('Commande non trouvée') });
+  const isTest = req.body.isTest === true || req.body.isTest === 'true';
+  order.isTest = isTest;
+  order.testMarkedAt = isTest ? new Date().toISOString() : '';
+  order.testMarkedBy = isTest ? (req.session.email || 'admin') : '';
+  order.updatedAt = new Date().toISOString();
+  for (const booking of (db.bookings || []).filter(item => String(item.sourceOrderId || '') === String(order.id))) booking.isTest = isTest;
+  writeDB(db);
+  res.json({ success:true, order, analytics:computeAdminAnalytics(db) });
+});
+app.post('/api/admin/orders/mark-all-test', adminOnly, (req, res) => {
+  const db = readDB();
+  const now = new Date().toISOString();
+  let count = 0;
+  for (const order of (db.orders || [])) {
+    if (order.isTest) continue;
+    order.isTest = true;
+    order.testMarkedAt = now;
+    order.testMarkedBy = req.session.email || 'admin';
+    order.updatedAt = now;
+    count += 1;
+  }
+  for (const booking of (db.bookings || [])) {
+    if ((db.orders || []).some(order => String(order.id) === String(booking.sourceOrderId || '') && order.isTest)) booking.isTest = true;
+  }
+  writeDB(db);
+  res.json({ success:true, count, analytics:computeAdminAnalytics(db) });
 });
 app.get('/api/admin/support-requests', adminOnly, (req, res) => {
   const db = readDB();
@@ -2760,6 +2794,13 @@ function releaseInventoryForItems(db, items, orderId, reason = I18n.t('Retour st
 function isStripeEnabled() {
   return String(process.env.PAYMENT_PROVIDER || '').toLowerCase() === 'stripe' && Boolean(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_PUBLISHABLE_KEY);
 }
+function stripeEnvironment() {
+  const secret = String(process.env.STRIPE_SECRET_KEY || '');
+  const publishable = String(process.env.STRIPE_PUBLISHABLE_KEY || '');
+  if (secret.startsWith('sk_live_') || publishable.startsWith('pk_live_')) return 'live';
+  if (secret.startsWith('sk_test_') || publishable.startsWith('pk_test_')) return 'test';
+  return String(process.env.STRIPE_MODE || 'test').trim().toLowerCase() === 'live' ? 'live' : 'test';
+}
 function isTicketPaymentEnabled() {
   return isStripeEnabled() && Boolean(String(process.env.STRIPE_WEBHOOK_SECRET || '').trim());
 }
@@ -2834,6 +2875,10 @@ function syncOrderFromStripePaymentIntent(db, pi, source = 'stripe') {
   if (!order) return null;
   order.paymentProvider = 'stripe';
   order.paymentReference = pi.id || order.paymentReference || '';
+  if (typeof pi.livemode === 'boolean') {
+    order.paymentEnvironment = pi.livemode ? 'live' : 'test';
+    order.isTest = !pi.livemode;
+  }
   order.stripe = { ...(order.stripe || {}), paymentIntentId: pi.id || '', status: pi.status || '', lastSyncedAt: new Date().toISOString() };
   if (pi.status === 'succeeded') {
     markOrderPaid(order, pi, source);
@@ -2901,55 +2946,61 @@ async function handleStripeWebhook(req, res) {
 }
 
 function computeAdminAnalytics(db) {
-  const orders = db.orders || [];
-  const refunds = db.refunds || [];
+  const allOrders = db.orders || [];
+  const orders = allOrders.filter(order => !order.isTest);
+  const testOrders = allOrders.filter(order => !!order.isTest);
+  const orderById = new Map(allOrders.map(order => [String(order.id), order]));
+  const refunds = (db.refunds || []).filter(refund => !orderById.get(String(refund.orderId))?.isTest);
   const now = new Date();
   const monthKey = now.toISOString().slice(0,7);
-  const goodOrders = orders.filter(o => o.status !== 'annulée');
-  const revenue = money(goodOrders.reduce((s,o)=>s+Number(o.total||0),0));
-  const paidRevenue = money(orders.filter(o=>o.paymentStatus==='paid').reduce((s,o)=>s+Number(o.total||0),0));
-  const monthOrders = goodOrders.filter(o => String(o.createdAt||'').slice(0,7) === monthKey);
+  const realOrders = orders.filter(order => order.status !== 'annulée');
+  const paidOrders = realOrders.filter(order => order.paymentStatus === 'paid' && order.status !== 'remboursée');
+  const revenue = money(paidOrders.reduce((sum,order)=>sum+Number(order.total||0),0));
+  const paidRevenue = revenue;
+  const monthOrders = paidOrders.filter(order => String(order.paidAt || order.createdAt || '').slice(0,7) === monthKey);
   const todayKey = now.toISOString().slice(0,10);
-  const todayOrders = goodOrders.filter(o => String(o.createdAt||'').slice(0,10) === todayKey);
-  const statusCounts = orders.reduce((a,o)=>{const k=o.status||'nouvelle';a[k]=(a[k]||0)+1;return a;},{});
+  const todayOrders = paidOrders.filter(order => String(order.paidAt || order.createdAt || '').slice(0,10) === todayKey);
+  const statusCounts = orders.reduce((acc,order)=>{const key=order.status||'nouvelle';acc[key]=(acc[key]||0)+1;return acc;},{});
   const daily = [];
   for (let i=13;i>=0;i--) {
-    const d = new Date(now); d.setDate(now.getDate()-i);
-    const key = d.toISOString().slice(0,10);
-    const dayOrders = goodOrders.filter(o => String(o.createdAt||'').slice(0,10) === key);
-    daily.push({ date:key.slice(5), revenue: money(dayOrders.reduce((s,o)=>s+Number(o.total||0),0)), orders: dayOrders.length });
+    const day = new Date(now); day.setDate(now.getDate()-i);
+    const key = day.toISOString().slice(0,10);
+    const dayOrders = paidOrders.filter(order => String(order.paidAt || order.createdAt || '').slice(0,10) === key);
+    daily.push({ date:key.slice(5), revenue:money(dayOrders.reduce((sum,order)=>sum+Number(order.total||0),0)), orders:dayOrders.length });
   }
   const productMap = {};
-  for (const o of goodOrders) for (const item of (o.items||[])) {
+  for (const order of paidOrders) for (const item of (order.items||[])) {
     const name = item.name || I18n.t('Produit');
     if (!productMap[name]) productMap[name] = { name, qty:0, revenue:0 };
     productMap[name].qty += Number(item.qty)||0;
     productMap[name].revenue += Number(item.lineTotal ?? (Number(item.price||0)*Number(item.qty||0))) || 0;
   }
-  const topProducts = Object.values(productMap).sort((a,b)=>b.revenue-a.revenue).slice(0,8).map(x=>({ ...x, revenue: money(x.revenue) }));
-  const lowInventory = (db.kits||[]).map(k=>enrichPublicKit(k,db)).filter(k=>k.isLowStock || !k.inStock).sort((a,b)=>Number(a.stockQty??999)-Number(b.stockQty??999)).slice(0,20);
-  const refundTotal = money(refunds.reduce((s,r)=>s+Number(r.amount||0),0));
+  const topProducts = Object.values(productMap).sort((a,b)=>b.revenue-a.revenue).slice(0,8).map(item=>({ ...item, revenue:money(item.revenue) }));
+  const lowInventory = (db.kits||[]).map(kit=>enrichPublicKit(kit,db)).filter(kit=>kit.isLowStock || !kit.inStock).sort((a,b)=>Number(a.stockQty??999)-Number(b.stockQty??999)).slice(0,20);
+  const refundTotal = money(refunds.reduce((sum,refund)=>sum+Number(refund.amount||0),0));
   return {
     revenue,
     paidRevenue,
-    pendingRevenue: money(orders.filter(o=>o.paymentStatus==='pending').reduce((s,o)=>s+Number(o.total||0),0)),
-    monthRevenue: money(monthOrders.reduce((s,o)=>s+Number(o.total||0),0)),
-    todayRevenue: money(todayOrders.reduce((s,o)=>s+Number(o.total||0),0)),
-    ordersCount: orders.length,
-    monthOrdersCount: monthOrders.length,
-    todayOrdersCount: todayOrders.length,
-    averageOrder: goodOrders.length ? money(revenue / goodOrders.length) : 0,
-    discountTotal: money(goodOrders.reduce((s,o)=>s+Number(o.discountTotal||0),0)),
+    pendingRevenue:money(orders.filter(order=>order.paymentStatus==='pending').reduce((sum,order)=>sum+Number(order.total||0),0)),
+    monthRevenue:money(monthOrders.reduce((sum,order)=>sum+Number(order.total||0),0)),
+    todayRevenue:money(todayOrders.reduce((sum,order)=>sum+Number(order.total||0),0)),
+    ordersCount:orders.length,
+    testOrdersCount:testOrders.length,
+    paidOrdersCount:paidOrders.length,
+    monthOrdersCount:monthOrders.length,
+    todayOrdersCount:todayOrders.length,
+    averageOrder:paidOrders.length ? money(revenue / paidOrders.length) : 0,
+    discountTotal:money(paidOrders.reduce((sum,order)=>sum+Number(order.discountTotal||0),0)),
     refundTotal,
     statusCounts,
-    dailySales: daily,
+    dailySales:daily,
     topProducts,
     lowInventory,
-    lowInventoryCount: lowInventory.length,
-    activeDiscounts: (db.discounts||[]).filter(d=>isDiscountActive(d)).length,
-    newEventRequests: (db.eventRequests||[]).filter(r=>(r.status||'nouvelle')==='nouvelle').length,
-    bookingsCount: (db.bookings||[]).length,
-    latestOrders: orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,6)
+    lowInventoryCount:lowInventory.length,
+    activeDiscounts:(db.discounts||[]).filter(discount=>isDiscountActive(discount)).length,
+    newEventRequests:(db.eventRequests||[]).filter(request=>(request.status||'nouvelle')==='nouvelle').length,
+    bookingsCount:(db.bookings||[]).filter(booking=>!booking.isTest).length,
+    latestOrders:orders.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).slice(0,6)
   };
 }
 
