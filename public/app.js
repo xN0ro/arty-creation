@@ -1249,7 +1249,64 @@ function productUiText(){
     home:'Accueil',kits:'Kits de peinture',back:'Retour aux kits',popular:'Populaire',inStock:'En stock',soldOut:'Épuisé',
     chooseSize:'Choisissez votre format',required:'Sélection obligatoire',customize:'Personnalisez votre kit',optional:'Options facultatives',
     yourPrice:'Votre prix',selection:'Sélection',quantity:'Quantité',addCart:'Ajouter au panier',buyNow:'Acheter maintenant',
-    bundle:'Créer un forfait avec ce kit',shipping:'Livraison gratuite',shippingSub:'Dès 75 
+    bundle:'Créer un forfait avec ce kit',shipping:'Livraison gratuite',shippingSub:'Dès 75 $',secure:'Paiement protégé',
+    secureSub:'Paiement sécurisé',guided:'Création guidée',guidedSub:'Instructions incluses',checkoutNote:'La livraison et les taxes sont calculées au paiement.',
+    complete:'Kit complet',included:'Inclus dans ce kit',includedIntro:'Tout ce qui accompagne ce produit est préparé ensemble pour que vous puissiez commencer à créer en toute confiance.',
+    how:'Comment ça fonctionne',howIntro:'Une expérience ARTY simple, du choix du kit jusqu’à votre création.',step1:'Choisissez vos options',step1Sub:'Sélectionnez votre format et les options souhaitées.',
+    step2:'Nous préparons votre kit',step2Sub:'Votre commande est préparée avec soin pour la livraison.',step3:'Créez à votre rythme',step3Sub:'Suivez les instructions et le tutoriel inclus.',
+    zoom:'Agrandir l’image',previous:'Image précédente',next:'Image suivante',close:'Fermer',photo:'Photo'
+  };
+}
+function selectProductImage(index){
+  const thumbs=Array.from(document.querySelectorAll('.product-thumb'));
+  if(!thumbs.length)return;
+  const bounded=(Number(index)+thumbs.length)%thumbs.length;
+  switchProductImage(thumbs[bounded]);
+}
+function switchProductImage(button){
+  const main=document.getElementById('pMainImg'),thumbs=Array.from(document.querySelectorAll('.product-thumb'));
+  const index=Math.max(0,thumbs.indexOf(button));
+  if(main){main.src=button.dataset.image||main.src;main.alt=button.dataset.alt||main.alt;main.dataset.index=String(index)}
+  thumbs.forEach(thumb=>{const active=thumb===button;thumb.classList.toggle('active',active);thumb.setAttribute('aria-pressed',String(active))});
+  const counter=document.getElementById('productPhotoCount');
+  if(counter)counter.textContent=`${productUiText().photo} ${index+1} / ${thumbs.length}`;
+}
+function stepProductImage(direction){
+  const main=document.getElementById('pMainImg'),current=Number(main?.dataset.index||0);
+  selectProductImage(current+Number(direction||0));
+}
+function openProductLightbox(){
+  const main=document.getElementById('pMainImg');if(!main)return;
+  let overlay=document.getElementById('productImageLightbox');
+  if(!overlay){
+    overlay=document.createElement('div');overlay.id='productImageLightbox';overlay.className='product-image-lightbox';
+    overlay.innerHTML='<button class="product-lightbox-close" type="button" aria-label="Close">×</button><button class="product-lightbox-nav prev" type="button" aria-label="Previous image">‹</button><img alt=""><button class="product-lightbox-nav next" type="button" aria-label="Next image">›</button>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click',event=>{if(event.target===overlay)closeProductLightbox()});
+    overlay.querySelector('.product-lightbox-close').onclick=closeProductLightbox;
+    overlay.querySelector('.product-lightbox-nav.prev').onclick=()=>{stepProductImage(-1);syncProductLightbox()};
+    overlay.querySelector('.product-lightbox-nav.next').onclick=()=>{stepProductImage(1);syncProductLightbox()};
+  }
+  const t=productUiText();
+  overlay.querySelector('.product-lightbox-close').setAttribute('aria-label',t.close);
+  overlay.querySelector('.product-lightbox-nav.prev').setAttribute('aria-label',t.previous);
+  overlay.querySelector('.product-lightbox-nav.next').setAttribute('aria-label',t.next);
+  syncProductLightbox();
+  overlay.classList.add('open');document.body.classList.add('product-lightbox-open');
+}
+function syncProductLightbox(){
+  const overlay=document.getElementById('productImageLightbox'),main=document.getElementById('pMainImg'),img=overlay?.querySelector('img');
+  if(img&&main){img.src=main.src;img.alt=main.alt}
+  const multiple=document.querySelectorAll('.product-thumb').length>1;
+  overlay?.querySelectorAll('.product-lightbox-nav').forEach(button=>button.style.display=multiple?'grid':'none');
+}
+function closeProductLightbox(){document.getElementById('productImageLightbox')?.classList.remove('open');document.body.classList.remove('product-lightbox-open')}
+document.addEventListener('keydown',event=>{
+  if(!document.getElementById('productImageLightbox')?.classList.contains('open'))return;
+  if(event.key==='Escape')closeProductLightbox();
+  if(event.key==='ArrowLeft'){stepProductImage(-1);syncProductLightbox()}
+  if(event.key==='ArrowRight'){stepProductImage(1);syncProductLightbox()}
+});
 function productServiceIcon(type){
   const paths={
     delivery:'<path d="M3 7h10v8H3z"></path><path d="M13 10h4l3 3v2h-7z"></path><circle cx="7" cy="17" r="2"></circle><circle cx="17" cy="17" r="2"></circle>',
