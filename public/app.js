@@ -99,9 +99,35 @@ function renderHomePage(){
   initScrollEffects();
 }
 
+function getHomeFavoriteKits(){
+  const selected=allKits.filter(k=>k.homeFavorite===true).slice(0,5);
+  if(selected.length)return selected;
+
+  const source=allKits.filter(k=>k.inStock!==false);
+  const pool=source.length?source:allKits;
+  if(pool.length<=5)return [...pool];
+
+  const storageKey='arty_home_random_favorite_ids_v1';
+  try{
+    const stored=JSON.parse(sessionStorage.getItem(storageKey)||'[]');
+    if(Array.isArray(stored)&&stored.length===5){
+      const storedKits=stored.map(id=>pool.find(k=>String(k.id)===String(id))).filter(Boolean);
+      if(storedKits.length===5)return storedKits;
+    }
+  }catch{}
+
+  const shuffled=[...pool];
+  for(let i=shuffled.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];
+  }
+  const random=shuffled.slice(0,5);
+  try{sessionStorage.setItem(storageKey,JSON.stringify(random.map(k=>k.id)))}catch{}
+  return random;
+}
+
 function renderHomePopularKits(){
-  const featured = allKits.filter(k=>k.featured).slice(0,5);
-  const kits = featured.length >= 5 ? featured : allKits.slice(0,5);
+  const kits=getHomeFavoriteKits();
   document.getElementById('homePopularKits').innerHTML = kits.map(k=>{
     const cat = allCategories.find(c=>c.id===k.categoryId);
     return `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
@@ -1256,7 +1282,7 @@ function switchAdminTab(t,btn){
 }
 
 function renderHomePopularKits(){
-  const featured=allKits.filter(k=>k.featured).slice(0,5);const kits=featured.length>=5?featured:allKits.slice(0,5);
+  const kits=getHomeFavoriteKits();
   const el=document.getElementById('homePopularKits');if(!el)return;
   el.innerHTML=kits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?I18n.html('<span class="kit-card-badge">Populaire</span>'):''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'')}</div><h3 class="kit-card-title">${safeText(I18n.field(k,'name'))}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div></div></div></div>`}).join('');
 }
@@ -1617,10 +1643,42 @@ async function deleteProductTemplate(){
   const id=document.getElementById('aKitTemplateSelect')?.value,template=adminProductTemplates.find(item=>String(item.id)===String(id));if(!template)return showToast(I18n.t('Choisissez un modèle'),'error');if(!confirm(I18n.msg`Supprimer le modèle « ${template.name} »?`))return;
   try{const r=await artyFetch(`/api/admin/product-templates/${encodeURIComponent(id)}`,{method:'DELETE',headers:authH()});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||I18n.t('Erreur'),'error');adminProductTemplates=adminProductTemplates.filter(item=>String(item.id)!==String(id));refreshProductTemplateSelect();showToast(I18n.t('Modèle supprimé'),'success')}catch{showToast(I18n.t('Erreur'),'error')}
 }
+function updateHomeFavoriteSelection(changed){
+  const boxes=Array.from(document.querySelectorAll('#adminHomeFavoritesPicker [data-home-favorite-id]'));
+  let selected=boxes.filter(box=>box.checked);
+  if(selected.length>5){
+    changed.checked=false;
+    selected=boxes.filter(box=>box.checked);
+    showToast(I18n.t('Vous pouvez sélectionner un maximum de 5 kits favoris.'),'error');
+  }
+  boxes.forEach(box=>box.closest('.admin-home-favorite-card')?.classList.toggle('selected',box.checked));
+  const count=document.getElementById('adminHomeFavoriteCount');
+  if(count)count.textContent=`${selected.length}/5`;
+}
+async function saveHomeFavorites(){
+  const kitIds=Array.from(document.querySelectorAll('#adminHomeFavoritesPicker [data-home-favorite-id]:checked')).map(box=>Number(box.dataset.homeFavoriteId)).filter(Number.isFinite);
+  if(kitIds.length>5)return showToast(I18n.t('Vous pouvez sélectionner un maximum de 5 kits favoris.'),'error');
+  try{
+    const r=await artyFetch('/api/admin/home-favorite-kits',{method:'PUT',headers:authH(),body:JSON.stringify({kitIds})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)return showToast(d.error||I18n.t('Erreur'),'error');
+    try{sessionStorage.removeItem('arty_home_random_favorite_ids_v1')}catch{}
+    showToast(kitIds.length?I18n.t('Kits favoris de la page d’accueil enregistrés.'):I18n.t('Sélection retirée. La page d’accueil affichera 5 kits au hasard.'),'success');
+    await loadAdminData();
+    renderHomePopularKits();
+  }catch{showToast(I18n.t('Erreur'),'error')}
+}
 function renderAdminKits(){
   const panel=document.getElementById('adminKitsPanel');if(!panel)return;
   const rows=allKits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId)),images=productImageList(k),formatCount=(k.sizeOptions||[]).length,optionCount=(k.addOns||[]).length;return I18n.html`<tr><td><div class="admin-product-cell"><img src="${safeAttr(images[0])}" alt=""><div><strong>${safeText(I18n.field(k,'name'))}</strong><br><span class="admin-muted">${images.length} photo${images.length>1?'s':''} · ${formatCount} format${formatCount!==1?'s':''} · ${optionCount} option${optionCount!==1?'s':''}</span></div></div></td><td>${cat?safeText(I18n.field(cat,'name')):'-'}</td><td><span class="admin-status ${k.inStock!==false?'ok':'out'}">${safeText(stockTagText(k))}</span></td><td>${kitPriceHTML(k)}</td><td><div class="admin-actions"><button class="admin-btn admin-btn-edit" onclick="editKit(${k.id})">Modifier</button><button class="admin-btn admin-btn-delete" onclick="deleteKit(${k.id})">Supprimer</button></div></td></tr>`}).join('');
+  const homeFavoriteCount=allKits.filter(k=>k.homeFavorite===true).length;
+  const homeFavoriteCards=allKits.map(k=>`<label class="admin-home-favorite-card ${k.homeFavorite===true?'selected':''}"><input type="checkbox" data-home-favorite-id="${safeAttr(k.id)}" ${k.homeFavorite===true?'checked':''} onchange="updateHomeFavoriteSelection(this)"><img src="${safeAttr(productImageList(k)[0])}" alt=""><span><strong>${safeText(I18n.field(k,'name'))}</strong><small>${k.inStock!==false?I18n.t('En stock'):I18n.t('Épuisé')}</small></span></label>`).join('');
   panel.innerHTML=I18n.html`
+    <div class="admin-form-card admin-home-favorites-panel">
+      <div class="admin-form-head"><div><h3>Nos kits favoris — page d’accueil</h3><p>Sélectionnez jusqu’à 5 produits à afficher dans la section « Nos kits favoris ». Si aucun produit n’est sélectionné, ARTY en choisira automatiquement 5 au hasard.</p></div><strong class="admin-home-favorite-count" id="adminHomeFavoriteCount">${homeFavoriteCount}/5</strong></div>
+      <div class="admin-home-favorites-grid" id="adminHomeFavoritesPicker">${homeFavoriteCards||I18n.html('<p class="admin-muted">Aucun produit disponible.</p>')}</div>
+      <div class="admin-home-favorites-actions"><button type="button" class="btn btn-orange" onclick="saveHomeFavorites()">Enregistrer les favoris de l’accueil</button></div>
+    </div>
     <div class="admin-form-card admin-product-editor">
       <div class="admin-form-head"><div><h3 id="kitFormTitle">Ajouter un produit</h3><p>Créez une fiche produit complète avec galerie, contenu, formats et options payantes.</p></div><button class="btn btn-ghost btn-sm" onclick="resetKitForm()">Nouveau</button></div>
       <input type="hidden" id="editKitId">
