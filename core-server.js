@@ -2095,8 +2095,13 @@ function publicEventQuoteView(request) {
     quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],
     quoteTaxProvince:request.quoteTaxProvince||'',
     quoteAmount:money(request.quoteAmount || 0),
+    quoteRefundedTotal:money(request.quoteRefundedTotal||0),
+    quoteRefundPendingTotal:money(request.quoteRefundPendingTotal||0),
+    quoteNetPaid:money(request.quoteNetPaid??Math.max(0,Number(request.paymentAmountReceived||request.quoteAmount||0)-Number(request.quoteRefundedTotal||0))),
+    quoteRefundStatus:request.quoteRefundStatus||'none',
+    refunds:(request.quoteRefunds||[]).filter(refund=>['succeeded','pending','requires_action'].includes(String(refund.providerStatus||refund.status||''))).map(refund=>({id:refund.id,amount:money(refund.amount),reason:refund.reason||'',status:refund.providerStatus||refund.status||'',createdAt:refund.createdAt||'',completedAt:refund.completedAt||''})),
     address:eventQuoteAddress(request),
-    status:request.quotePaymentStatus==='paid'?'payée':(request.status || 'nouvelle'),
+    status:request.quoteRefundStatus==='refunded'?'remboursée':request.quotePaymentStatus==='paid'?'payée':(request.status || 'nouvelle'),
     paymentStatus:request.quotePaymentStatus || 'not_created',
     paidAt:request.quotePaidAt || ''
   };
@@ -2210,7 +2215,7 @@ function sendEventQuotePaidEmail(request) {
 async function deliverEventQuotePaidEmail(requestId) {
   let db = readDB();
   const request = (db.eventRequests || []).find(item => String(item.id) === String(requestId));
-  if (!request || request.quotePaymentStatus !== 'paid') return { status:'not_paid' };
+  if (!request || !['paid','refund_pending','refunded'].includes(String(request.quotePaymentStatus||''))) return { status:'not_paid' };
   if (request.paidEmailDelivery?.status === 'sent') return request.paidEmailDelivery;
   const result = await sendEventQuotePaidEmail(request);
   db = readDB();
@@ -2219,6 +2224,35 @@ async function deliverEventQuotePaidEmail(requestId) {
     saved.paidEmailDelivery = { status:result.status, providerId:result.id || '', error:result.error || '', sentAt:result.status === 'sent' ? new Date().toISOString() : '' };
     writeDB(db);
   }
+  return result;
+}
+function sendEventQuoteRefundEmail(request,refund){
+  return withLocale(request.locale,()=>sendTransactionalEmail({
+    to:request.email,
+    subject:I18n.msg`Remboursement ARTY — ${request.reference}`,
+    idempotencyKey:`event-refund-${request.id}-${refund.id}`,
+    replyTo:'events',
+    html:emailShell({
+      title:I18n.t('Remboursement confirmé'),
+      intro:I18n.msg`Un remboursement de ${I18n.currency(money(refund.amount).toFixed(2))} CAD a été effectué.`,
+      preheader:I18n.msg`Remboursement confirmé pour ${request.reference}.`,
+      content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${emailAmountSummary(I18n.t('Montant remboursé'),`${I18n.currency(money(refund.amount).toFixed(2))} CAD`)}${emailAmountSummary(I18n.t('Montant net payé'),`${I18n.currency(money(request.quoteNetPaid||0).toFixed(2))} CAD`)}${emailPanel(I18n.html`<strong style="display:block;margin-bottom:5px;color:#332b22">${escapeEmailHTML(request.eventType)}</strong>Référence ${escapeEmailHTML(request.reference)}`,'teal')}<p>Le remboursement a été envoyé au mode de paiement original utilisé avec Stripe. Le délai d’apparition dépend de votre institution financière.</p>`,
+      ctaLabel:I18n.t('Voir mon compte ARTY'),
+      ctaUrl:`${normalizePublicUrl()}/?lang=${I18n.language()}#/profile`,
+      footer:I18n.msg`Remboursement ${refund.id} pour la demande ${request.reference}.`
+    })
+  }));
+}
+async function deliverEventQuoteRefundEmail(requestId,refundId){
+  let db=readDB(),request=(db.eventRequests||[]).find(item=>String(item.id)===String(requestId));
+  if(!request)return{status:'missing'};
+  const refund=(request.quoteRefunds||[]).find(item=>String(item.id)===String(refundId));
+  if(!refund||String(refund.providerStatus||refund.status)!=='succeeded')return{status:'not_succeeded'};
+  if(refund.emailDelivery?.status==='sent')return refund.emailDelivery;
+  const result=await sendEventQuoteRefundEmail(request,refund);
+  db=readDB();request=(db.eventRequests||[]).find(item=>String(item.id)===String(requestId));
+  const saved=(request?.quoteRefunds||[]).find(item=>String(item.id)===String(refundId));
+  if(saved){saved.emailDelivery={status:result.status,providerId:result.id||'',error:result.error||'',sentAt:result.status==='sent'?new Date().toISOString():''};writeDB(db)}
   return result;
 }
 
@@ -2300,9 +2334,13 @@ app.post('/api/event-requests', optionalAuth, async (req, res) => {
   res.json({ success:true, reference:request.reference, emailStatus:delivery.customer });
 });
 
-app.get('/api/event-requests/mine',auth,(req,res)=>{
+app.get('/api/event-requests/mine',auth,async(req,res)=>{
   const db=readDB(),user=(db.users||[]).find(item=>item.id===req.session.userId),email=String(user?.email||req.session.email||'').trim().toLowerCase();
-  const rows=(db.eventRequests||[]).filter(item=>item.userId===req.session.userId||String(item.email||'').trim().toLowerCase()===email).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)).map(item=>({
+  const mine=(db.eventRequests||[]).filter(item=>item.userId===req.session.userId||String(item.email||'').trim().toLowerCase()===email);
+  let changed=false;
+  for(const item of mine)if(await syncPendingEventRefunds(item))changed=true;
+  if(changed)writeDB(db);
+  const rows=mine.sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)).map(item=>({
     id:item.id,reference:item.reference||'',eventType:item.eventType||'',preferredDate:item.preferredDate||'',eventTime:item.eventTime||'',
     guests:Number(item.guests||0),location:item.location||'',address:eventQuoteAddress(item),servicePath:item.servicePath||'expert',
     servicePathLabel:eventRequestPathLabel(item.servicePath),inventoryItems:(item.inventoryItems||[]).map(x=>({name:x.name,quantity:x.quantity,image:x.image||''})),
@@ -2310,7 +2348,9 @@ app.get('/api/event-requests/mine',auth,(req,res)=>{
     expertBrief:item.expertBrief||'',message:item.message||'',quoteDescription:item.quoteDescription||'',
     quoteSubtotal:money(item.quoteSubtotal??item.quoteAmount??0),quoteShipping:money(item.quoteShipping||0),quoteTaxTotal:money(item.quoteTaxTotal||0),
     quoteTaxLines:Array.isArray(item.quoteTaxLines)?item.quoteTaxLines:[],quoteAmount:money(item.quoteAmount||0),
-    status:item.quotePaymentStatus==='paid'?'payée':(item.status||'nouvelle'),paymentStatus:item.quotePaymentStatus||'not_created',
+    quoteRefundedTotal:money(item.quoteRefundedTotal||0),quoteRefundPendingTotal:money(item.quoteRefundPendingTotal||0),quoteNetPaid:money(item.quoteNetPaid??Math.max(0,Number(item.paymentAmountReceived||item.quoteAmount||0)-Number(item.quoteRefundedTotal||0))),
+    quoteRefundStatus:item.quoteRefundStatus||'none',refunds:(item.quoteRefunds||[]).filter(refund=>['succeeded','pending','requires_action'].includes(String(refund.providerStatus||refund.status||''))).map(refund=>({id:refund.id,amount:money(refund.amount),reason:refund.reason||'',status:refund.providerStatus||refund.status||'',createdAt:refund.createdAt||'',completedAt:refund.completedAt||''})),
+    status:item.quoteRefundStatus==='refunded'?'remboursée':item.quotePaymentStatus==='paid'?'payée':(item.status||'nouvelle'),paymentStatus:item.quotePaymentStatus||'not_created',
     paidAt:item.quotePaidAt||'',createdAt:item.createdAt||'',updatedAt:item.updatedAt||item.createdAt||''
   }));
   res.json(rows);
@@ -2932,18 +2972,20 @@ app.post('/api/admin/bookings/:id/resend-ticket', adminOnly, async (req, res) =>
   if (result.status !== 'sent') return res.status(503).json({ error:result.error || I18n.t('Courriel non envoyé'), emailStatus:result.status });
   res.json({ success:true, emailStatus:result.status, booking });
 });
-app.get('/api/admin/event-requests', adminOnly, (req, res) => {
-  const db = readDB();
-  res.json((db.eventRequests || []).map(item=>item.quotePaymentStatus==='paid'?{...item,status:'payée'}:item).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+app.get('/api/admin/event-requests', adminOnly, async (req, res) => {
+  const db=readDB();let changed=false;
+  for(const item of (db.eventRequests||[]))if(await syncPendingEventRefunds(item))changed=true;
+  if(changed)writeDB(db);
+  res.json((db.eventRequests||[]).map(item=>item.quoteRefundStatus==='refunded'?{...item,status:'remboursée',quotePaymentStatus:'refunded'}:item.quotePaymentStatus==='paid'?{...item,status:'payée'}:item).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)));
 });
 app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
   const db = readDB();
   const i = (db.eventRequests || []).findIndex(r => r.id === parseInt(req.params.id));
   if (i === -1) return res.status(404).json({ error: I18n.t('Non trouvé') });
   const current = db.eventRequests[i];
-  const allowedStatuses = ['nouvelle','en étude','contactée','devis préparé','paiement prêt','payée','fermée'];
+  const allowedStatuses = ['nouvelle','en étude','contactée','devis préparé','paiement prêt','payée','fermée','remboursée'];
   const requestedStatus = allowedStatuses.includes(String(req.body.status || '')) ? String(req.body.status) : current.status;
-  const nextStatus = current.quotePaymentStatus==='paid' ? 'payée' : requestedStatus;
+  const nextStatus = current.quoteRefundStatus==='refunded'||current.quotePaymentStatus==='refunded' ? 'remboursée' : current.quotePaymentStatus==='paid'||current.quotePaymentStatus==='refund_pending' ? 'payée' : requestedStatus;
   const pricing=eventQuotePricing(db,current,req.body||{});
   db.eventRequests[i] = {
     ...current,
@@ -2981,7 +3023,7 @@ app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, re
     return res.status(403).json({error:I18n.t('Ce prospect ne vous est pas assigné')});
   }
   if (!isStripeEnabled()) return res.status(503).json({ error:I18n.t('Stripe doit être configuré avant de créer un lien de paiement') });
-  if(request.quotePaymentStatus==='paid')return res.status(409).json({error:I18n.t('Ce devis est déjà payé')});
+  if(['paid','refund_pending','refunded'].includes(String(request.quotePaymentStatus||'')))return res.status(409).json({error:I18n.t('Ce devis est déjà payé ou en cours de remboursement')});
   const pricing=eventQuotePricing(db,request,req.body||{});
   if (pricing.quoteSubtotal < 0.5) return res.status(400).json({ error:I18n.t('Entrez un montant de devis valide') });
   if(commerceCore.isCanada(pricing.quoteAddress.country)&&!commerceCore.normalizeProvince(pricing.quoteAddress.province))return res.status(400).json({error:I18n.t('Une province canadienne valide est requise pour calculer les taxes')});
