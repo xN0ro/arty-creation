@@ -3495,10 +3495,10 @@ function recomputeOrderRefundState(db,order){
   const pending=rows.filter(refund=>['pending','requires_action'].includes(String(refund.providerStatus||refund.status||''))).reduce((sum,refund)=>sum+Number(refund.amount||0),0);
   order.refundedTotal=money(succeeded);
   order.refundPendingTotal=money(pending);
-  if(pending>0)order.refundStatus='refund_pending';
+  if(pending>0){order.refundStatus='refund_pending';order.paymentStatus='refund_pending'}
   else if(succeeded>=Number(order.total||0)-0.001){order.refundStatus='refunded';order.status='remboursée';order.paymentStatus='refunded'}
-  else if(succeeded>0)order.refundStatus='partial_refund';
-  else order.refundStatus='none';
+  else if(succeeded>0){order.refundStatus='partial_refund';order.paymentStatus='paid'}
+  else {order.refundStatus='none';if(order.paidAt)order.paymentStatus='paid'}
   order.updatedAt=new Date().toISOString();
   return{refundedTotal:money(succeeded),pendingTotal:money(pending),committedTotal:money(succeeded+pending)};
 }
