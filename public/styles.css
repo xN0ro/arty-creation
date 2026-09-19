@@ -2219,3 +2219,16 @@ body.product-lightbox-open{overflow:hidden}
 .admin-event-quote-total .error{color:#b3322d}
 .event-payment-success .event-quote-price-breakdown{max-width:430px;width:100%;margin:18px auto;text-align:left}
 @media(max-width:680px){.account-private-event-head{flex-direction:column}.account-private-event-facts{grid-template-columns:1fr}.account-private-event-card{padding:14px}}
+
+
+/* Private event Stripe refund states */
+.admin-event-refund-card{display:grid;gap:12px}
+.admin-event-refund-history{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--border-light,#eadfce)}
+.admin-event-refund-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:10px;background:var(--bg2,#faf7f2)}
+.admin-event-refund-row>span{display:grid;gap:2px}
+.admin-event-refund-row strong{font-size:.76rem}
+.admin-event-refund-row small{font-size:.6rem;color:var(--text-light,#7a6e62)}
+.account-private-event-refunds{display:grid;gap:7px;margin-top:10px;padding:10px 12px;border:1px solid var(--border-light,#eadfce);border-radius:11px;background:#fff}
+.account-private-event-refunds>strong{font-size:.7rem}
+.account-private-event-refunds>div{display:flex;justify-content:space-between;gap:12px;font-size:.66rem;color:var(--text-light,#7a6e62)}
+.account-private-event-refunds>div strong{color:var(--text,#332b22)}
