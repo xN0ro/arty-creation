@@ -2502,7 +2502,7 @@ function renderProfileOrders(){
   const wrap=document.getElementById('ordersWrap'),summary=document.getElementById('profileOrderSummary');if(!wrap||!summary)return;
   const active=profileOrders.filter(order=>!['livrée','annulée','remboursée'].includes(String(order.status||'').toLowerCase())).length;
   const paidPrivate=profilePrivateEvents.filter(request=>['paid','refund_pending','refunded'].includes(String(request.paymentStatus||''))||Number(request.quoteRefundedTotal)>0);
-  const total=profileOrders.reduce((sum,order)=>sum+Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0)),0)+paidPrivate.reduce((sum,request)=>sum+Number(request.quoteNetPaid??request.quoteAmount||0),0);
+  const total=profileOrders.reduce((sum,order)=>sum+Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0)),0)+paidPrivate.reduce((sum,request)=>sum+Number(request.quoteNetPaid??request.quoteAmount??0),0);
   const purchaseCount=profileOrders.length+paidPrivate.length;
   summary.innerHTML=I18n.html`<div class="account-summary-card">${profileIcon('orders')}<div><span>Achats</span><strong>${purchaseCount}</strong></div></div><div class="account-summary-card">${profileIcon('truck')}<div><span>Commandes en cours</span><strong>${active}</strong></div></div><div class="account-summary-card">${profileIcon('receipt')}<div><span>Total des achats</span><strong>${I18n.currency(toMoney(total))}</strong></div></div>`;
   const count=document.getElementById('profileOrderCount');if(count)count.textContent=purchaseCount;
