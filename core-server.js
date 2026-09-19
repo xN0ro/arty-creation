@@ -2990,10 +2990,15 @@ app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
   const i = (db.eventRequests || []).findIndex(r => r.id === parseInt(req.params.id));
   if (i === -1) return res.status(404).json({ error: I18n.t('Non trouvé') });
   const current = db.eventRequests[i];
-  const allowedStatuses = ['nouvelle','en étude','contactée','devis préparé','paiement prêt','payée','fermée','remboursée'];
+  const allowedStatuses = ['nouvelle','en étude','contactée','devis préparé','paiement prêt','payée','fermée'];
   const requestedStatus = allowedStatuses.includes(String(req.body.status || '')) ? String(req.body.status) : current.status;
   const nextStatus = current.quoteRefundStatus==='refunded'||current.quotePaymentStatus==='refunded' ? 'remboursée' : current.quotePaymentStatus==='paid'||current.quotePaymentStatus==='refund_pending' ? 'payée' : requestedStatus;
-  const pricing=eventQuotePricing(db,current,req.body||{});
+  const financialLocked=Boolean(current.quotePaidAt)||['paid','refund_pending','refunded'].includes(String(current.quotePaymentStatus||''));
+  const pricing=financialLocked?{
+    quoteSubtotal:money(current.quoteSubtotal??current.quoteAmount??0),quoteShipping:money(current.quoteShipping||0),quoteTaxTotal:money(current.quoteTaxTotal||0),
+    quoteTaxLines:Array.isArray(current.quoteTaxLines)?current.quoteTaxLines:[],quoteTaxProvince:current.quoteTaxProvince||'',quoteTaxRate:Number(current.quoteTaxRate||0),
+    quoteAmount:money(current.quoteAmount||0),quoteAddress:eventQuoteAddress(current)
+  }:eventQuotePricing(db,current,req.body||{});
   db.eventRequests[i] = {
     ...current,
     ...pricing,
