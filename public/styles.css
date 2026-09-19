@@ -2192,3 +2192,30 @@ body.product-lightbox-open{overflow:hidden}
     width:100%;
   }
 }
+
+
+/* Private-event purchase history + quote breakdown */
+.account-private-event-section{margin-top:28px;padding-top:22px;border-top:1px solid var(--border-light,#eadfce)}
+.account-private-event-list{display:grid;gap:14px;margin-top:14px}
+.account-private-event-card{padding:18px;border:1px solid var(--border-light,#eadfce);border-radius:18px;background:#fff;box-shadow:0 8px 28px rgba(51,43,34,.04)}
+.account-private-event-card.paid{border-color:rgba(22,149,167,.28);background:linear-gradient(180deg,#fff,#f7fcfd)}
+.account-private-event-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.account-private-event-head>div>span{font-size:.66rem;font-weight:800;color:var(--teal,#1695a7);letter-spacing:.08em}
+.account-private-event-head h3{margin:3px 0 2px;font-size:1rem}
+.account-private-event-head p{margin:0;color:var(--text-light,#7a6e62);font-size:.72rem}
+.account-private-event-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.account-private-event-facts>div{display:grid;gap:3px;padding:10px 11px;border-radius:11px;background:var(--bg2,#faf7f2)}
+.account-private-event-facts small{font-size:.62rem;color:var(--text-light,#7a6e62)}
+.account-private-event-facts strong{font-size:.75rem;overflow-wrap:anywhere}
+.account-private-event-items{display:grid;gap:6px;margin:0 0 12px;padding:0;list-style:none}
+.account-private-event-items li{display:flex;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid var(--border-light,#eadfce);border-radius:10px;font-size:.72rem}
+.account-private-event-brief{padding:10px 12px;margin:10px 0;border-radius:11px;background:var(--bg2,#faf7f2);font-size:.72rem;line-height:1.5}
+.account-private-event-brief p{margin:4px 0 0}
+.account-private-event-pricing,.event-quote-price-breakdown,.admin-event-quote-total{display:grid;gap:6px;padding:12px 13px;border-radius:12px;background:#fafafa;border:1px solid var(--border-light,#eadfce)}
+.account-private-event-pricing>div,.event-quote-price-breakdown>div,.admin-event-quote-total>div{display:flex;justify-content:space-between;gap:14px;font-size:.72rem}
+.account-private-event-pricing>div.total,.event-quote-price-breakdown>div.total,.admin-event-quote-total>div.total{padding-top:7px;border-top:1px solid var(--border-light,#eadfce);font-size:.83rem}
+.account-private-event-paidat{display:block;margin-top:9px;color:var(--text-light,#7a6e62)}
+.admin-event-quote-total{margin:10px 0 14px}
+.admin-event-quote-total .error{color:#b3322d}
+.event-payment-success .event-quote-price-breakdown{max-width:430px;width:100%;margin:18px auto;text-align:left}
+@media(max-width:680px){.account-private-event-head{flex-direction:column}.account-private-event-facts{grid-template-columns:1fr}.account-private-event-card{padding:14px}}
