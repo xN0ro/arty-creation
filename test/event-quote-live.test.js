@@ -122,6 +122,26 @@ test('private event refund is blocked when there was no successful Stripe paymen
   assert.equal(Number(latest.quoteRefundedTotal||0),0);
 });
 
+test('customer history shows a fully refunded private event as refunded with zero net paid',async()=>{
+  const db=server.readDB(),event=db.eventRequests.find(item=>item.id===101);
+  event.quoteRefundedTotal=258.69;
+  event.quoteRefundPendingTotal=0;
+  event.quoteNetPaid=0;
+  event.quoteRefundStatus='refunded';
+  event.quotePaymentStatus='refunded';
+  event.status='remboursée';
+  event.quoteRefunds=[{id:'ERF-1',amount:258.69,reason:'Customer request',providerStatus:'succeeded',status:'succeeded',createdAt:'2026-09-19T13:00:00Z',completedAt:'2026-09-19T13:01:00Z'}];
+  server.writeDB(db);
+  const customer=await login('customer@example.test');
+  const history=await request('/event-requests/mine',{token:customer.data.token});
+  assert.equal(history.status,200);
+  assert.equal(history.data[0].status,'remboursée');
+  assert.equal(history.data[0].paymentStatus,'refunded');
+  assert.equal(history.data[0].quoteRefundedTotal,258.69);
+  assert.equal(history.data[0].quoteNetPaid,0);
+  assert.equal(history.data[0].refunds[0].status,'succeeded');
+});
+
 test('fully refunded won private event contributes zero net CRM revenue',()=>{
   const db=server.readDB(),event=db.eventRequests.find(item=>item.id===101);
   event.quoteRefundedTotal=258.69;
