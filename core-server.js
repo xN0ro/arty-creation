@@ -2139,8 +2139,9 @@ function syncEventRequestFromStripePaymentIntent(db, paymentIntent, source = 'st
     recomputeEventQuoteRefundState(request,`system:${source}`);
   } else {
     request.quotePaymentStatus = paymentIntent.status === 'processing' ? 'processing' : paymentIntent.status === 'canceled' ? 'cancelled' : paymentIntent.last_payment_error ? 'failed' : 'pending';
-  } else if (['processing','requires_payment_method','requires_action','requires_confirmation'].includes(String(paymentIntent.status || ''))) {
-    crmCore.syncEventWorkflow(db, request.id, 'payment_pending', `system:${source}`);
+    if (['processing','requires_payment_method','requires_action','requires_confirmation'].includes(String(paymentIntent.status || ''))) {
+      crmCore.syncEventWorkflow(db, request.id, 'payment_pending', `system:${source}`);
+    }
   }
   request.updatedAt = new Date().toISOString();
   return request;
