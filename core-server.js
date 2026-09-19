@@ -2748,6 +2748,7 @@ app.post('/api/admin/orders/:id/refund', adminOnly, async (req, res) => {
     db.refunds=db.refunds||[];db.refunds.push(refund);
     recomputeOrderRefundState(db,order);applySuccessfulRefundOperations(db,order,refund);recomputeOrderRefundState(db,order);
     writeDB(db);
+    if(['failed','canceled'].includes(String(refund.providerStatus||'')))return res.status(502).json({error:I18n.t('Stripe n’a pas pu compléter le remboursement.'),refund,order,stripeStatus:refund.providerStatus});
     res.json({success:true,refund,order,stripeStatus:refund.providerStatus,restockApplied:!!refund.operationsApplied&&!!refund.restock});
   }catch(error){
     console.error('Stripe refund failed:',error.message);
