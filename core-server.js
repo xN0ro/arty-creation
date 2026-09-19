@@ -2126,14 +2126,19 @@ function syncEventRequestFromStripePaymentIntent(db, paymentIntent, source = 'st
   const request = (db.eventRequests || []).find(item => String(item.id) === String(requestId) || String(item.paymentReference || '') === String(paymentIntent?.id || ''));
   if (!request) return null;
   request.paymentReference = paymentIntent.id || request.paymentReference || '';
-  request.quotePaymentStatus = paymentIntent.status === 'succeeded' ? 'paid' : paymentIntent.status === 'processing' ? 'processing' : paymentIntent.status === 'canceled' ? 'cancelled' : paymentIntent.last_payment_error ? 'failed' : 'pending';
   request.paymentLastSyncedAt = new Date().toISOString();
   request.paymentLastSource = source;
   if (paymentIntent.status === 'succeeded') {
-    request.status = 'payée';
     request.quotePaidAt = request.quotePaidAt || new Date().toISOString();
     request.paymentAmountReceived = money((Number(paymentIntent.amount_received) || 0) / 100);
+    if(!request.quoteRefundStatus||request.quoteRefundStatus==='none'){
+      request.quotePaymentStatus='paid';
+      request.status='payée';
+    }
     crmCore.syncEventWorkflow(db, request.id, 'payment_succeeded', `system:${source}`);
+    recomputeEventQuoteRefundState(request,`system:${source}`);
+  } else {
+    request.quotePaymentStatus = paymentIntent.status === 'processing' ? 'processing' : paymentIntent.status === 'canceled' ? 'cancelled' : paymentIntent.last_payment_error ? 'failed' : 'pending';
   } else if (['processing','requires_payment_method','requires_action','requires_confirmation'].includes(String(paymentIntent.status || ''))) {
     crmCore.syncEventWorkflow(db, request.id, 'payment_pending', `system:${source}`);
   }
@@ -3524,6 +3529,76 @@ function updateRefundFromStripe(db,refund,stripeRefund){
   const order=(db.orders||[]).find(item=>String(item.id)===String(refund.orderId));
   if(order){recomputeOrderRefundState(db,order);applySuccessfulRefundOperations(db,order,refund);recomputeOrderRefundState(db,order)}
   return refund;
+}
+async function createStripeEventRefund(request,amount,localRefundId,reason){
+  return stripeRequest('POST','/v1/refunds',{
+    payment_intent:request.paymentReference,
+    amount:stripeRefundAmountCents(amount),
+    reason:stripeRefundReason(reason),
+    'metadata[artyEventRefundId]':localRefundId,
+    'metadata[eventRequestId]':String(request.id),
+    'metadata[eventRequestReference]':String(request.reference||''),
+    'metadata[adminReason]':String(reason||'').slice(0,450)
+  },{'Idempotency-Key':`arty-event-refund-${localRefundId}`});
+}
+function recomputeEventQuoteRefundState(request,actor='system:refund'){
+  request.quoteRefunds=Array.isArray(request.quoteRefunds)?request.quoteRefunds:[];
+  const succeeded=request.quoteRefunds.filter(refund=>String(refund.providerStatus||refund.status)==='succeeded').reduce((sum,refund)=>sum+Number(refund.amount||0),0);
+  const pending=request.quoteRefunds.filter(refund=>['pending','requires_action'].includes(String(refund.providerStatus||refund.status||''))).reduce((sum,refund)=>sum+Number(refund.amount||0),0);
+  const paidTotal=money(request.paymentAmountReceived||request.quoteAmount||0);
+  const refunded=money(Math.min(paidTotal,succeeded)),pendingTotal=money(Math.min(Math.max(0,paidTotal-refunded),pending));
+  const net=money(Math.max(0,paidTotal-refunded));
+  request.quoteRefundedTotal=refunded;
+  request.quoteRefundPendingTotal=pendingTotal;
+  request.quoteNetPaid=net;
+  if(pendingTotal>0){
+    request.quoteRefundStatus='refund_pending';
+    request.quotePaymentStatus='refund_pending';
+    request.status=request.status==='remboursée'?'remboursée':'payée';
+  }else if(paidTotal>0&&refunded>=paidTotal-0.001){
+    request.quoteRefundStatus='refunded';
+    request.quotePaymentStatus='refunded';
+    request.status='remboursée';
+    request.paymentLinkExpiresAt=new Date().toISOString();
+  }else if(refunded>0){
+    request.quoteRefundStatus='partial_refund';
+    request.quotePaymentStatus='paid';
+    request.status='payée';
+  }else{
+    request.quoteRefundStatus='none';
+    if(request.quotePaidAt)request.quotePaymentStatus='paid';
+  }
+  if(request.crm?.status==='won')crmCore.updateLead({eventRequests:[request]},'event',request.id,{status:'won',finalValue:net},actor);
+  request.updatedAt=new Date().toISOString();
+  return{refundedTotal:refunded,pendingTotal,netPaid:net,committedTotal:money(refunded+pendingTotal)};
+}
+function updateEventRefundFromStripe(request,refund,stripeRefund,actor='system:stripe-refund'){
+  refund.stripeRefundId=stripeRefund.id||refund.stripeRefundId||'';
+  refund.providerStatus=String(stripeRefund.status||'pending');
+  refund.status=refund.providerStatus;
+  refund.stripeChargeId=String(stripeRefund.charge||refund.stripeChargeId||'');
+  refund.failureReason=String(stripeRefund.failure_reason||'');
+  refund.lastSyncedAt=new Date().toISOString();
+  recomputeEventQuoteRefundState(request,actor);
+  return refund;
+}
+async function syncPendingEventRefunds(request){
+  let changed=false;
+  request.quoteRefunds=Array.isArray(request.quoteRefunds)?request.quoteRefunds:[];
+  for(const refund of request.quoteRefunds){
+    if(!refund.stripeRefundId||!['pending','requires_action'].includes(String(refund.providerStatus||refund.status||'')))continue;
+    try{
+      const remote=await retrieveStripeRefund(refund.stripeRefundId);
+      updateEventRefundFromStripe(request,refund,remote,'system:refund-sync');
+      changed=true;
+    }catch(error){
+      refund.lastSyncError=String(error.message||error).slice(0,500);
+      refund.lastSyncedAt=new Date().toISOString();
+      changed=true;
+    }
+  }
+  if(changed)recomputeEventQuoteRefundState(request,'system:refund-sync');
+  return changed;
 }
 function markOrderPaid(order, pi, source) {
   order.status = 'payée';
