@@ -6,6 +6,7 @@ let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:''
 let siteAnnouncement={enabled:false,message:''},transactionalEmailConfigured=false,ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
 let eventCustomSourceData='',eventCustomTraceData='',eventStudioDesign=null,eventStudioDraftState=null,eventQuoteConfirmation=null,currentEventQuoteToken='',currentEventQuote=null,eventQuoteStripe=null,eventQuoteElements=null,eventQuotePaymentIntentId='';
 let partyCalendarMonth='',partyCalendarSelectedDate='';
+let artyScrollObserver=null;
 
 document.addEventListener('DOMContentLoaded',async()=>{
   document.addEventListener('mousedown',e=>{
@@ -235,8 +236,47 @@ function prefillPrivateEventType(type){
 
 // ===== SCROLL =====
 function initScrollEffects(){
-  const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')})},{threshold:.1});
-  document.querySelectorAll('.fade-up,.stagger-children').forEach(el=>{el.classList.remove('visible');obs.observe(el)});
+  const scope=document.querySelector('.page.active')||document;
+  const targets=Array.from(scope.querySelectorAll('.fade-up,.stagger-children'));
+  if(!targets.length)return;
+
+  // Only animate the page that is actually visible. The previous implementation
+  // observed every hidden route in the document and could leave a newly-opened
+  // page at opacity:0 if the observer did not fire after the route changed.
+  if(artyScrollObserver){
+    artyScrollObserver.disconnect();
+    artyScrollObserver=null;
+  }
+
+  const reveal=el=>el?.classList.add('visible');
+  if(typeof window.IntersectionObserver!=='function'){
+    targets.forEach(reveal);
+    return;
+  }
+
+  targets.forEach(el=>el.classList.remove('visible'));
+  try{
+    artyScrollObserver=new IntersectionObserver(entries=>{
+      entries.forEach(entry=>{
+        if(!entry.isIntersecting)return;
+        reveal(entry.target);
+        artyScrollObserver?.unobserve(entry.target);
+      });
+    },{threshold:.02,rootMargin:'0px 0px 80px 0px'});
+    targets.forEach(el=>artyScrollObserver.observe(el));
+
+    // Reveal anything already in the viewport immediately. This avoids a blank
+    // first paint while waiting for the observer callback after hash navigation.
+    requestAnimationFrame(()=>{
+      targets.forEach(el=>{
+        const rect=el.getBoundingClientRect();
+        if(rect.bottom>=0&&rect.top<=window.innerHeight+80)reveal(el);
+      });
+    });
+  }catch(error){
+    console.warn('Scroll effects disabled:',error);
+    targets.forEach(reveal);
+  }
 }
 
 // ===== PAINTINGS PAGE =====
