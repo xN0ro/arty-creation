@@ -2719,44 +2719,40 @@ app.delete('/api/admin/discounts/:id', adminOnly, (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/admin/refunds', adminOnly, (req, res) => {
-  const db = readDB();
-  res.json((db.refunds || []).sort((a,b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)));
-});
-app.post('/api/admin/orders/:id/refund', adminOnly, (req, res) => {
-  const db = readDB();
-  const order = (db.orders || []).find(o => String(o.id) === String(req.params.id));
-  if (!order) return res.status(404).json({ error: I18n.t('Commande non trouvée') });
-  const already = Number(order.refundedTotal || 0);
-  const maxRefundable = Math.max(0, Number(order.total || 0) - already);
-  let amount = parseFloat(req.body.amount);
-  if (!Number.isFinite(amount) || amount <= 0) amount = maxRefundable;
-  amount = Math.min(maxRefundable, Number(amount.toFixed(2)));
-  if (amount <= 0) return res.status(400).json({ error: I18n.t('Aucun montant remboursable') });
-
-  const refund = {
-    id: 'RF-' + Date.now().toString(36).toUpperCase(),
-    orderId: order.id,
-    amount,
-    reason: String(req.body.reason || I18n.t('Remboursement admin')),
-    status: order.paymentProvider === 'not_connected' ? 'manual_refund_logged' : 'refund_requested',
-    paymentProvider: order.paymentProvider || 'not_connected',
-    restock: !!req.body.restock,
-    createdAt: new Date().toISOString(),
-    by: req.session.email || 'admin'
-  };
-  db.refunds = db.refunds || [];
-  db.refunds.push(refund);
-  order.refundedTotal = Number((already + amount).toFixed(2));
-  order.refundStatus = order.refundedTotal >= Number(order.total || 0) ? 'refunded' : 'partial_refund';
-  if (order.refundStatus === 'refunded') order.status = 'remboursée';
-  if (refund.restock && order.inventoryReserved && !order.inventoryRestocked) {
-    releaseInventoryForItems(db, order.items || [], order.id, I18n.t('Remboursement / retour'));
-    order.inventoryRestocked = true;
+app.get('/api/admin/refunds', adminOnly, async (req, res) => {
+  const db=readDB();let changed=false;
+  for(const refund of (db.refunds||[])){
+    if(refund.paymentProvider!=='stripe'||!refund.stripeRefundId||!['pending','requires_action'].includes(String(refund.providerStatus||refund.status||'')))continue;
+    try{const remote=await retrieveStripeRefund(refund.stripeRefundId);updateRefundFromStripe(db,refund,remote);changed=true}catch(error){refund.lastSyncError=String(error.message||error).slice(0,500);refund.lastSyncedAt=new Date().toISOString();changed=true}
   }
-  order.updatedAt = new Date().toISOString();
-  writeDB(db);
-  res.json({ success: true, refund, order });
+  // Old ARTY "refund_requested" records from before Stripe refund integration never moved money.
+  for(const refund of (db.refunds||[])){
+    if(refund.paymentProvider==='stripe'&&refund.status==='refund_requested'&&!refund.stripeRefundId){refund.status='legacy_not_sent';refund.providerStatus='not_sent_to_stripe';changed=true}
+  }
+  if(changed){for(const order of (db.orders||[]))recomputeOrderRefundState(db,order);writeDB(db)}
+  res.json((db.refunds||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
+});
+app.post('/api/admin/orders/:id/refund', adminOnly, async (req, res) => {
+  const db=readDB(),order=(db.orders||[]).find(item=>String(item.id)===String(req.params.id));
+  if(!order)return res.status(404).json({error:I18n.t('Commande non trouvée')});
+  if(order.paymentProvider!=='stripe'||!order.paymentReference)return res.status(409).json({error:I18n.t('Cette commande n’a pas de paiement Stripe remboursable. Aucun remboursement bancaire n’a été effectué.')});
+  if(!isStripeEnabled())return res.status(503).json({error:I18n.t('Stripe n’est pas configuré')});
+  const state=recomputeOrderRefundState(db,order),maxRefundable=money(Math.max(0,Number(order.total||0)-state.committedTotal);
+  let amount=Number(req.body.amount);if(!Number.isFinite(amount)||amount<=0)amount=maxRefundable;amount=money(Math.min(maxRefundable,amount));
+  if(amount<=0)return res.status(400).json({error:I18n.t('Aucun montant remboursable')});
+  const reason=String(req.body.reason||I18n.t('Demande client')).trim().slice(0,450),fullRefund=Math.abs(amount-maxRefundable)<0.01&&state.committedTotal+amount>=Number(order.total||0)-0.001;
+  const refund={id:'RF-'+Date.now().toString(36).toUpperCase(),orderId:order.id,amount,reason,status:'creating',providerStatus:'creating',paymentProvider:'stripe',restock:!!req.body.restock&&fullRefund,restockRequested:!!req.body.restock,createdAt:new Date().toISOString(),by:req.session.email||'admin'};
+  try{
+    const stripeRefund=await createStripeRefund(order.paymentReference,amount,refund.id,order.id,reason);
+    updateRefundFromStripe(db,refund,stripeRefund);
+    db.refunds=db.refunds||[];db.refunds.push(refund);
+    recomputeOrderRefundState(db,order);applySuccessfulRefundOperations(db,order,refund);recomputeOrderRefundState(db,order);
+    writeDB(db);
+    res.json({success:true,refund,order,stripeStatus:refund.providerStatus,restockApplied:!!refund.operationsApplied&&!!refund.restock});
+  }catch(error){
+    console.error('Stripe refund failed:',error.message);
+    return res.status(502).json({error:I18n.t('Stripe n’a pas accepté le remboursement: ')+error.message});
+  }
 });
 
 // Categories CRUD
@@ -3430,7 +3426,7 @@ function encodeStripeForm(params) {
   });
   return body.toString();
 }
-function stripeRequest(method, endpoint, params = {}) {
+function stripeRequest(method, endpoint, params = {}, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) return reject(new Error(I18n.t('STRIPE_SECRET_KEY manquant')));
@@ -3442,7 +3438,8 @@ function stripeRequest(method, endpoint, params = {}) {
       headers: {
         Authorization: 'Basic ' + Buffer.from(secret + ':').toString('base64'),
         'Stripe-Version': '2024-06-20',
-        ...(method === 'GET' ? {} : { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) })
+        ...(method === 'GET' ? {} : { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }),
+        ...extraHeaders
       }
     }, resp => {
       let data = '';
@@ -3472,6 +3469,60 @@ async function createStripePaymentIntentForOrder(order) {
 }
 async function retrieveStripePaymentIntent(paymentIntentId) {
   return stripeRequest('GET', `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`);
+}
+function stripeRefundAmountCents(amount){return Math.max(1,Math.round((Number(amount)||0)*100))}
+function stripeRefundReason(value){
+  const text=String(value||'').toLowerCase();
+  if(text.includes('duplicate')||text.includes('double'))return'duplicate';
+  if(text.includes('fraud'))return'fraudulent';
+  return'requested_by_customer';
+}
+async function createStripeRefund(paymentIntentId,amount,localRefundId,orderId,reason){
+  return stripeRequest('POST','/v1/refunds',{
+    payment_intent:paymentIntentId,
+    amount:stripeRefundAmountCents(amount),
+    reason:stripeRefundReason(reason),
+    'metadata[artyRefundId]':localRefundId,
+    'metadata[orderId]':String(orderId||''),
+    'metadata[adminReason]':String(reason||'').slice(0,450)
+  },{'Idempotency-Key':`arty-refund-${localRefundId}`});
+}
+async function retrieveStripeRefund(refundId){return stripeRequest('GET',`/v1/refunds/${encodeURIComponent(refundId)}`)}
+function refundIsCommitted(refund){return ['succeeded','pending','requires_action'].includes(String(refund.providerStatus||refund.status||''))}
+function recomputeOrderRefundState(db,order){
+  const rows=(db.refunds||[]).filter(refund=>String(refund.orderId)===String(order.id)&&refund.paymentProvider==='stripe'&&refund.stripeRefundId);
+  const succeeded=rows.filter(refund=>String(refund.providerStatus||refund.status)==='succeeded').reduce((sum,refund)=>sum+Number(refund.amount||0),0);
+  const pending=rows.filter(refund=>['pending','requires_action'].includes(String(refund.providerStatus||refund.status||''))).reduce((sum,refund)=>sum+Number(refund.amount||0),0);
+  order.refundedTotal=money(succeeded);
+  order.refundPendingTotal=money(pending);
+  if(pending>0)order.refundStatus='refund_pending';
+  else if(succeeded>=Number(order.total||0)-0.001){order.refundStatus='refunded';order.status='remboursée';order.paymentStatus='refunded'}
+  else if(succeeded>0)order.refundStatus='partial_refund';
+  else order.refundStatus='none';
+  order.updatedAt=new Date().toISOString();
+  return{refundedTotal:money(succeeded),pendingTotal:money(pending),committedTotal:money(succeeded+pending)};
+}
+function applySuccessfulRefundOperations(db,order,refund){
+  if(String(refund.providerStatus||refund.status)!=='succeeded'||refund.operationsApplied)return;
+  const state=recomputeOrderRefundState(db,order);
+  if(refund.restock&&state.refundedTotal>=Number(order.total||0)-0.001){
+    if(order.inventoryReserved&&!order.inventoryRestocked){releaseInventoryForItems(db,order.items||[],order.id,I18n.t('Remboursement Stripe'));order.inventoryRestocked=true}
+    if(order.eventSeatsReserved&&!order.eventSeatsReleased)releaseEventSeatsForOrder(db,order);
+    cancelOrderTicketBookings(db,order);
+  }
+  refund.operationsAppliedAt=new Date().toISOString();
+  refund.operationsApplied=true;
+}
+function updateRefundFromStripe(db,refund,stripeRefund){
+  refund.stripeRefundId=stripeRefund.id||refund.stripeRefundId||'';
+  refund.providerStatus=String(stripeRefund.status||'pending');
+  refund.status=refund.providerStatus;
+  refund.stripeChargeId=String(stripeRefund.charge||refund.stripeChargeId||'');
+  refund.failureReason=String(stripeRefund.failure_reason||'');
+  refund.lastSyncedAt=new Date().toISOString();
+  const order=(db.orders||[]).find(item=>String(item.id)===String(refund.orderId));
+  if(order){recomputeOrderRefundState(db,order);applySuccessfulRefundOperations(db,order,refund);recomputeOrderRefundState(db,order)}
+  return refund;
 }
 function markOrderPaid(order, pi, source) {
   order.status = 'payée';
