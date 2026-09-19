@@ -368,7 +368,7 @@ function adminPermissionRequirement(req) {
   if (path.startsWith('crm/customers')) return 'customers';
   if (path.startsWith('crm/leads')) return 'leads';
   if (path.startsWith('crm')) return 'crm_dashboard';
-  if (/^event-requests\/[^/]+\/payment-link$/.test(path)) return ['events','leads'];
+  if (/^event-requests\/[^/]+\/(payment-link|quote-preview)$/.test(path)) return ['events','leads'];
   if (path === 'stats' || path === 'analytics') return 'dashboard';
   if (path === 'storage') return 'settings';
   if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
@@ -2155,6 +2155,10 @@ async function syncEventRequestCalendar(db, requestId) {
     return { action:'error', error:String(error.message||error) };
   }
 }
+function eventQuoteEmailBreakdown(request) {
+  const subtotal=money(request.quoteSubtotal??request.quoteAmount??0),shipping=money(request.quoteShipping||0),taxLines=Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[];
+  return `${emailAmountSummary(I18n.t('Sous-total'),`${I18n.currency(subtotal.toFixed(2))} CAD`)}${shipping?emailAmountSummary(I18n.t('Livraison / déplacement'),`${I18n.currency(shipping.toFixed(2))} CAD`):''}${taxLines.map(line=>emailAmountSummary(`${line.label} ${line.rate}%`,`${I18n.currency(money(line.amount).toFixed(2))} CAD`)).join('')}${emailAmountSummary(I18n.t('Total à payer'),`${I18n.currency(money(request.quoteAmount).toFixed(2))} CAD`)}`;
+}
 function sendEventQuotePaymentLinkEmail(request) {
   return withLocale(request.locale, () => {
 
@@ -2167,7 +2171,7 @@ function sendEventQuotePaymentLinkEmail(request) {
       title:I18n.t('Votre devis personnalisé est prêt'),
       intro:I18n.msg`Nous avons préparé votre proposition pour ${request.eventType}.`,
       preheader:I18n.msg`Votre devis ${request.reference} est prêt.`,
-      content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}${request.quoteDescription ? emailTextPanel(request.quoteDescription,'neutral') : ''}${emailAmountSummary(I18n.t('Montant du devis'),`${I18n.currency(money(request.quoteAmount).toFixed(2))} CAD`)}<p>Utilisez le bouton ci-dessous pour consulter le devis et effectuer le paiement sécurisé.</p>`,
+      content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventRequestEmailSummary(request)}${request.quoteDescription ? emailTextPanel(request.quoteDescription,'neutral') : ''}${eventQuoteEmailBreakdown(request)}<p>Utilisez le bouton ci-dessous pour consulter le devis et effectuer le paiement sécurisé.</p>`,
       ctaLabel:I18n.t('Consulter et payer le devis'),
       ctaUrl:request.paymentLinkUrl,
       footer:I18n.msg`Référence ${request.reference}. Le lien est personnel et expire le ${new Date(request.paymentLinkExpiresAt).toLocaleDateString(I18n.locale())}.`
@@ -2188,7 +2192,7 @@ function sendEventQuotePaidEmail(request) {
       title:I18n.t('Paiement reçu'),
       intro:I18n.t('Votre événement ARTY est maintenant confirmé pour la prochaine étape de préparation.'),
       preheader:I18n.msg`Paiement confirmé pour ${request.reference}.`,
-      content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${emailAmountSummary(I18n.t('Paiement reçu'),`${I18n.currency(money(request.quoteAmount).toFixed(2))} CAD`)}${emailPanel(I18n.html`<strong style="display:block;margin-bottom:5px;color:#332b22">${escapeEmailHTML(request.eventType)}</strong>Référence ${escapeEmailHTML(request.reference)}`,'success')}<p>Notre équipe communiquera avec vous pour finaliser la production, la livraison et les détails de l’événement.</p>`,
+      content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.name)},</p>${eventQuoteEmailBreakdown(request)}${emailPanel(I18n.html`<strong style="display:block;margin-bottom:5px;color:#332b22">${escapeEmailHTML(request.eventType)}</strong>Référence ${escapeEmailHTML(request.reference)}`,'success')}<p>Notre équipe communiquera avec vous pour finaliser la production, la livraison et les détails de l’événement.</p>`,
       ctaLabel:I18n.t('Visiter ARTY'),
       ctaUrl:normalizePublicUrl(),
       footer:I18n.msg`Confirmation de paiement pour la demande ${request.reference}.`
@@ -2954,6 +2958,16 @@ app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
   if (nextStatus === 'payée') await syncEventRequestCalendar(db, workflowRequest.id);
   writeDB(db);
   res.json({ success: true, request: db.eventRequests[i] });
+});
+app.post('/api/admin/event-requests/:id/quote-preview',adminOnly,(req,res)=>{
+  const db=readDB(),request=(db.eventRequests||[]).find(item=>item.id===parseInt(req.params.id));
+  if(!request)return res.status(404).json({error:I18n.t('Demande non trouvée')});
+  const hasEventsPermission=req.session?.role==='admin'||(req.session?.permissions||[]).includes('events');
+  if(!hasEventsPermission&&!sessionHasCrmManagerAccess(req.session)&&String(request.crm?.owner||'').trim().toLowerCase()!==String(req.session?.email||'').trim().toLowerCase())return res.status(403).json({error:I18n.t('Ce prospect ne vous est pas assigné')});
+  const pricing=eventQuotePricing(db,request,req.body||{});
+  if(pricing.quoteSubtotal<0.5)return res.status(400).json({error:I18n.t('Entrez un montant de devis valide')});
+  if(commerceCore.isCanada(pricing.quoteAddress.country)&&!commerceCore.normalizeProvince(pricing.quoteAddress.province))return res.status(400).json({error:I18n.t('Une province canadienne valide est requise pour calculer les taxes')});
+  res.json({success:true,...pricing});
 });
 app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, res) => {
   const db = readDB();
