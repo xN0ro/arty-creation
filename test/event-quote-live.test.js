@@ -6,6 +6,7 @@ const os=require('node:os');
 const path=require('node:path');
 const bcrypt=require('bcryptjs');
 const commerceCore=require('../commerce-core');
+const crmCore=require('../crm-core');
 
 const temp=fs.mkdtempSync(path.join(os.tmpdir(),'arty-event-quote-live-'));
 process.env.ARTY_DATA_DIR=temp;
@@ -104,6 +105,37 @@ test('private events admin treats successful payment as authoritative paid statu
   });
   assert.equal(attemptedDowngrade.status,200);
   assert.equal(attemptedDowngrade.data.request.status,'payée');
+});
+
+test('private event refund is blocked when there was no successful Stripe payment',async()=>{
+  const db=server.readDB();
+  db.eventRequests.push({
+    id:202,reference:'EVT-UNPAID',name:'Unpaid',email:'unpaid@example.test',eventType:'Private event',
+    status:'contactée',quoteAmount:100,quotePaymentStatus:'not_created',paymentReference:'',createdAt:'2026-09-19T12:00:00Z',updatedAt:'2026-09-19T12:00:00Z',
+    crm:{status:'qualified',owner:'owner@example.test',finalValue:0,statusHistory:[]}
+  });
+  server.writeDB(db);
+  const admin=await login('owner@example.test');
+  const refund=await request('/admin/event-requests/202/refund',{method:'POST',token:admin.data.token,body:{amount:25,reason:'Customer request'}});
+  assert.equal(refund.status,409);
+  const latest=server.readDB().eventRequests.find(item=>item.id===202);
+  assert.equal(Number(latest.quoteRefundedTotal||0),0);
+});
+
+test('fully refunded won private event contributes zero net CRM revenue',()=>{
+  const db=server.readDB(),event=db.eventRequests.find(item=>item.id===101);
+  event.quoteRefundedTotal=258.69;
+  event.quoteRefundPendingTotal=0;
+  event.quoteNetPaid=0;
+  event.quoteRefundStatus='refunded';
+  event.quotePaymentStatus='refunded';
+  event.status='remboursée';
+  event.crm.finalValue=0;
+  const lead=crmCore.buildLeads(db).find(item=>item.kind==='event'&&item.id==='101');
+  assert.equal(lead.status,'won');
+  assert.equal(lead.finalValue,0);
+  assert.equal(lead.value,0);
+  assert.equal(crmCore.crmSummary(db).wonValue,0);
 });
 
 test('Stripe PaymentIntents do not explicitly request duplicate Stripe receipt emails',()=>{
