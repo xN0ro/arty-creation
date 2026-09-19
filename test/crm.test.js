@@ -111,6 +111,33 @@ test('quote and payment workflow automatically moves qualified to quote sent to 
   assert.ok(lead.wonAt);
 });
 
+
+test('fully refunded events leave Won, keep refund details, and no longer count as won revenue',()=>{
+  const db=fixture(),request=db.eventRequests[0];
+  request.paymentAmountReceived=450;
+  request.quoteRefundedTotal=450;
+  request.quoteNetPaid=0;
+  request.quoteRefundStatus='refunded';
+  request.quotePaymentStatus='refunded';
+  request.quoteRefunds=[{amount:450,reason:'Customer cancelled',providerStatus:'succeeded',completedAt:'2026-09-19T16:00:00Z'}];
+  crm.updateLead(db,'event',10,{status:'won',finalValue:450},'system:stripe');
+  const lead=crm.updateLead(db,'event',10,{status:'refunded',finalValue:0},'system:refund');
+  assert.equal(lead.status,'refunded');
+  assert.equal(lead.finalValue,0);
+  assert.equal(lead.value,0);
+  assert.equal(lead.quoteRefundedTotal,450);
+  assert.equal(lead.quoteRefundReason,'Customer cancelled');
+  assert.equal(lead.quoteRefundedAt,'2026-09-19T16:00:00Z');
+  assert.ok(lead.refundedAt);
+  const summary=crm.crmSummary(db),report=crm.crmReporting(db);
+  assert.equal(summary.wonValue,0);
+  assert.equal(summary.byStatus.refunded,1);
+  assert.equal(report.totals.refunded,1);
+  const instagram=report.sources.find(row=>row.source==='instagram');
+  assert.equal(instagram.won,0);
+  assert.equal(instagram.value,0);
+});
+
 test('a paid event overrides a manually lost stage because successful payment is authoritative',()=>{
   const db=fixture();
   db.eventRequests[0].crm={status:'lost',lostReason:'price'};
