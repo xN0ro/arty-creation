@@ -373,7 +373,7 @@ function adminPermissionRequirement(req) {
   if (path === 'stats' || path === 'analytics') return 'dashboard';
   if (path === 'storage') return 'settings';
   if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
-  if (path === 'kits' || path.startsWith('kits/') || path.startsWith('product-images') || path.startsWith('product-templates') || path.startsWith('bundles') || path.startsWith('studio-config')) {
+  if (path === 'kits' || path.startsWith('kits/') || path.startsWith('home-favorite-kits') || path.startsWith('product-images') || path.startsWith('product-templates') || path.startsWith('bundles') || path.startsWith('studio-config')) {
     if (method === 'GET' && (path === 'kits' || path.startsWith('kits?'))) return ['products','inventory','promotions'];
     return 'products';
   }
@@ -2552,6 +2552,20 @@ function normalizeEventPayload(body, existing = {}) {
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:a.ordersCount,totalTestOrders:a.testOrdersCount,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
 app.get('/api/admin/kits', adminOnly, (req, res) => { const db=readDB(); res.json((db.kits||[]).map(k => enrichPublicKit(k, db))); });
+
+app.put('/api/admin/home-favorite-kits', adminOnly, (req, res) => {
+  const db = readDB();
+  const rawIds = Array.isArray(req.body?.kitIds) ? req.body.kitIds : [];
+  const kitIds = [...new Set(rawIds.map(id => parseInt(id)).filter(Number.isFinite))];
+  if (kitIds.length > 5) return res.status(400).json({ error:I18n.t('Vous pouvez sélectionner un maximum de 5 kits favoris pour la page d’accueil.') });
+  const existingIds = new Set((db.kits || []).map(kit => Number(kit.id)));
+  const invalid = kitIds.find(id => !existingIds.has(Number(id)));
+  if (invalid !== undefined) return res.status(400).json({ error:I18n.t('Un des produits sélectionnés est introuvable.') });
+  const selected = new Set(kitIds.map(Number));
+  for (const kit of (db.kits || [])) kit.homeFavorite = selected.has(Number(kit.id));
+  writeDB(db);
+  res.json({ success:true, kitIds, count:kitIds.length });
+});
 
 app.get('/api/admin/orders', adminOnly, (req, res) => {
   const db = readDB();
