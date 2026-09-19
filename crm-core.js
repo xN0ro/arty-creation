@@ -165,7 +165,9 @@ function leadBase(kind,id,name,email,phone,title,createdAt,rawCrm={}){
 function leadFromEvent(request){
   const base=leadBase('event',request.id,request.name,request.email,request.phone,request.eventType||request.eventName||'Event',request.createdAt,request.crm);
   const attribution=cleanAttribution(request.marketingAttribution),touch=attribution.lastTouch||attribution.firstTouch||{};
-  return {...base,reference:request.reference||'',value:money(base.finalValue||request.quoteAmount),expectedValue:money(request.quoteSubtotal??request.quoteAmount),quoteSubtotal:money(request.quoteSubtotal??request.quoteAmount),quoteShipping:money(request.quoteShipping||0),quoteTaxTotal:money(request.quoteTaxTotal||0),quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],quoteAmount:money(request.quoteAmount||0),quoteAddress:request.quoteAddress||request.address||{},quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.quotePaymentStatus==='paid'?'payée':(request.status||''),quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||'',location:request.location||''};
+  const refunded=money(request.quoteRefundedTotal||0),pendingRefund=money(request.quoteRefundPendingTotal||0),netPaid=money(request.quoteNetPaid??Math.max(0,Number(request.paymentAmountReceived||request.quoteAmount||0)-refunded));
+  const wonValue=base.status==='won'?netPaid:money(base.finalValue||request.quoteAmount);
+  return {...base,finalValue:base.status==='won'?netPaid:base.finalValue,reference:request.reference||'',value:wonValue,expectedValue:money(request.quoteSubtotal??request.quoteAmount),quoteSubtotal:money(request.quoteSubtotal??request.quoteAmount),quoteShipping:money(request.quoteShipping||0),quoteTaxTotal:money(request.quoteTaxTotal||0),quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],quoteAmount:money(request.quoteAmount||0),quoteRefundedTotal:refunded,quoteRefundPendingTotal:pendingRefund,quoteNetPaid:netPaid,quoteRefundStatus:request.quoteRefundStatus||'none',quoteAddress:request.quoteAddress||request.address||{},quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.quoteRefundStatus==='refunded'?'remboursée':request.quotePaymentStatus==='paid'?'payée':(request.status||''),quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||'',location:request.location||''};
 }
 function leadFromContact(contact){
   const base=leadBase('contact',contact.id,contact.name,contact.email,contact.phone,contact.channel==='events'?'Event inquiry':'General inquiry',contact.createdAt,contact.crm);
@@ -182,6 +184,7 @@ function buildLeads(db={}){
   const manualLeads=(db.crmLeads||[]).filter(l=>!l.convertedEventRequestId).map(leadFromManual);
   return [...eventLeads,...contactLeads,...manualLeads].sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
 }
+function crmLeadRevenueValue(lead){return lead.status==='won'?money(lead.finalValue||0):money(lead.value||lead.expectedValue||0)}
 function crmSummary(db={}){
   const leads=buildLeads(db),customers=buildCustomerIndex(db),open=leads.filter(l=>!['won','lost'].includes(l.status)),day=today();
   return {
@@ -190,7 +193,7 @@ function crmSummary(db={}){
     followUpsDue:open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)<day).length,
     followUpsToday:open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)===day).length,
     openPipelineValue:money(open.reduce((sum,l)=>sum+Number(l.value||l.expectedValue||0),0)),
-    wonValue:money(leads.filter(l=>l.status==='won').reduce((sum,l)=>sum+Number(l.finalValue||l.value||0),0)),
+    wonValue:money(leads.filter(l=>l.status==='won').reduce((sum,l)=>sum+crmLeadRevenueValue(l),0)),
     byStatus:CRM_LEAD_STATUSES.reduce((acc,s)=>(acc[s]=leads.filter(l=>l.status===s).length,acc),{})
   };
 }
@@ -306,12 +309,12 @@ function crmReporting(db={}){
   const sourceMap={};
   for(const lead of leads){
     const key=lead.source||'direct/manual';if(!sourceMap[key])sourceMap[key]={source:key,leads:0,won:0,value:0};
-    sourceMap[key].leads++;if(lead.status==='won'){sourceMap[key].won++;sourceMap[key].value+=Number(lead.finalValue||lead.value||0)}
+    sourceMap[key].leads++;if(lead.status==='won'){sourceMap[key].won++;sourceMap[key].value+=crmLeadRevenueValue(lead)}
   }
   const eventMap={};
   for(const lead of leads.filter(l=>l.eventType)){
     const key=lead.eventType;if(!eventMap[key])eventMap[key]={eventType:key,leads:0,won:0,value:0};
-    eventMap[key].leads++;if(lead.status==='won'){eventMap[key].won++;eventMap[key].value+=Number(lead.finalValue||lead.value||0)}
+    eventMap[key].leads++;if(lead.status==='won'){eventMap[key].won++;eventMap[key].value+=crmLeadRevenueValue(lead)}
   }
   const salesCycles=won.map(l=>dayDiff(l.createdAt,l.wonAt||l.updatedAt)).filter(Number.isFinite);
   const paying=customers.filter(c=>c.paidOrderCount>0),repeat=paying.filter(c=>c.paidOrderCount>1);
@@ -322,7 +325,7 @@ function crmReporting(db={}){
       quoteToWon:quoted.length?Number((won.length/quoted.length*100).toFixed(1)):0,
       repeatCustomer:paying.length?Number((repeat.length/paying.length*100).toFixed(1)):0
     },
-    averageWonValue:won.length?money(won.reduce((s,l)=>s+Number(l.finalValue||l.value||0),0)/won.length):0,
+    averageWonValue:won.length?money(won.reduce((s,l)=>s+crmLeadRevenueValue(l),0)/won.length):0,
     averageSalesCycleDays:salesCycles.length?Number((salesCycles.reduce((a,b)=>a+b,0)/salesCycles.length).toFixed(1)):0,
     sources:Object.values(sourceMap).map(r=>({...r,value:money(r.value),conversion:r.leads?Number((r.won/r.leads*100).toFixed(1)):0})).sort((a,b)=>b.value-a.value),
     eventTypes:Object.values(eventMap).map(r=>({...r,value:money(r.value),conversion:r.leads?Number((r.won/r.leads*100).toFixed(1)):0})).sort((a,b)=>b.value-a.value)
