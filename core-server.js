@@ -369,6 +369,7 @@ function adminPermissionRequirement(req) {
   if (path.startsWith('crm/leads')) return 'leads';
   if (path.startsWith('crm')) return 'crm_dashboard';
   if (/^event-requests\/[^/]+\/(payment-link|quote-preview)$/.test(path)) return ['events','leads'];
+  if (/^event-requests\/[^/]+\/refund$/.test(path)) return 'events';
   if (path === 'stats' || path === 'analytics') return 'dashboard';
   if (path === 'storage') return 'settings';
   if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
@@ -2339,7 +2340,10 @@ app.get('/api/event-requests/mine',auth,async(req,res)=>{
   const mine=(db.eventRequests||[]).filter(item=>item.userId===req.session.userId||String(item.email||'').trim().toLowerCase()===email);
   let changed=false;
   for(const item of mine)if(await syncPendingEventRefunds(item))changed=true;
-  if(changed)writeDB(db);
+  if(changed){
+    writeDB(db);
+    for(const item of mine)for(const refund of (item.quoteRefunds||[]))if(String(refund.providerStatus||refund.status)==='succeeded'&&refund.emailDelivery?.status!=='sent')await deliverEventQuoteRefundEmail(item.id,refund.id);
+  }
   const rows=mine.sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)).map(item=>({
     id:item.id,reference:item.reference||'',eventType:item.eventType||'',preferredDate:item.preferredDate||'',eventTime:item.eventTime||'',
     guests:Number(item.guests||0),location:item.location||'',address:eventQuoteAddress(item),servicePath:item.servicePath||'expert',
@@ -2975,7 +2979,10 @@ app.post('/api/admin/bookings/:id/resend-ticket', adminOnly, async (req, res) =>
 app.get('/api/admin/event-requests', adminOnly, async (req, res) => {
   const db=readDB();let changed=false;
   for(const item of (db.eventRequests||[]))if(await syncPendingEventRefunds(item))changed=true;
-  if(changed)writeDB(db);
+  if(changed){
+    writeDB(db);
+    for(const item of (db.eventRequests||[]))for(const refund of (item.quoteRefunds||[]))if(String(refund.providerStatus||refund.status)==='succeeded'&&refund.emailDelivery?.status!=='sent')await deliverEventQuoteRefundEmail(item.id,refund.id);
+  }
   res.json((db.eventRequests||[]).map(item=>item.quoteRefundStatus==='refunded'?{...item,status:'remboursée',quotePaymentStatus:'refunded'}:item.quotePaymentStatus==='paid'?{...item,status:'payée'}:item).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)));
 });
 app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
@@ -3049,6 +3056,45 @@ app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, re
     writeDB(latest);
   }
   res.json({ success:true, request:saved || request, paymentLink:request.paymentLinkUrl, emailStatus:emailResult.status });
+});
+app.post('/api/admin/event-requests/:id/refund',adminOnly,async(req,res)=>{
+  const db=readDB(),request=(db.eventRequests||[]).find(item=>String(item.id)===String(req.params.id));
+  if(!request)return res.status(404).json({error:I18n.t('Demande non trouvée')});
+  const hasEventsPermission=req.session?.role==='admin'||(req.session?.permissions||[]).includes('events');
+  if(!hasEventsPermission)return res.status(403).json({error:I18n.t('Accès remboursement événement requis')});
+  if(!isStripeEnabled())return res.status(503).json({error:I18n.t('Stripe n’est pas configuré')});
+  if(!request.paymentReference||!request.quotePaidAt)return res.status(409).json({error:I18n.t('Cet événement n’a pas de paiement Stripe remboursable')});
+  await syncPendingEventRefunds(request);
+  const state=recomputeEventQuoteRefundState(request,req.session.email||'admin');
+  if(state.pendingTotal>0)return res.status(409).json({error:I18n.t('Un remboursement Stripe est déjà en cours. Attendez sa confirmation avant d’en créer un autre.')});
+  const paidTotal=money(request.paymentAmountReceived||request.quoteAmount||0),maxRefundable=money(Math.max(0,paidTotal-state.refundedTotal));
+  let amount=Number(req.body.amount);if(!Number.isFinite(amount)||amount<=0)amount=maxRefundable;amount=money(Math.min(maxRefundable,amount));
+  if(amount<=0)return res.status(400).json({error:I18n.t('Aucun montant remboursable')});
+  const reason=String(req.body.reason||I18n.t('Demande client')).trim().slice(0,450);
+  const refund={id:'ERF-'+Date.now().toString(36).toUpperCase(),amount,reason,status:'creating',providerStatus:'creating',paymentProvider:'stripe',createdAt:new Date().toISOString(),by:req.session.email||'admin'};
+  request.quoteRefunds=Array.isArray(request.quoteRefunds)?request.quoteRefunds:[];
+  request.quoteRefunds.push(refund);
+  try{
+    const stripeRefund=await createStripeEventRefund(request,amount,refund.id,reason);
+    updateEventRefundFromStripe(request,refund,stripeRefund,req.session.email||'admin');
+    if(String(refund.providerStatus)==='succeeded')refund.completedAt=new Date().toISOString();
+    if(['failed','canceled'].includes(String(refund.providerStatus||''))){
+      refund.failureReason=refund.failureReason||I18n.t('Stripe n’a pas pu compléter le remboursement');
+      recomputeEventQuoteRefundState(request,req.session.email||'admin');
+      writeDB(db);
+      return res.status(502).json({error:I18n.t('Stripe n’a pas pu compléter le remboursement.'),refund,request});
+    }
+    writeDB(db);
+    let emailStatus='not_needed';
+    if(String(refund.providerStatus)==='succeeded')emailStatus=(await deliverEventQuoteRefundEmail(request.id,refund.id)).status;
+    const latest=readDB(),saved=(latest.eventRequests||[]).find(item=>String(item.id)===String(request.id))||request;
+    res.json({success:true,refund,savedRequest:saved,request:saved,stripeStatus:refund.providerStatus,emailStatus});
+  }catch(error){
+    refund.status='failed';refund.providerStatus='failed';refund.failureReason=String(error.message||error).slice(0,800);refund.lastSyncedAt=new Date().toISOString();
+    recomputeEventQuoteRefundState(request,req.session.email||'admin');writeDB(db);
+    console.error('Private event Stripe refund failed:',error.message);
+    res.status(502).json({error:I18n.t('Stripe n’a pas accepté le remboursement: ')+error.message,refund,request});
+  }
 });
 app.delete('/api/admin/event-requests/:id', adminOnly, (req, res) => { const db=readDB(); db.eventRequests=(db.eventRequests||[]).filter(r=>r.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
