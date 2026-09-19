@@ -450,6 +450,12 @@ body.has-site-announcement .page.active{margin-top:44px}
 .stagger-children.visible>*:nth-child(1){transition-delay:.06s}.stagger-children.visible>*:nth-child(2){transition-delay:.14s}.stagger-children.visible>*:nth-child(3){transition-delay:.22s}.stagger-children.visible>*:nth-child(4){transition-delay:.3s}.stagger-children.visible>*:nth-child(5){transition-delay:.38s}.stagger-children.visible>*:nth-child(6){transition-delay:.46s}
 .stagger-children.visible>*{opacity:1;transform:translateY(0)}
 
+/* The product catalog is business-critical content and must never depend on
+   scroll-animation JavaScript for visibility. Animations remain available on
+   the rest of the site, but this page always renders readable content. */
+#page-paintings .fade-up{opacity:1;transform:none}
+#page-paintings .stagger-children>*{opacity:1;transform:none}
+
 /* TUTORIALS PAGE */
 .tutorials-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:24px}
 .tutorial-card{background:var(--card);border:1px solid var(--border-light);border-radius:var(--r-lg);overflow:hidden;transition:var(--tr)}
