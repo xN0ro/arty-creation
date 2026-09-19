@@ -214,6 +214,14 @@ function installExtensionRoutes(app){
       res.status(400).type('html').send(`<!doctype html><html><head><meta charset="utf-8"><title>ARTY Google Calendar</title></head><body style="font-family:Arial,sans-serif;padding:40px;text-align:center"><h2>Google Calendar connection failed</h2><p>${escapeHtml(error.message||'Unknown error')}</p></body></html>`);
     }
   });
+  app.post('/api/admin/crm/quote-preview',adminOnly,(req,res)=>{
+    const db=readDb(),body=req.body||{},subtotal=Math.max(0,Number(body.subtotal)||0),shipping=Math.max(0,Number(body.shipping)||0);
+    const address=body.address&&typeof body.address==='object'?body.address:{};
+    if(subtotal<0.5)return res.status(400).json({error:crmError(req,'Entrez un montant valide','Enter a valid amount')});
+    if(commerceCore.isCanada(address.country||'Canada')&&!commerceCore.normalizeProvince(address.province))return res.status(400).json({error:crmError(req,'Province canadienne valide requise','A valid Canadian province is required')});
+    const taxes=commerceCore.calculateTaxes(db.commerceConfig,subtotal+shipping,address);
+    res.json({subtotal:commerceCore.money(subtotal),shipping:commerceCore.money(shipping),taxTotal:commerceCore.money(taxes.taxTotal||0),taxLines:taxes.taxLines||[],taxProvince:taxes.taxProvince||'',total:commerceCore.money(subtotal+shipping+Number(taxes.taxTotal||0))});
+  });
   app.get('/api/admin/crm/summary',adminOnly,(req,res)=>res.json(crmCore.crmSummary(crmScopedDb(readDb(),req))));
   app.get('/api/admin/crm/action-center',adminOnly,(req,res)=>{
     const db=readDb(),data=crmCore.crmActionCenter(crmScopedDb(db,req)),permissions=new Set(req.extensionSession?.permissions||[]);
