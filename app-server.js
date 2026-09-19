@@ -273,14 +273,15 @@ function installExtensionRoutes(app){
       if(existing)return res.json({success:true,lead:existing,converted:false});
     }
     let eventId=Date.now();while((db.eventRequests||[]).some(item=>String(item.id)===String(eventId)))eventId++;
-    const body=req.body||{},now=new Date().toISOString(),location=text(body.location||'',240),crm=crmCore.crmMeta(source.crm||{});
+    const body=req.body||{},now=new Date().toISOString(),rawAddress=body.address&&typeof body.address==='object'?body.address:{},location=text(rawAddress.line1||body.location||'',240),crm=crmCore.crmMeta(source.crm||{});
     const eventType=text(body.eventType||currentLead.eventType||currentLead.title||'ARTY event',180)||'ARTY event';
+    const address={line1:location,city:text(rawAddress.city||'',120),province:text(rawAddress.province||'',80),postal:text(rawAddress.postal||'',30),country:text(rawAddress.country||'Canada',80)||'Canada'};
     const request={
       id:eventId,reference:`EVT-${eventId.toString(36).toUpperCase()}`,locale:source.locale||requestLanguage(req),
       name:currentLead.name||source.name||'',email:currentLead.email||source.email||'',phone:currentLead.phone||source.phone||'',
       eventType,preferredDate:text(body.preferredDate||currentLead.preferredDate||'',20),eventTime:'',
       guests:Math.max(1,Math.min(1000,parseInt(body.guests)||1)),
-      address:{line1:location,city:'',province:'',postal:'',country:'Canada'},location,
+      address,location:[address.line1,address.city,address.province,address.postal].filter(Boolean).join(', '),
       servicePath:'expert',inventoryItems:[],customKit:null,
       expertBrief:text(body.brief||currentLead.message||source.message||currentLead.title||'',3000),
       message:text(source.message||currentLead.message||'',3000),contactPreference:'email',
