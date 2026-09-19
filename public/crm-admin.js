@@ -241,7 +241,7 @@ function filteredLeads(){
 }
 function leadCard(l){
   const overdue=l.nextFollowUp&&l.nextFollowUp.slice(0,10)<new Date().toISOString().slice(0,10)&&!['won','lost'].includes(l.status);
-  return `<article class="crm-kanban-card ${overdue?'overdue':''}" draggable="true" ondragstart="ARTYCRM.dragStart(event,'${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')" onclick="ARTYCRM.openLeadActions('${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')"><div class="crm-card-top"><span>${esc(l.reference||l.key)}</span><b>${money(l.finalValue||l.value||l.expectedValue)}</b></div><h4>${esc(l.name||l.email)}</h4><p>${esc(l.title||'')}</p><div class="crm-card-tags">${l.owner?`<span>${esc(state.team.find(t=>t.email===l.owner)?.name||l.owner)}</span>`:''}${l.source?`<span>${esc(l.source)}</span>`:''}${(l.tags||[]).slice(0,2).map(x=>`<span>${esc(x)}</span>`).join('')}</div>${l.nextFollowUp?`<small class="crm-follow ${overdue?'late':''}">${overdue?T('En retard','Overdue'):T('Suivi','Follow-up')}: ${dateTime(l.nextFollowUp)}</small>`:''}${l.status==='lost'&&l.lostReason?`<small class="crm-lost-reason">${esc(lostLabel(l.lostReason))}</small>`:''}</article>`;
+  return `<article class="crm-kanban-card ${overdue?'overdue':''}" draggable="true" ondragstart="ARTYCRM.dragStart(event,'${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')" onclick="ARTYCRM.openLeadActions('${attr(l.kind)}','${attr(encodeURIComponent(l.id))}')"><div class="crm-card-top"><span>${esc(l.reference||l.key)}</span><b>${leadPrimaryValue(l)}</b></div><h4>${esc(l.name||l.email)}</h4><p>${esc(l.title||'')}</p><div class="crm-card-tags">${l.owner?`<span>${esc(state.team.find(t=>t.email===l.owner)?.name||l.owner)}</span>`:''}${l.source?`<span>${esc(l.source)}</span>`:''}${(l.tags||[]).slice(0,2).map(x=>`<span>${esc(x)}</span>`).join('')}</div>${l.nextFollowUp?`<small class="crm-follow ${overdue?'late':''}">${overdue?T('En retard','Overdue'):T('Suivi','Follow-up')}: ${dateTime(l.nextFollowUp)}</small>`:''}${l.status==='lost'&&l.lostReason?`<small class="crm-lost-reason">${esc(lostLabel(l.lostReason))}</small>`:''}</article>`;
 }
 function renderLeads(){
   const p=document.getElementById('adminCrmLeadsPanel');if(!p||!has('leads'))return;
@@ -264,7 +264,8 @@ function openLeadActions(kind,idEncoded){
   const lead=modalLead(kind,idEncoded);if(!lead)return;
   state.editingLead={...lead};renderLeadActions();showLeadModal();
 }
-function leadPrimaryValue(l){return money(l.finalValue||l.expectedValue||l.value||0)}
+function leadPrimaryValue(l){return money(l.status==='won'?Number(l.finalValue||0):Number(l.value||l.expectedValue||0))}
+function leadPaymentLabel(l){if(l.quoteRefundStatus==='refunded'||l.quotePaymentStatus==='refunded')return T('Remboursé','Refunded');if(l.quoteRefundStatus==='partial_refund')return T('Partiellement remboursé','Partially refunded');if(l.quoteRefundStatus==='refund_pending'||l.quotePaymentStatus==='refund_pending')return T('Remboursement en cours','Refund in progress');if(l.quotePaymentStatus==='paid')return T('Payé','Paid');return l.quotePaymentStatus||'—'}
 function renderLeadActions(){
   const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l)return;
   const terminal=['won','lost'].includes(l.status);
@@ -274,7 +275,7 @@ function renderLeadActions(){
       <div><small>${T('Valeur','Value')}</small><strong>${leadPrimaryValue(l)}</strong></div>
       <div><small>${T('Responsable','Owner')}</small><strong>${esc(state.team.find(t=>t.email===l.owner)?.name||l.owner||T('Non assigné','Unassigned'))}</strong></div>
       <div><small>${T('Prochain suivi','Next follow-up')}</small><strong>${l.nextFollowUp?esc(dateTime(l.nextFollowUp)):T('Aucun','None')}</strong></div>
-      <div><small>${T('Paiement','Payment')}</small><strong>${esc(l.quotePaymentStatus||'—')}</strong></div>
+      <div><small>${T('Paiement','Payment')}</small><strong>${esc(leadPaymentLabel(l))}</strong></div>
     </div>
     <div class="crm-quick-actions">
       ${!terminal?`<button class="crm-action-tile primary" onclick="ARTYCRM.renderFollowUpAction()"><span>↗</span><strong>${T('Planifier un suivi','Schedule follow-up')}</strong><small>${T('Date, heure et rappel Google Calendar','Date, time and Google Calendar reminder')}</small></button>`:''}
@@ -283,6 +284,7 @@ function renderLeadActions(){
       ${l.phone?`<button class="crm-action-tile" onclick="ARTYCRM.callLead()"><span>☎</span><strong>${T('Appeler','Call')}</strong><small>${esc(l.phone)}</small></button>`:''}
       <button class="crm-action-tile" onclick="ARTYCRM.openLeadCalendar()"><span>▣</span><strong>${T('Google Calendar','Google Calendar')}</strong><small>${l.nextFollowUp?T('Ouvrir ce suivi','Open this follow-up'):T('Ouvrir le calendrier','Open calendar')}</small></button>
       ${l.status==='new'?`<button class="crm-action-tile" onclick="ARTYCRM.quickLeadStatus('contacted')"><span>✓</span><strong>${T('Marquer contacté','Mark contacted')}</strong><small>${T('Met à jour le pipeline','Updates the pipeline')}</small></button>`:''}
+      ${l.kind==='event'&&l.status==='won'&&has('events')&&Number(l.quoteNetPaid||0)>0&&l.quoteRefundStatus!=='refund_pending'?`<button class="crm-action-tile danger" onclick="ARTYCRM.refundEventLead()"><span>↩</span><strong>${T('Rembourser','Refund payment')}</strong><small>${T('Remboursement Stripe sécurisé','Secure Stripe refund')}</small></button>`:''}
       ${!terminal?`<button class="crm-action-tile danger" onclick="ARTYCRM.renderLostAction()"><span>×</span><strong>${T('Marquer perdu','Mark lost')}</strong><small>${T('Enregistrer la raison','Record the reason')}</small></button>`:''}
       <button class="crm-action-tile secondary" onclick="ARTYCRM.renderLeadEditor()"><span>⋯</span><strong>${T('Modifier les détails','Edit details')}</strong><small>${T('Champs avancés du prospect','Advanced lead fields')}</small></button>
     </div>
@@ -389,6 +391,22 @@ function renderLostAction(){
 async function saveLostAction(){
   const reason=document.getElementById('quickLostReason')?.value||'';if(!reason)return showToast(T('Choisissez une raison','Choose a reason'),'error');
   await quickLeadStatus('lost',{lostReason:reason});
+}
+async function refundEventLead(){
+  const l=state.editingLead;if(!l||l.kind!=='event'||!has('events'))return;
+  const refundable=Math.max(0,Number(l.quoteNetPaid??l.finalValue??0)-Number(l.quoteRefundPendingTotal||0));
+  if(refundable<=0)return showToast(T('Aucun montant remboursable','No refundable amount'),'error');
+  const raw=prompt(T(`Montant à rembourser (max ${money(refundable)})`,`Refund amount (max ${money(refundable)})`),Number(refundable).toFixed(2));if(raw===null)return;
+  const amount=Number(raw);if(!Number.isFinite(amount)||amount<=0||amount>refundable)return showToast(T('Montant invalide','Invalid refund amount'),'error');
+  const reason=prompt(T('Raison du remboursement','Refund reason'),T('Demande client','Customer request'))||T('Demande client','Customer request');
+  if(!confirm(T(`Confirmer le remboursement de ${money(amount)}? ARTY enverra le remboursement directement à Stripe.`,`Confirm the ${money(amount)} refund? ARTY will send it directly to Stripe.`)))return;
+  try{
+    const result=await api('/api/admin/event-requests/'+encodeURIComponent(l.id)+'/refund',{method:'POST',body:JSON.stringify({amount,reason})});
+    await refreshLeadAfterAction('event',l.id);
+    const processing=['pending','requires_action'].includes(String(result.stripeStatus||''));
+    showToast(processing?T('Remboursement Stripe en traitement','Stripe refund is processing'):T('Remboursement effectué dans Stripe','Refund completed in Stripe'),'success');
+    renderLeadActions();
+  }catch(e){showToast(e.message,'error')}
 }
 async function quickLeadStatus(status,extra={}){
   const l=state.editingLead;if(!l)return;
@@ -556,7 +574,7 @@ window.ARTYCRM={
   searchCustomers:q=>{state.customerQuery=q;renderCustomers()},filterCustomers:v=>{state.customerFilter=v;renderCustomers()},
   searchLeads:q=>{state.leadQuery=q;renderLeads()},filterOwner:v=>{state.leadOwner=v;renderLeads()},filterStatus:v=>{state.leadStatus=v;renderLeads()},
   saveCustomerTags,addCustomerNote,saveAccount,toggleAccount,sendPasswordReset,resendWelcome,
-  newLead,openLeadActions,openLeadEditor,renderLeadEditor,renderLeadActions,renderFollowUpAction,saveFollowUpAction,clearFollowUp,renderQuoteAction,sendQuoteAction,renderLostAction,saveLostAction,quickLeadStatus,emailLead,callLead,openLeadCalendar,openSecureQuote,closeLeadEditor,saveLeadEditor,dragStart,dropStage,openLeadByKey,download
+  newLead,openLeadActions,openLeadEditor,renderLeadEditor,renderLeadActions,renderFollowUpAction,saveFollowUpAction,clearFollowUp,renderQuoteAction,sendQuoteAction,renderLostAction,saveLostAction,refundEventLead,quickLeadStatus,emailLead,callLead,openLeadCalendar,openSecureQuote,closeLeadEditor,saveLeadEditor,dragStart,dropStage,openLeadByKey,download
 };
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
