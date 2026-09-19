@@ -1,6 +1,6 @@
 'use strict';
 
-const CRM_LEAD_STATUSES = Object.freeze(['new','contacted','qualified','quote_sent','follow_up','won','lost']);
+const CRM_LEAD_STATUSES = Object.freeze(['new','contacted','qualified','quote_sent','follow_up','won','refunded','lost']);
 const CRM_LOST_REASONS = Object.freeze(['price','no_response','date_unavailable','cancelled','not_fit','competitor','other']);
 
 function text(value,max=300){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
@@ -43,6 +43,7 @@ function crmMeta(raw={}){
     lostReason:CRM_LOST_REASONS.includes(String(raw.lostReason||''))?String(raw.lostReason):'',
     finalValue:money(raw.finalValue),
     wonAt:text(raw.wonAt,60),
+    refundedAt:text(raw.refundedAt,60),
     lostAt:text(raw.lostAt,60),
     createdBy:text(raw.createdBy,240),
     updatedBy:text(raw.updatedBy,240),
@@ -166,8 +167,9 @@ function leadFromEvent(request){
   const base=leadBase('event',request.id,request.name,request.email,request.phone,request.eventType||request.eventName||'Event',request.createdAt,request.crm);
   const attribution=cleanAttribution(request.marketingAttribution),touch=attribution.lastTouch||attribution.firstTouch||{};
   const refunded=money(request.quoteRefundedTotal||0),pendingRefund=money(request.quoteRefundPendingTotal||0),netPaid=money(request.quoteNetPaid??Math.max(0,Number(request.paymentAmountReceived||request.quoteAmount||0)-refunded));
-  const wonValue=base.status==='won'?netPaid:money(base.finalValue||request.quoteAmount);
-  return {...base,finalValue:base.status==='won'?netPaid:base.finalValue,reference:request.reference||'',value:wonValue,expectedValue:money(request.quoteSubtotal??request.quoteAmount),quoteSubtotal:money(request.quoteSubtotal??request.quoteAmount),quoteShipping:money(request.quoteShipping||0),quoteTaxTotal:money(request.quoteTaxTotal||0),quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],quoteAmount:money(request.quoteAmount||0),quoteRefundedTotal:refunded,quoteRefundPendingTotal:pendingRefund,quoteNetPaid:netPaid,quoteRefundStatus:request.quoteRefundStatus||'none',quoteAddress:request.quoteAddress||request.address||{},quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.quoteRefundStatus==='refunded'?'remboursée':request.quotePaymentStatus==='paid'?'payée':(request.status||''),quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||'',location:request.location||''};
+  const settled=['won','refunded'].includes(base.status),settledValue=settled?netPaid:money(base.finalValue||request.quoteAmount);
+  const refunds=Array.isArray(request.quoteRefunds)?request.quoteRefunds:[],latestRefund=refunds.slice().sort((a,b)=>String(b.completedAt||b.lastSyncedAt||b.createdAt||'').localeCompare(String(a.completedAt||a.lastSyncedAt||a.createdAt||'')))[0]||null;
+  return {...base,finalValue:settled?netPaid:base.finalValue,reference:request.reference||'',value:settledValue,expectedValue:money(request.quoteSubtotal??request.quoteAmount),quoteSubtotal:money(request.quoteSubtotal??request.quoteAmount),quoteShipping:money(request.quoteShipping||0),quoteTaxTotal:money(request.quoteTaxTotal||0),quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],quoteAmount:money(request.quoteAmount||0),quoteRefundedTotal:refunded,quoteRefundPendingTotal:pendingRefund,quoteNetPaid:netPaid,quoteRefundStatus:request.quoteRefundStatus||'none',quoteLastRefundAmount:money(latestRefund?.amount||0),quoteRefundReason:text(latestRefund?.reason,450),quoteRefundedAt:text(latestRefund?.completedAt||latestRefund?.lastSyncedAt||latestRefund?.createdAt,60),quoteAddress:request.quoteAddress||request.address||{},quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.quoteRefundStatus==='refunded'?'remboursée':request.quotePaymentStatus==='paid'?'payée':(request.status||''),quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||'',location:request.location||''};
 }
 function leadFromContact(contact){
   const base=leadBase('contact',contact.id,contact.name,contact.email,contact.phone,contact.channel==='events'?'Event inquiry':'General inquiry',contact.createdAt,contact.crm);
@@ -186,7 +188,7 @@ function buildLeads(db={}){
 }
 function crmLeadRevenueValue(lead){return lead.status==='won'?money(lead.finalValue||0):money(lead.value||lead.expectedValue||0)}
 function crmSummary(db={}){
-  const leads=buildLeads(db),customers=buildCustomerIndex(db),open=leads.filter(l=>!['won','lost'].includes(l.status)),day=today();
+  const leads=buildLeads(db),customers=buildCustomerIndex(db),open=leads.filter(l=>!['won','refunded','lost'].includes(l.status)),day=today();
   return {
     customers:customers.length,accountCustomers:customers.filter(c=>c.hasAccount).length,leads:leads.length,
     newLeads:leads.filter(l=>l.status==='new').length,
@@ -240,10 +242,11 @@ function updateLead(db,kind,id,patch={},actor=''){
   const current=crmMeta(item.crm),nextStatus=CRM_LEAD_STATUSES.includes(String(patch.status||''))?String(patch.status):current.status,now=new Date().toISOString();
   const history=[...current.statusHistory];
   if(nextStatus!==current.status)history.push({status:nextStatus,at:now,by:text(actor,240)});
-  let wonAt=current.wonAt,lostAt=current.lostAt,lostReason=current.lostReason;
-  if(nextStatus==='won'){wonAt=wonAt||now;lostAt='';lostReason=''}
-  else if(nextStatus==='lost'){lostAt=lostAt||now;wonAt='';lostReason=CRM_LOST_REASONS.includes(String(patch.lostReason||''))?String(patch.lostReason):lostReason}
-  else {wonAt='';lostAt='';if(nextStatus!=='lost')lostReason=''}
+  let wonAt=current.wonAt,refundedAt=current.refundedAt,lostAt=current.lostAt,lostReason=current.lostReason;
+  if(nextStatus==='won'){wonAt=wonAt||now;refundedAt='';lostAt='';lostReason=''}
+  else if(nextStatus==='refunded'){refundedAt=refundedAt||now;lostAt='';lostReason=''}
+  else if(nextStatus==='lost'){lostAt=lostAt||now;wonAt='';refundedAt='';lostReason=CRM_LOST_REASONS.includes(String(patch.lostReason||''))?String(patch.lostReason):lostReason}
+  else {wonAt='';refundedAt='';lostAt='';if(nextStatus!=='lost')lostReason=''}
   item.crm={
     ...current,status:nextStatus,nextFollowUp:text(patch.nextFollowUp??current.nextFollowUp,40),
     followUpType:['call','email','meeting','quote','other'].includes(String(patch.followUpType??current.followUpType))?String(patch.followUpType??current.followUpType):current.followUpType,
@@ -251,7 +254,7 @@ function updateLead(db,kind,id,patch={},actor=''){
     calendar:current.calendar,
     owner:text(patch.owner??current.owner,240),
     tags:patch.tags===undefined?current.tags:list(patch.tags),adminNote:text(patch.adminNote??current.adminNote,3000),
-    lostReason,finalValue:patch.finalValue===undefined?current.finalValue:money(patch.finalValue),wonAt,lostAt,
+    lostReason,finalValue:patch.finalValue===undefined?current.finalValue:money(patch.finalValue),wonAt,refundedAt,lostAt,
     createdBy:current.createdBy||text(actor,240),updatedBy:text(actor,240),updatedAt:now,statusHistory:history.slice(-100)
   };
   if(kind==='manual'){
@@ -291,7 +294,7 @@ function updateCustomerPreferences(db,email,input={},actor=''){
   store[key]=next;return customerMeta(db,key);
 }
 function crmActionCenter(db={}){
-  const leads=buildLeads(db),day=today(),open=leads.filter(l=>!['won','lost'].includes(l.status));
+  const leads=buildLeads(db),day=today(),open=leads.filter(l=>!['won','refunded','lost'].includes(l.status));
   const overdue=open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)<day).slice(0,20);
   const dueToday=open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)===day).slice(0,20);
   const newLeads=open.filter(l=>l.status==='new').slice(0,20);
@@ -304,8 +307,8 @@ function crmActionCenter(db={}){
   return {newLeads,overdue,dueToday,quoteWaiting,paymentPending,orderPaymentsPending,eventPaymentsPending,recentOrders,lowInventory};
 }
 function crmReporting(db={}){
-  const leads=buildLeads(db),customers=buildCustomerIndex(db),won=leads.filter(l=>l.status==='won'),qualified=leads.filter(l=>['qualified','quote_sent','follow_up','won','lost'].includes(l.status));
-  const quoted=leads.filter(l=>['quote_sent','follow_up','won','lost'].includes(l.status));
+  const leads=buildLeads(db),customers=buildCustomerIndex(db),won=leads.filter(l=>l.status==='won'),qualified=leads.filter(l=>['qualified','quote_sent','follow_up','won','refunded','lost'].includes(l.status));
+  const quoted=leads.filter(l=>['quote_sent','follow_up','won','refunded','lost'].includes(l.status));
   const sourceMap={};
   for(const lead of leads){
     const key=lead.source||'direct/manual';if(!sourceMap[key])sourceMap[key]={source:key,leads:0,won:0,value:0};
@@ -319,7 +322,7 @@ function crmReporting(db={}){
   const salesCycles=won.map(l=>dayDiff(l.createdAt,l.wonAt||l.updatedAt)).filter(Number.isFinite);
   const paying=customers.filter(c=>c.paidOrderCount>0),repeat=paying.filter(c=>c.paidOrderCount>1);
   return {
-    totals:{leads:leads.length,qualified:qualified.length,quoted:quoted.length,won:won.length,lost:leads.filter(l=>l.status==='lost').length},
+    totals:{leads:leads.length,qualified:qualified.length,quoted:quoted.length,won:won.length,refunded:leads.filter(l=>l.status==='refunded').length,lost:leads.filter(l=>l.status==='lost').length},
     rates:{
       leadToQuote:leads.length?Number((quoted.length/leads.length*100).toFixed(1)):0,
       quoteToWon:quoted.length?Number((won.length/quoted.length*100).toFixed(1)):0,
