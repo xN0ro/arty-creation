@@ -3662,7 +3662,10 @@ function recomputeEventQuoteRefundState(request,actor='system:refund'){
     request.quoteRefundStatus='none';
     if(request.quotePaidAt)request.quotePaymentStatus='paid';
   }
-  if(request.crm?.status==='won')crmCore.updateLead({eventRequests:[request]},'event',request.id,{status:'won',finalValue:net},actor);
+  if(['won','refunded'].includes(request.crm?.status)){
+    const crmStatus=request.quoteRefundStatus==='refunded'?'refunded':'won';
+    crmCore.updateLead({eventRequests:[request]},'event',request.id,{status:crmStatus,finalValue:net},actor);
+  }
   request.updatedAt=new Date().toISOString();
   return{refundedTotal:refunded,pendingTotal,netPaid:net,committedTotal:money(refunded+pendingTotal)};
 }
@@ -3673,6 +3676,7 @@ function updateEventRefundFromStripe(request,refund,stripeRefund,actor='system:s
   refund.stripeChargeId=String(stripeRefund.charge||refund.stripeChargeId||'');
   refund.failureReason=String(stripeRefund.failure_reason||'');
   refund.lastSyncedAt=new Date().toISOString();
+  if(refund.providerStatus==='succeeded'&&!refund.completedAt)refund.completedAt=refund.lastSyncedAt;
   recomputeEventQuoteRefundState(request,actor);
   return refund;
 }
