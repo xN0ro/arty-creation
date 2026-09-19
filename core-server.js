@@ -2046,6 +2046,34 @@ async function deliverEventRequestEmails(request) {
   const [customer, admin] = await Promise.all([sendEventRequestReceiptEmail(request), sendEventRequestAdminEmail(request)]);
   return { customer:customer.status, admin:admin.status };
 }
+function eventQuoteAddress(request,raw={}) {
+  const source=raw&&typeof raw==='object'?raw:{},fallback=request?.quoteAddress||request?.address||{};
+  return {
+    line1:String(source.line1??fallback.line1??'').trim().slice(0,240),
+    city:String(source.city??fallback.city??'').trim().slice(0,120),
+    province:String(source.province??fallback.province??'').trim().slice(0,80),
+    postal:String(source.postal??fallback.postal??'').trim().slice(0,30),
+    country:String(source.country??fallback.country??'Canada').trim().slice(0,80)||'Canada'
+  };
+}
+function eventQuotePricing(db,request,body={}) {
+  const subtotal=money(Math.max(0,Number(body.quoteSubtotal??request.quoteSubtotal??body.quoteAmount??request.quoteAmount)||0));
+  const shipping=money(Math.max(0,Number(body.quoteShipping??request.quoteShipping??0)||0));
+  const address=eventQuoteAddress(request,body.quoteAddress||body.address||{});
+  const taxableBase=money(subtotal+shipping);
+  const taxes=commerceCore.calculateTaxes(db.commerceConfig,taxableBase,address);
+  return {
+    quoteSubtotal:subtotal,quoteShipping:shipping,quoteTaxTotal:money(taxes.taxTotal||0),
+    quoteTaxLines:Array.isArray(taxes.taxLines)?taxes.taxLines:[],quoteTaxProvince:taxes.taxProvince||'',
+    quoteTaxRate:Number(taxes.taxRate||0),quoteAmount:money(taxableBase+Number(taxes.taxTotal||0)),quoteAddress:address
+  };
+}
+function applyEventQuotePricing(request,pricing) {
+  Object.assign(request,pricing);
+  request.address={...(request.address||{}),...(pricing.quoteAddress||{})};
+  request.location=eventRequestLocation(request.address,request.location);
+  return request;
+}
 function publicEventQuoteView(request) {
   const customKit = request.customKit || {};
   return {
@@ -2061,8 +2089,14 @@ function publicEventQuoteView(request) {
     customKit:request.servicePath === 'custom' ? { productLabel:customKit.productLabel || '', sizeLabel:customKit.sizeLabel || '', orientation:customKit.orientation || '', quantity:customKit.quantity || request.guests || 1, notes:customKit.notes || '' } : null,
     expertBrief:request.servicePath === 'expert' ? request.expertBrief || '' : '',
     quoteDescription:request.quoteDescription || '',
+    quoteSubtotal:money(request.quoteSubtotal ?? request.quoteAmount ?? 0),
+    quoteShipping:money(request.quoteShipping || 0),
+    quoteTaxTotal:money(request.quoteTaxTotal || 0),
+    quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],
+    quoteTaxProvince:request.quoteTaxProvince||'',
     quoteAmount:money(request.quoteAmount || 0),
-    status:request.status || 'nouvelle',
+    address:eventQuoteAddress(request),
+    status:request.quotePaymentStatus==='paid'?'payée':(request.status || 'nouvelle'),
     paymentStatus:request.quotePaymentStatus || 'not_created',
     paidAt:request.quotePaidAt || ''
   };
@@ -2081,7 +2115,6 @@ function createStripePaymentIntentForEventQuote(request) {
     amount:stripeAmountCents(request.quoteAmount),
     currency:'cad',
     'automatic_payment_methods[enabled]':'true',
-    receipt_email:request.email || '',
     description:I18n.msg`Devis événement ARTY ${request.reference}`,
     'metadata[eventRequestId]':String(request.id),
     'metadata[eventRequestReference]':request.reference || '',
@@ -2179,7 +2212,7 @@ async function deliverEventQuotePaidEmail(requestId) {
   return result;
 }
 
-app.post('/api/event-requests', async (req, res) => {
+app.post('/api/event-requests', optionalAuth, async (req, res) => {
   const db = readDB();
   const body = req.body || {};
   const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, 140);
@@ -2223,6 +2256,7 @@ app.post('/api/event-requests', async (req, res) => {
   const request = {
     id,
     reference:`EVT-${id.toString(36).toUpperCase()}`,
+    userId:req.session?.userId||null,
     locale:req.locale,
     name,
     email,
@@ -2254,6 +2288,22 @@ app.post('/api/event-requests', async (req, res) => {
   writeDB(db);
   const delivery = await deliverEventRequestEmails(request);
   res.json({ success:true, reference:request.reference, emailStatus:delivery.customer });
+});
+
+app.get('/api/event-requests/mine',auth,(req,res)=>{
+  const db=readDB(),user=(db.users||[]).find(item=>item.id===req.session.userId),email=String(user?.email||req.session.email||'').trim().toLowerCase();
+  const rows=(db.eventRequests||[]).filter(item=>item.userId===req.session.userId||String(item.email||'').trim().toLowerCase()===email).sort((a,b)=>new Date(b.updatedAt||b.createdAt)-new Date(a.updatedAt||a.createdAt)).map(item=>({
+    id:item.id,reference:item.reference||'',eventType:item.eventType||'',preferredDate:item.preferredDate||'',eventTime:item.eventTime||'',
+    guests:Number(item.guests||0),location:item.location||'',address:eventQuoteAddress(item),servicePath:item.servicePath||'expert',
+    servicePathLabel:eventRequestPathLabel(item.servicePath),inventoryItems:(item.inventoryItems||[]).map(x=>({name:x.name,quantity:x.quantity,image:x.image||''})),
+    customKit:item.customKit?{productLabel:item.customKit.productLabel||'',sizeLabel:item.customKit.sizeLabel||'',orientation:item.customKit.orientation||'',quantity:item.customKit.quantity||item.guests||1,notes:item.customKit.notes||'',paintedPreview:item.customKit.paintedPreview||''}:null,
+    expertBrief:item.expertBrief||'',message:item.message||'',quoteDescription:item.quoteDescription||'',
+    quoteSubtotal:money(item.quoteSubtotal??item.quoteAmount??0),quoteShipping:money(item.quoteShipping||0),quoteTaxTotal:money(item.quoteTaxTotal||0),
+    quoteTaxLines:Array.isArray(item.quoteTaxLines)?item.quoteTaxLines:[],quoteAmount:money(item.quoteAmount||0),
+    status:item.quotePaymentStatus==='paid'?'payée':(item.status||'nouvelle'),paymentStatus:item.quotePaymentStatus||'not_created',
+    paidAt:item.quotePaidAt||'',createdAt:item.createdAt||'',updatedAt:item.updatedAt||item.createdAt||''
+  }));
+  res.json(rows);
 });
 
 app.get('/api/event-quotes/:token', (req, res) => {
@@ -2877,7 +2927,7 @@ app.post('/api/admin/bookings/:id/resend-ticket', adminOnly, async (req, res) =>
 });
 app.get('/api/admin/event-requests', adminOnly, (req, res) => {
   const db = readDB();
-  res.json((db.eventRequests || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  res.json((db.eventRequests || []).map(item=>item.quotePaymentStatus==='paid'?{...item,status:'payée'}:item).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
   const db = readDB();
@@ -2885,19 +2935,21 @@ app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
   if (i === -1) return res.status(404).json({ error: I18n.t('Non trouvé') });
   const current = db.eventRequests[i];
   const allowedStatuses = ['nouvelle','en étude','contactée','devis préparé','paiement prêt','payée','fermée'];
-  const nextStatus = allowedStatuses.includes(String(req.body.status || '')) ? String(req.body.status) : current.status;
-  const quoteAmount = req.body.quoteAmount === undefined ? Number(current.quoteAmount || 0) : money(Math.max(0, Number(req.body.quoteAmount) || 0));
+  const requestedStatus = allowedStatuses.includes(String(req.body.status || '')) ? String(req.body.status) : current.status;
+  const nextStatus = current.quotePaymentStatus==='paid' ? 'payée' : requestedStatus;
+  const pricing=eventQuotePricing(db,current,req.body||{});
   db.eventRequests[i] = {
     ...current,
+    ...pricing,
     status:nextStatus,
     adminNote:String(req.body.adminNote ?? current.adminNote ?? '').trim().slice(0, 3000),
     quoteDescription:String(req.body.quoteDescription ?? current.quoteDescription ?? '').trim().slice(0, 3000),
-    quoteAmount,
     updatedAt:new Date().toISOString()
   };
+  applyEventQuotePricing(db.eventRequests[i],pricing);
   const workflowRequest=db.eventRequests[i];
   if (nextStatus === 'payée') crmCore.syncEventWorkflow(db, workflowRequest.id, 'manual_paid', req.session.email || 'admin');
-  else if (nextStatus === 'devis préparé' || quoteAmount > 0) crmCore.syncEventWorkflow(db, workflowRequest.id, 'quote_drafted', req.session.email || 'admin');
+  else if (nextStatus === 'devis préparé' || pricing.quoteSubtotal > 0) crmCore.syncEventWorkflow(db, workflowRequest.id, 'quote_drafted', req.session.email || 'admin');
   else if (nextStatus === 'contactée') crmCore.syncEventWorkflow(db, workflowRequest.id, 'contacted', req.session.email || 'admin');
   if (nextStatus === 'payée') await syncEventRequestCalendar(db, workflowRequest.id);
   writeDB(db);
@@ -2912,9 +2964,11 @@ app.post('/api/admin/event-requests/:id/payment-link', adminOnly, async (req, re
     return res.status(403).json({error:I18n.t('Ce prospect ne vous est pas assigné')});
   }
   if (!isStripeEnabled()) return res.status(503).json({ error:I18n.t('Stripe doit être configuré avant de créer un lien de paiement') });
-  const quoteAmount = money(Math.max(0, Number(req.body.quoteAmount ?? request.quoteAmount) || 0));
-  if (quoteAmount < 0.5) return res.status(400).json({ error:I18n.t('Entrez un montant de devis valide') });
-  request.quoteAmount = quoteAmount;
+  if(request.quotePaymentStatus==='paid')return res.status(409).json({error:I18n.t('Ce devis est déjà payé')});
+  const pricing=eventQuotePricing(db,request,req.body||{});
+  if (pricing.quoteSubtotal < 0.5) return res.status(400).json({ error:I18n.t('Entrez un montant de devis valide') });
+  if(commerceCore.isCanada(pricing.quoteAddress.country)&&!commerceCore.normalizeProvince(pricing.quoteAddress.province))return res.status(400).json({error:I18n.t('Une province canadienne valide est requise pour calculer les taxes')});
+  applyEventQuotePricing(request,pricing);
   request.quoteDescription = String(req.body.quoteDescription ?? request.quoteDescription ?? '').trim().slice(0, 3000);
   request.adminNote = String(req.body.adminNote ?? request.adminNote ?? '').trim().slice(0, 3000);
   const rawToken = crypto.randomBytes(30).toString('hex');
@@ -3396,7 +3450,6 @@ async function createStripePaymentIntentForOrder(order) {
     amount: stripeAmountCents(order.total),
     currency: 'cad',
     'automatic_payment_methods[enabled]': 'true',
-    receipt_email: order.customer?.email || order.guestEmail || '',
     description: I18n.msg`Commande Arty ${order.id}`,
     'metadata[orderId]': order.id,
     'metadata[customerEmail]': order.customer?.email || order.guestEmail || '',
