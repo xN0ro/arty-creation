@@ -519,6 +519,7 @@ function install(){
       closeLeadEditor();
       document.querySelectorAll('#page-admin [id^="adminCrm"][id$="Panel"]').forEach(panel=>panel.style.display='none');
       const result=base.call(this,tab,button,...rest);
+      if(tab==='events'&&typeof window.loadEventRequests==='function')Promise.resolve(window.loadEventRequests()).then(()=>window.renderAdminEvents?.()).catch(()=>{});
       return result;
     };wrapped.__crmV2Wrapped=true;window.switchAdminTab=wrapped;
   }
