@@ -2729,7 +2729,7 @@ app.get('/api/admin/refunds', adminOnly, async (req, res) => {
   for(const refund of (db.refunds||[])){
     if(refund.paymentProvider==='stripe'&&refund.status==='refund_requested'&&!refund.stripeRefundId){refund.status='legacy_not_sent';refund.providerStatus='not_sent_to_stripe';changed=true}
   }
-  if(changed){for(const order of (db.orders||[]))recomputeOrderRefundState(db,order);writeDB(db)}
+  if(changed){for(const order of (db.orders||[]))if(order.paymentProvider==='stripe')recomputeOrderRefundState(db,order);writeDB(db)}
   res.json((db.refunds||[]).sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)));
 });
 app.post('/api/admin/orders/:id/refund', adminOnly, async (req, res) => {
