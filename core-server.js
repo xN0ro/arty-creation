@@ -2737,7 +2737,7 @@ app.post('/api/admin/orders/:id/refund', adminOnly, async (req, res) => {
   if(!order)return res.status(404).json({error:I18n.t('Commande non trouvée')});
   if(order.paymentProvider!=='stripe'||!order.paymentReference)return res.status(409).json({error:I18n.t('Cette commande n’a pas de paiement Stripe remboursable. Aucun remboursement bancaire n’a été effectué.')});
   if(!isStripeEnabled())return res.status(503).json({error:I18n.t('Stripe n’est pas configuré')});
-  const state=recomputeOrderRefundState(db,order),maxRefundable=money(Math.max(0,Number(order.total||0)-state.committedTotal);
+  const state=recomputeOrderRefundState(db,order),maxRefundable=money(Math.max(0,Number(order.total||0)-state.committedTotal));
   let amount=Number(req.body.amount);if(!Number.isFinite(amount)||amount<=0)amount=maxRefundable;amount=money(Math.min(maxRefundable,amount));
   if(amount<=0)return res.status(400).json({error:I18n.t('Aucun montant remboursable')});
   const reason=String(req.body.reason||I18n.t('Demande client')).trim().slice(0,450),fullRefund=Math.abs(amount-maxRefundable)<0.01&&state.committedTotal+amount>=Number(order.total||0)-0.001;
