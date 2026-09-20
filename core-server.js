@@ -1314,23 +1314,17 @@ function sendTransactionalEmail({ to, subject, html, idempotencyKey, replyTo = '
 function sendStaffAccessInviteEmail(grant, token) {
   const siteUrl = normalizePublicUrl();
   const inviteUrl = `${siteUrl}/api/staff-invite/accept?token=${encodeURIComponent(token)}`;
-  const permissionLabels = {
-    dashboard:'Dashboard & analytics', crm_dashboard:'CRM overview', customers:'Customers', leads:'Leads & sales', crm_manager:'Sales manager — full CRM team view', account_management:'Account security', products:'Products', inventory:'Inventory', promotions:'Promotions',
-    orders:'Orders & refunds', support:'Customer support', events:'Events & tickets', categories:'Categories',
-    marketing:'Marketing', settings:'Site settings'
-  };
-  const permissions = normalizeStaffPermissions(grant.permissions).map(key => permissionLabels[key] || key).join(', ');
   return sendTransactionalEmail({
     to:grant.email,
-    subject:'ARTY — invitation to staff access',
+    subject:'ARTY — team invitation',
     idempotencyKey:`staff-invite-${grant.id}-${Date.now()}`,
     replyTo:'info',
     html:emailShell({
-      title:'ARTY staff invitation',
-      intro:'You have been invited to help manage the ARTY website.',
-      preheader:'Confirm your email to activate your ARTY staff permissions.',
-      content:`<p>Hello ${escapeEmailHTML(grant.name || '')},</p><p>ARTY has granted this email address restricted staff access.</p>${emailPanel(`<strong style="display:block;margin-bottom:6px;color:#332b22">Permissions</strong>${escapeEmailHTML(permissions)}`,'teal')}<p>Confirm this email address, then create or sign in to your ARTY account using <strong>${escapeEmailHTML(grant.email)}</strong>. You will only see the sections you were authorized to use.</p>`,
-      ctaLabel:'Confirm my ARTY access',
+      title:'Join the ARTY team',
+      intro:'You have been invited to help manage ARTY.',
+      preheader:'Confirm your email to join the ARTY team.',
+      content:`<p>Hello ${escapeEmailHTML(grant.name || '')},</p><p>You have been invited to join the ARTY team.</p><p>Confirm this email address, then create or sign in to your ARTY account using <strong>${escapeEmailHTML(grant.email)}</strong>.</p>`,
+      ctaLabel:'Join ARTY',
       ctaUrl:inviteUrl,
       footer:'This invitation expires in 7 days. If you were not expecting it, you can ignore this email.'
     })
