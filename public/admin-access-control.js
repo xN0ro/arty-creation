@@ -23,18 +23,69 @@ const en=()=>{try{return I18n.language?.()==='en'}catch{return false}},t=(fr,enT
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function has(permission){return currentUser?.role==='admin'||(Array.isArray(currentUser?.permissions)&&currentUser.permissions.includes(permission))}
 window.artyHasAdminPermission=has;
-function tabPermission(tab){return({dashboard:'dashboard',crmOverview:'crm_dashboard',crmCustomers:'customers',crmLeads:'leads',kits:'products',inventory:'inventory',discounts:'promotions',bundleDeals:'promotions',orders:'orders',support:'support',events:'events',eventOptions:'events',categories:'categories',announcement:'settings',marketing:'marketing',access:'__owner'})[tab]||null}
+const TAB_RULES={
+ dashboard:'dashboard',
+ crm:['crm_dashboard','customers','leads'],
+ crmOverview:'crm_dashboard',crmCustomers:'customers',crmLeads:'leads',
+ kits:'products',studio:'products',inventory:'inventory',
+ discounts:'promotions',bundleDeals:'promotions',
+ orders:'orders',support:'support',
+ events:'events',eventOptions:'events',
+ categories:'categories',
+ announcement:'settings',commerce:'settings',
+ marketing:'marketing',
+ access:'__owner'
+};
+const PANEL_RULES={
+ adminDashboardPanel:'dashboard',adminKitsPanel:'kits',adminStudioPanel:'studio',adminInventoryPanel:'inventory',
+ adminDiscountsPanel:'discounts',adminBundleDealsPanel:'bundleDeals',adminOrdersPanel:'orders',adminSupportPanel:'support',
+ adminEventsPanel:'events',adminEventOptionsPanel:'eventOptions',adminCategoriesPanel:'categories',
+ adminAnnouncementPanel:'announcement',adminCommercePanel:'commerce',adminMarketingPanel:'marketing',
+ adminCrmOverviewPanel:'crmOverview',adminCrmCustomersPanel:'crmCustomers',adminCrmLeadsPanel:'crmLeads',
+ adminAccessPanel:'access'
+};
+function tabRule(tab){return TAB_RULES[tab]??null}
+function canOpenTab(tab){
+ if(currentUser?.role==='admin')return true;
+ if(currentUser?.role!=='staff')return false;
+ const rule=tabRule(tab);
+ if(!rule||rule==='__owner')return false;
+ if(Array.isArray(rule))return rule.some(has);
+ return has(rule);
+}
+window.artyCanOpenAdminTab=canOpenTab;
+function buttonTabKey(button){
+ if(!button)return'';
+ if(button.dataset.adminTabKey)return button.dataset.adminTabKey;
+ if(button.dataset.adminStudioTab)return'studio';
+ if(button.dataset.adminCommerceTab)return'commerce';
+ if(button.dataset.adminMarketingTab)return'marketing';
+ if(button.dataset.crmMain)return'crm';
+ if(button.id==='adminAccessTab')return'access';
+ const match=String(button.getAttribute('onclick')||'').match(/switchAdminTab\(['"]([^'"]+)/);
+ return match?.[1]||'';
+}
 function applyPermissions(){
  if(!currentUser)return;
- const owner=currentUser.role==='admin';
+ const staff=currentUser.role==='staff';
  document.querySelectorAll('.admin-tab').forEach(button=>{
-   const match=String(button.getAttribute('onclick')||'').match(/switchAdminTab\(['"]([^'"]+)/),tab=match?.[1],permission=tabPermission(tab);
-   if(permission)button.style.display=(permission==='__owner'?owner:has(permission))?'':'none';
+   const tab=buttonTabKey(button);
+   const allowed=tab?canOpenTab(tab):!staff;
+   button.hidden=!allowed;
+   button.style.display=allowed?'':'none';
+   button.setAttribute('aria-hidden',allowed?'false':'true');
  });
+ for(const [panelId,tab] of Object.entries(PANEL_RULES)){
+   const panel=document.getElementById(panelId);
+   if(panel&&!canOpenTab(tab))panel.style.display='none';
+ }
  const stats=document.querySelector('.admin-pro-stats');if(stats)stats.style.display=has('dashboard')?'':'none';
- if(currentUser.role==='staff'){
+ if(staff){
    const active=document.querySelector('.admin-tab.active');
-   if(active&&active.style.display==='none'){const first=[...document.querySelectorAll('.admin-tab')].find(button=>button.style.display!=='none');first?.click()}
+   if(!active||active.hidden||active.style.display==='none'){
+     const first=[...document.querySelectorAll('.admin-tab')].find(button=>!button.hidden&&button.style.display!=='none');
+     if(first)setTimeout(()=>first.click(),0);
+   }
  }
 }
 function style(){
@@ -62,7 +113,7 @@ function render(){
  <div class="staff-access-editor" id="staffAccessEditor" ${editingId||window.__artyNewStaff?'':'hidden'}><div class="staff-access-fields"><label>${esc(t('Nom','Name'))}<input id="staffAccessName" value="${esc(edit?.name||'')}" placeholder="Yuriy"></label><label>${esc(t('Courriel','Email'))}<input id="staffAccessEmail" type="email" value="${esc(edit?.email||'')}" ${edit?'disabled':''} placeholder="name@example.com"></label></div>
  <div><strong style="font-size:.8rem">${esc(t('Permissions','Permissions'))}</strong><div class="staff-presets" style="margin-top:8px"><button onclick="staffPreset('sales')">${esc(t('Préréglage Ventes','Sales preset'))}</button><button onclick="staffPreset('sales_manager')">${esc(t('Gestionnaire ventes','Sales manager'))}</button><button onclick="staffPreset('marketing')">${esc(t('Préréglage Marketing','Marketing preset'))}</button><button onclick="staffPreset('events')">${esc(t('Préréglage Événements','Events preset'))}</button><button onclick="staffPreset('support')">${esc(t('Préréglage Support','Support preset'))}</button><button onclick="staffPreset('clear')">${esc(t('Effacer','Clear'))}</button></div></div>
  <div class="staff-access-grid">${PERMISSIONS.map(row=>`<label class="staff-permission"><input type="checkbox" data-staff-permission="${row[0]}" ${edit?.permissions?.includes(row[0])?'checked':''}><strong>${esc(t(row[1],row[2]))}</strong><small>${esc(t(row[3],row[4]))}</small></label>`).join('')}</div>
- <div style="padding:11px 13px;border-radius:11px;background:#fff8ed;color:var(--text-light);font-size:.73rem;line-height:1.5">${esc(t('ARTY enverra une invitation à cette adresse. La personne doit confirmer le courriel avant que l’accès restreint soit activé.','ARTY will send an invitation to this address. The person must confirm the email before restricted access is activated.'))}</div>
+ <div style="padding:11px 13px;border-radius:11px;background:#fff8ed;color:var(--text-light);font-size:.73rem;line-height:1.5">${esc(t('ARTY enverra une invitation à cette adresse pour rejoindre l’équipe.','ARTY will send an invitation to this address to join the team.'))}</div>
  <div class="staff-access-actions"><button class="btn btn-ghost" onclick="closeStaffAccessEditor()">${esc(t('Annuler','Cancel'))}</button><button class="btn btn-orange" onclick="saveStaffAccess()">${esc(t('Enregistrer l’accès','Save access'))}</button></div></div>
  <div class="staff-access-list">${grants.length?grants.map(g=>`<article class="staff-access-card"><div><h4>${esc(g.name||g.email)}</h4><p>${esc(g.email)}</p><span class="staff-access-status ${g.emailVerifiedAt?'active':'pending'}">${esc(g.emailVerifiedAt?t('Accès activé','Access active'):t('Invitation en attente','Invitation pending'))}</span><div class="staff-access-tags">${(g.permissions||[]).map(p=>`<span>${esc(permissionName(p))}</span>`).join('')}</div></div><div class="staff-access-card-actions"><button class="admin-btn admin-btn-edit" onclick="editStaffAccess('${esc(g.id)}')">${esc(t('Modifier','Edit'))}</button>${!g.emailVerifiedAt?`<button class="admin-btn" onclick="resendStaffAccess('${esc(g.id)}')">${esc(t('Renvoyer','Resend'))}</button>`:''}<button class="admin-btn admin-btn-delete" onclick="deleteStaffAccess('${esc(g.id)}')">${esc(t('Retirer','Remove'))}</button></div></article>`).join(''):`<div class="admin-form-card"><p class="admin-muted">${esc(t('Aucun collaborateur pour le moment.','No collaborators yet.'))}</p></div>`}</div></div>`}
 window.openStaffAccessEditor=()=>{editingId='';window.__artyNewStaff=true;render();document.getElementById('staffAccessEditor')?.scrollIntoView({behavior:'smooth',block:'start'})};
@@ -72,7 +123,17 @@ window.staffPreset=preset=>{const sets={sales:['crm_dashboard','customers','lead
 window.saveStaffAccess=async()=>{const permissions=[...document.querySelectorAll('[data-staff-permission]:checked')].map(input=>input.dataset.staffPermission),name=document.getElementById('staffAccessName')?.value.trim()||'',email=document.getElementById('staffAccessEmail')?.value.trim().toLowerCase()||'';if(!permissions.length)return showToast(t('Choisissez au moins une permission','Choose at least one permission'),'error');if(!editingId&&!email)return showToast(t('Ajoutez le courriel','Enter an email'),'error');try{const r=await artyFetch(editingId?`/api/admin/access-grants/${encodeURIComponent(editingId)}`:'/api/admin/access-grants',{method:editingId?'PUT':'POST',headers:authH(),body:JSON.stringify({name,email,permissions,active:true})}),d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||t('Impossible de sauvegarder','Could not save'),'error');editingId='';window.__artyNewStaff=false;await load();render();showToast(t('Accès enregistré','Access saved'),'success')}catch{showToast(t('Erreur de connexion','Connection error'),'error')}};
 window.resendStaffAccess=async id=>{try{const r=await artyFetch(`/api/admin/access-grants/${encodeURIComponent(id)}/resend`,{method:'POST',headers:authH(),body:'{}'}),d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||t('Impossible de renvoyer','Could not resend'),'error');await load();render();showToast(t('Invitation renvoyée','Invitation resent'),'success')}catch{showToast(t('Erreur de connexion','Connection error'),'error')}};
 window.deleteStaffAccess=async id=>{if(!confirm(t('Retirer cet accès?','Remove this access?')))return;try{const r=await artyFetch(`/api/admin/access-grants/${encodeURIComponent(id)}`,{method:'DELETE',headers:authH()});if(!r.ok){const d=await r.json().catch(()=>({}));return showToast(d.error||t('Impossible de retirer','Could not remove'),'error')}await load();render();showToast(t('Accès retiré','Access removed'),'success')}catch{showToast(t('Erreur de connexion','Connection error'),'error')}};
-const oldSwitch=window.switchAdminTab;if(typeof oldSwitch==='function')window.switchAdminTab=function(tab,button){const permission=tabPermission(tab);if(permission==='__owner'&&currentUser?.role!=='admin')return;if(permission&&permission!=='__owner'&&!has(permission))return showToast(t('Vous n’avez pas accès à cette section','You do not have access to this section'),'error');if(tab==='access'){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));button?.classList.add('active');document.querySelectorAll('[id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');const p=document.getElementById('adminAccessPanel');if(p)p.style.display='block';load().then(render);return}const result=oldSwitch.apply(this,arguments);setTimeout(applyPermissions,0);return result};
+const oldSwitch=window.switchAdminTab;if(typeof oldSwitch==='function')window.switchAdminTab=function(tab,button){
+ if(!canOpenTab(tab)){applyPermissions();return}
+ if(tab==='access'){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));button?.classList.add('active');document.querySelectorAll('[id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');const p=document.getElementById('adminAccessPanel');if(p)p.style.display='block';load().then(render);return}
+ const result=oldSwitch.apply(this,arguments);setTimeout(applyPermissions,0);return result
+};
 const oldLoad=window.loadAdminData;if(typeof oldLoad==='function')window.loadAdminData=async function(){const result=await oldLoad.apply(this,arguments);ensurePanel();await load();render();applyPermissions();return result};
-style();ensurePanel();applyPermissions();
+let permissionObserver=null;
+function watchAdminTabs(){
+ const tabs=document.querySelector('.admin-tabs');if(!tabs||permissionObserver)return;
+ permissionObserver=new MutationObserver(()=>applyPermissions());
+ permissionObserver.observe(tabs,{childList:true,subtree:true});
+}
+style();ensurePanel();watchAdminTabs();applyPermissions();
 })();
