@@ -125,8 +125,10 @@ window.resendStaffAccess=async id=>{try{const r=await artyFetch(`/api/admin/acce
 window.deleteStaffAccess=async id=>{if(!confirm(t('Retirer cet accès?','Remove this access?')))return;try{const r=await artyFetch(`/api/admin/access-grants/${encodeURIComponent(id)}`,{method:'DELETE',headers:authH()});if(!r.ok){const d=await r.json().catch(()=>({}));return showToast(d.error||t('Impossible de retirer','Could not remove'),'error')}await load();render();showToast(t('Accès retiré','Access removed'),'success')}catch{showToast(t('Erreur de connexion','Connection error'),'error')}};
 const oldSwitch=window.switchAdminTab;if(typeof oldSwitch==='function')window.switchAdminTab=function(tab,button){
  if(!canOpenTab(tab)){applyPermissions();return}
- if(tab==='access'){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));button?.classList.add('active');document.querySelectorAll('[id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');const p=document.getElementById('adminAccessPanel');if(p)p.style.display='block';load().then(render);return}
- const result=oldSwitch.apply(this,arguments);setTimeout(applyPermissions,0);return result
+ const accessPanel=document.getElementById('adminAccessPanel');
+ if(tab!=='access'&&accessPanel)accessPanel.style.display='none';
+ if(tab==='access'){document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active'));button?.classList.add('active');document.querySelectorAll('#page-admin [id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');const p=document.getElementById('adminAccessPanel');if(p)p.style.display='block';load().then(render);return}
+ const result=oldSwitch.apply(this,arguments);if(accessPanel)accessPanel.style.display='none';setTimeout(applyPermissions,0);return result
 };
 const oldLoad=window.loadAdminData;if(typeof oldLoad==='function')window.loadAdminData=async function(){const result=await oldLoad.apply(this,arguments);ensurePanel();await load();render();applyPermissions();return result};
 let permissionObserver=null;
