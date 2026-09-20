@@ -118,8 +118,21 @@
 
   function activateCleanLanding(){
     const landing=window.__ARTY_MARKETING_LANDING__;if(!landing||!landing.kind||landing.kind==='home'||location.hash)return;
-    let hash='';if(landing.kind==='product')hash=`#/product/${landing.id}`;else if(landing.kind==='event')hash=`#/event/${landing.id}`;else if(landing.kind==='collection')hash=`#/paintings?cat=${landing.id}`;if(!hash)return;
-    const clean=`${location.pathname}${location.search}`;location.hash=hash;setTimeout(()=>{try{history.replaceState({artyLanding:true},'',clean)}catch{}},350);
+    let hash='',pageId='';
+    if(landing.kind==='product'){hash=`#/product/${landing.id}`;pageId='page-product'}
+    else if(landing.kind==='event'){hash=`#/event/${landing.id}`;pageId='page-event'}
+    else if(landing.kind==='collection'){hash=`#/paintings?cat=${landing.id}`;pageId='page-paintings'}
+    if(!hash)return;
+    const clean=`${location.pathname}${location.search}`;
+    location.hash=hash;
+    let attempts=0;
+    const keepCleanUrlAfterRoute=()=>{
+      attempts++;
+      const routed=pageId&&document.getElementById(pageId)?.classList.contains('active');
+      if(routed){try{history.replaceState({artyLanding:true},'',clean)}catch{}return}
+      if(attempts<40)setTimeout(keepCleanUrlAfterRoute,250);
+    };
+    setTimeout(keepCleanUrlAfterRoute,250);
   }
 
   function interceptOrderAttribution(){
