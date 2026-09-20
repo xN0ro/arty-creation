@@ -50,7 +50,7 @@ async function api(path,opts={}){
 }
 function addCrmTab(){
   const tabs=document.querySelector('.admin-tabs');if(!tabs||tabs.querySelector('[data-crm-main]'))return;
-  const b=document.createElement('button');b.type='button';b.className='admin-tab';b.dataset.crmMain='1';b.textContent='CRM';b.setAttribute('onclick',"switchAdminTab('crm',this)");
+  const b=document.createElement('button');b.type='button';b.className='admin-tab';b.dataset.crmMain='1';b.dataset.adminTabKey='crm';b.textContent='CRM';b.setAttribute('onclick',"switchAdminTab('crm',this)");
   const after=tabs.querySelector('.admin-tab[onclick*="dashboard"]');if(after)after.insertAdjacentElement('afterend',b);else tabs.prepend(b);
 }
 function ensurePanels(){
@@ -76,8 +76,13 @@ function crmNav(active){
 }
 function ensure(){
   if(!currentUser||!['admin','staff'].includes(currentUser.role))return;
-  document.querySelectorAll('[data-crm-tab]').forEach(el=>el.remove());
-  if(has('crm_dashboard')||has('customers')||has('leads'))addCrmTab();
+  const allowed=has('crm_dashboard')||has('customers')||has('leads');
+  if(!allowed){
+    document.querySelector('[data-crm-main]')?.remove();
+    document.querySelectorAll('#page-admin [id^="adminCrm"][id$="Panel"]').forEach(panel=>panel.style.display='none');
+    return;
+  }
+  if(!document.querySelector('[data-crm-main]'))addCrmTab();
   ensurePanels();styles();ensureModal();
 }
 function ensureModal(){
@@ -518,6 +523,7 @@ async function section(next){
   }
 }
 async function showCrm(button){
+  if(!(has('crm_dashboard')||has('customers')||has('leads')))return;
   ensure();document.querySelectorAll('.admin-tab').forEach(x=>x.classList.remove('active'));(button||document.querySelector('[data-crm-main]'))?.classList.add('active');
   document.querySelectorAll('#page-admin [id^="admin"][id$="Panel"]').forEach(x=>x.style.display='none');
   await section(state.activeSection&&((state.activeSection==='overview'&&has('crm_dashboard'))||(state.activeSection==='leads'&&has('leads'))||(state.activeSection==='customers'&&has('customers')))?state.activeSection:defaultSection());
@@ -535,7 +541,7 @@ function install(){
   const base=window.switchAdminTab;
   if(typeof base==='function'&&!base.__crmV2Wrapped){
     const wrapped=function(tab,button,...rest){
-      if(tab==='crm')return showCrm(button);
+      if(tab==='crm'){if(window.artyCanOpenAdminTab&&!window.artyCanOpenAdminTab('crm'))return;return showCrm(button)}
       closeLeadEditor();
       document.querySelectorAll('#page-admin [id^="adminCrm"][id$="Panel"]').forEach(panel=>panel.style.display='none');
       const result=base.call(this,tab,button,...rest);
