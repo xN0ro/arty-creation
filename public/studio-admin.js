@@ -122,11 +122,19 @@
   window.removeAdminEventImage = function() { const input=document.getElementById('aEvImg');if(input)input.value='';const status=document.getElementById('aEvUploadStatus');if(status)status.textContent='';eventImagePreview(); };
 
   // ---------- Studio admin ----------
+  function canManageStudioAdmin(){
+    return currentUser?.role==='admin'||(currentUser?.role==='staff'&&Array.isArray(currentUser?.permissions)&&currentUser.permissions.includes('products'));
+  }
   function ensureStudioAdminScaffold() {
+    if(!canManageStudioAdmin()){
+      document.querySelector('[data-admin-studio-tab]')?.remove();
+      const existing=document.getElementById('adminStudioPanel');if(existing)existing.style.display='none';
+      return;
+    }
     const tabs = document.querySelector('.admin-tabs');
     if (tabs && !tabs.querySelector('[data-admin-studio-tab]')) {
       const button = document.createElement('button');
-      button.className = 'admin-tab'; button.type = 'button'; button.dataset.adminStudioTab = 'true';
+      button.className = 'admin-tab'; button.type = 'button'; button.dataset.adminStudioTab = 'true'; button.dataset.adminTabKey='studio';
       button.textContent = I18n.t('Studio');
       button.onclick = () => switchAdminTab('studio', button);
       const eventButton = Array.from(tabs.querySelectorAll('.admin-tab')).find(item => item.textContent.includes(I18n.t('Options d’événements')));
@@ -162,6 +170,7 @@
     return `<img src="${safeAttr(product.templateImage)}" alt="${safeAttr(product.nameFr||'Template')}">`;
   }
   window.renderAdminStudio = function() {
+    if(!canManageStudioAdmin())return;
     ensureStudioAdminScaffold();
     const panel = document.getElementById('adminStudioPanel'); if(!panel)return;
     let product = (artyStudioConfig.products || []).find(item=>String(item.id)===String(studioAdminEditingId)) || artyStudioConfig.products?.[0];
@@ -287,10 +296,10 @@
   if(originalResetEvent)resetEvForm=function(...args){const result=originalResetEvent.apply(this,args);enhanceEventImageUploader();eventImagePreview();return result};
 
   const originalSwitchAdminTab=typeof switchAdminTab==='function'?switchAdminTab:null;
-  if(originalSwitchAdminTab)switchAdminTab=function(tab,button){ensureStudioAdminScaffold();const studioPanel=document.getElementById('adminStudioPanel');if(tab==='studio'){closeAdminOrderDetail?.();document.querySelectorAll('.admin-tab').forEach(item=>item.classList.remove('active'));button?.classList.add('active');document.querySelectorAll('[id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');if(studioPanel)studioPanel.style.display='block';renderAdminStudio();return}const result=originalSwitchAdminTab.call(this,tab,button);if(studioPanel)studioPanel.style.display='none';return result};
+  if(originalSwitchAdminTab)switchAdminTab=function(tab,button){ensureStudioAdminScaffold();const studioPanel=document.getElementById('adminStudioPanel');if(tab==='studio'){if(!canManageStudioAdmin())return;closeAdminOrderDetail?.();document.querySelectorAll('.admin-tab').forEach(item=>item.classList.remove('active'));button?.classList.add('active');document.querySelectorAll('[id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');if(studioPanel)studioPanel.style.display='block';renderAdminStudio();return}const result=originalSwitchAdminTab.call(this,tab,button);if(studioPanel)studioPanel.style.display='none';return result};
 
   const originalLoadAdminData=typeof loadAdminData==='function'?loadAdminData:null;
-  if(originalLoadAdminData)loadAdminData=async function(...args){const result=await originalLoadAdminData.apply(this,args);ensureStudioAdminScaffold();await loadStudioConfig(true);enhanceEventImageUploader();renderAdminStudio();return result};
+  if(originalLoadAdminData)loadAdminData=async function(...args){const result=await originalLoadAdminData.apply(this,args);ensureStudioAdminScaffold();if(canManageStudioAdmin()){await loadStudioConfig(true);renderAdminStudio()}enhanceEventImageUploader();return result};
 
   function injectStudioAdminStyles(){
     if(document.getElementById('artyStudioAdminStyles'))return;const style=document.createElement('style');style.id='artyStudioAdminStyles';style.textContent=`
@@ -306,6 +315,6 @@
   injectStudioAdminStyles();
   ensureStudioAdminScaffold();
   syncLegacyStudioValues();
-  const boot=()=>loadStudioConfig(currentUser?.role==='admin').then(()=>{ensureStudioAdminScaffold();if(currentUser?.role==='admin')renderAdminStudio();enhanceEventImageUploader()});
+  const boot=()=>loadStudioConfig(canManageStudioAdmin()).then(()=>{ensureStudioAdminScaffold();if(canManageStudioAdmin())renderAdminStudio();enhanceEventImageUploader()});
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
