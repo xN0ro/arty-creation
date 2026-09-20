@@ -272,6 +272,11 @@ function openLeadActions(kind,idEncoded){
 }
 function leadPrimaryValue(l){return money(['won','refunded'].includes(l.status)?Number(l.finalValue||0):Number(l.value||l.expectedValue||0))}
 function leadPaymentLabel(l){if(l.quoteRefundStatus==='refunded'||l.quotePaymentStatus==='refunded')return T('Remboursé','Refunded');if(l.quoteRefundStatus==='partial_refund')return T('Partiellement remboursé','Partially refunded');if(l.quoteRefundStatus==='refund_pending'||l.quotePaymentStatus==='refund_pending')return T('Remboursement en cours','Refund in progress');if(l.quotePaymentStatus==='paid')return T('Payé','Paid');return l.quotePaymentStatus||'—'}
+function canDeleteManualLead(l){
+  if(!l||l.kind!=='manual')return false;
+  if(currentUser?.role==='admin')return true;
+  return currentUser?.role==='staff'&&String(l.createdBy||'').trim().toLowerCase()===String(currentUser?.email||'').trim().toLowerCase();
+}
 function renderLeadActions(){
   const host=document.getElementById('crmLeadEditorBody'),l=state.editingLead;if(!host||!l)return;
   const terminal=['won','refunded','lost'].includes(l.status);
@@ -294,6 +299,7 @@ function renderLeadActions(){
       ${l.kind==='event'&&l.status==='won'&&has('events')&&Number(l.quoteNetPaid||0)>0&&l.quoteRefundStatus!=='refund_pending'?`<button class="crm-action-tile danger" onclick="ARTYCRM.refundEventLead()"><span>↩</span><strong>${T('Rembourser','Refund payment')}</strong><small>${T('Remboursement Stripe sécurisé','Secure Stripe refund')}</small></button>`:''}
       ${!terminal?`<button class="crm-action-tile danger" onclick="ARTYCRM.renderLostAction()"><span>×</span><strong>${T('Marquer perdu','Mark lost')}</strong><small>${T('Enregistrer la raison','Record the reason')}</small></button>`:''}
       <button class="crm-action-tile secondary" onclick="ARTYCRM.renderLeadEditor()"><span>⋯</span><strong>${T('Modifier les détails','Edit details')}</strong><small>${T('Champs avancés du prospect','Advanced lead fields')}</small></button>
+      ${canDeleteManualLead(l)?`<button class="crm-action-tile danger" onclick="ARTYCRM.deleteManualLead()"><span>⌫</span><strong>${T('Supprimer le prospect','Delete lead')}</strong><small>${T('Supprimer définitivement','Delete permanently')}</small></button>`:''}
     </div>
     ${l.kind==='event'&&l.paymentLinkUrl?`<div class="crm-secure-link"><div><strong>${T('Lien de devis sécurisé','Secure quote link')}</strong><small>${T('Le client a reçu ce lien par courriel.','The customer received this link by email.')}</small></div><button class="btn btn-ghost btn-sm" onclick="ARTYCRM.openSecureQuote()">${T('Ouvrir','Open')}</button></div>`:''}
     <div class="crm-action-footer"><button class="btn btn-ghost" onclick="ARTYCRM.closeLeadEditor()">${T('Fermer','Close')}</button></div>
@@ -463,6 +469,18 @@ function renderLeadEditor(){
     <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="${isNew?'ARTYCRM.closeLeadEditor()':'ARTYCRM.renderLeadActions()'}">${isNew?T('Annuler','Cancel'):T('Retour','Back')}</button><button class="btn btn-orange" onclick="ARTYCRM.saveLeadEditor()">${isNew?T('Créer le prospect','Create lead'):T('Enregistrer','Save')}</button></div>`;
   document.getElementById('leadStatus')?.addEventListener('change',e=>{const row=host.querySelector('.crm-lost-field');if(row)row.style.display=e.target.value==='lost'?'':'none'});
 }
+async function deleteManualLead(){
+  const l=state.editingLead;if(!canDeleteManualLead(l))return;
+  if(!confirm(T('Supprimer définitivement ce prospect? Cette action est irréversible.','Delete this lead permanently? This cannot be undone.')))return;
+  try{
+    await api('/api/admin/crm/leads/manual/'+encodeURIComponent(l.id),{method:'DELETE'});
+    closeLeadEditor();
+    await Promise.all([loadLeads(),loadOverview(),loadCustomers()]);
+    renderLeads();
+    showToast(T('Prospect supprimé','Lead deleted'),'success');
+  }catch(e){showToast(e.message,'error')}
+}
+
 async function saveLeadEditor(){
   const l=state.editingLead;if(!l)return;const isNew=!l.id,manual=isNew||l.kind==='manual';
   const body={
@@ -582,7 +600,7 @@ window.ARTYCRM={
   searchCustomers:q=>{state.customerQuery=q;renderCustomers()},filterCustomers:v=>{state.customerFilter=v;renderCustomers()},
   searchLeads:q=>{state.leadQuery=q;renderLeads()},filterOwner:v=>{state.leadOwner=v;renderLeads()},filterStatus:v=>{state.leadStatus=v;renderLeads()},
   saveCustomerTags,addCustomerNote,saveAccount,toggleAccount,sendPasswordReset,resendWelcome,
-  newLead,openLeadActions,openLeadEditor,renderLeadEditor,renderLeadActions,renderFollowUpAction,saveFollowUpAction,clearFollowUp,renderQuoteAction,sendQuoteAction,renderLostAction,saveLostAction,refundEventLead,quickLeadStatus,emailLead,callLead,openLeadCalendar,openSecureQuote,closeLeadEditor,saveLeadEditor,dragStart,dropStage,openLeadByKey,download
+  newLead,openLeadActions,openLeadEditor,renderLeadEditor,renderLeadActions,renderFollowUpAction,saveFollowUpAction,clearFollowUp,renderQuoteAction,sendQuoteAction,renderLostAction,saveLostAction,refundEventLead,quickLeadStatus,emailLead,callLead,openLeadCalendar,openSecureQuote,closeLeadEditor,saveLeadEditor,deleteManualLead,dragStart,dropStage,openLeadByKey,download
 };
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install);else install();
 })();
