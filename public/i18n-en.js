@@ -430,6 +430,8 @@
   "Exemple : ajouter un chevalet pour 5 $.": "Example: add an easel for $5.",
   "+ Ajouter une option": "+ Add an option",
   "Inventaire et visibilité": "Inventory and visibility",
+  "Visibilité": "Visibility",
+  "Choisissez si ce produit est mis en avant.": "Choose whether this product is featured.",
   "Contrôlez la disponibilité dans la boutique.": "Manage availability in the shop.",
   "Inventaire actuel": "Current inventory",
   "ex: 12": "e.g. 12",
