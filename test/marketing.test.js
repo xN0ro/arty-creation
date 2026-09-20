@@ -3,6 +3,8 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const marketing=require('../marketing-core');
+const fs=require('node:fs');
+const path=require('node:path');
 
 test('creates stable accent-safe product URLs and IDs',()=>{
   const config=marketing.normalizeMarketingConfig({siteUrl:'https://creationarty.com'});
@@ -53,4 +55,23 @@ test('order attribution is sanitized and bounded',()=>{
   assert.equal(attribution.firstTouch.source,'facebook');
   assert.equal(attribution.lastTouch.source,'google');
   assert.equal(attribution.firstTouch.unexpected,undefined);
+});
+
+
+test('campaign parameters keep the selected destination path',()=>{
+  const config=marketing.normalizeMarketingConfig({siteUrl:'https://creationarty.com'});
+  const product={id:12,name:'Été Méditerranéen'};
+  const url=new URL(marketing.publicUrl(config,'product',product));
+  url.searchParams.set('utm_source','facebook');
+  url.searchParams.set('utm_medium','paid_social');
+  url.searchParams.set('utm_campaign','october_art_brunch');
+  assert.equal(url.pathname,'/products/ete-mediterraneen-12');
+  assert.equal(url.searchParams.get('utm_campaign'),'october_art_brunch');
+});
+
+test('clean marketing landing waits until the destination page is routed before removing the hash',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'..','public','marketing-client.js'),'utf8');
+  assert.match(source,/classList\.contains\('active'\)/);
+  assert.match(source,/if\(routed\).*history\.replaceState/);
+  assert.match(source,/attempts<40/);
 });
