@@ -2545,7 +2545,16 @@ function normalizeEventPayload(body, existing = {}) {
 // ========== ADMIN ==========
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:a.ordersCount,totalTestOrders:a.testOrdersCount,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
-app.get('/api/admin/kits', adminOnly, (req, res) => { const db=readDB(); res.json((db.kits||[]).map(k => enrichPublicKit(k, db))); });
+app.get('/api/admin/kits', adminOnly, (req, res) => {
+  const db=readDB(),canInventory=req.session?.role==='admin'||(req.session?.permissions||[]).includes('inventory');
+  const rows=(db.kits||[]).map(k=>{
+    const enriched=enrichPublicKit(k,db);
+    if(canInventory)return enriched;
+    const {stockQty,lowStockThreshold,trackInventory,isLowStock,...withoutInventory}=enriched;
+    return withoutInventory;
+  });
+  res.json(rows);
+});
 
 app.put('/api/admin/home-favorite-kits', adminOnly, (req, res) => {
   const db = readDB();
@@ -2903,12 +2912,23 @@ app.delete('/api/admin/product-templates/:id', adminOnly, (req, res) => {
 });
 
 // Kits CRUD
+function adminKitPayload(req,existing={}){
+  const body={...(req.body||{})};
+  const canInventory=req.session?.role==='admin'||(req.session?.permissions||[]).includes('inventory');
+  if(!canInventory){
+    delete body.stockQty;
+    delete body.lowStockThreshold;
+    delete body.trackInventory;
+    delete body.inStock;
+  }
+  return normalizeKitPayload(body,existing);
+}
 app.post('/api/admin/kits', adminOnly, (req, res) => {
   const db=readDB(); const {name,price}=req.body; if(!name||!price) return res.status(400).json({error:I18n.t('Nom et prix requis')});
-  const kit = { id:db.kits.length>0?Math.max(...db.kits.map(k=>k.id))+1:1, name, ...normalizeKitPayload(req.body), createdAt:new Date().toISOString() };
+  const kit = { id:db.kits.length>0?Math.max(...db.kits.map(k=>k.id))+1:1, name, ...adminKitPayload(req), createdAt:new Date().toISOString() };
   db.kits.push(kit); writeDB(db); res.json({success:true,kit});
 });
-app.put('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); const i=db.kits.findIndex(k=>k.id===parseInt(req.params.id)); if(i===-1) return res.status(404).json({error:I18n.t('Non trouvé')}); db.kits[i]={...db.kits[i],...normalizeKitPayload(req.body, db.kits[i]),name:req.body.name||db.kits[i].name,id:db.kits[i].id}; writeDB(db); res.json({success:true,kit:db.kits[i]}); });
+app.put('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); const i=db.kits.findIndex(k=>k.id===parseInt(req.params.id)); if(i===-1) return res.status(404).json({error:I18n.t('Non trouvé')}); db.kits[i]={...db.kits[i],...adminKitPayload(req,db.kits[i]),name:req.body.name||db.kits[i].name,id:db.kits[i].id}; writeDB(db); res.json({success:true,kit:db.kits[i]}); });
 app.delete('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); db.kits=db.kits.filter(k=>k.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
 // Events CRUD
