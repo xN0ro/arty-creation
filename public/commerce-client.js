@@ -27,10 +27,18 @@
     return commerceConfig;
   }
 
+  function canManageCommerceAdmin(){
+    return currentUser?.role==='admin'||(currentUser?.role==='staff'&&Array.isArray(currentUser?.permissions)&&currentUser.permissions.includes('settings'));
+  }
   function ensureCommerceAdminScaffold(){
+    if(!canManageCommerceAdmin()){
+      document.querySelector('[data-admin-commerce-tab]')?.remove();
+      const existing=document.getElementById('adminCommercePanel');if(existing)existing.style.display='none';
+      return;
+    }
     const tabs=document.querySelector('.admin-tabs');
     if(tabs&&!tabs.querySelector('[data-admin-commerce-tab]')){
-      const button=document.createElement('button');button.type='button';button.className='admin-tab';button.dataset.adminCommerceTab='true';button.textContent=I18n.t('Livraison & taxes');button.onclick=()=>switchAdminTab('commerce',button);
+      const button=document.createElement('button');button.type='button';button.className='admin-tab';button.dataset.adminCommerceTab='true';button.dataset.adminTabKey='commerce';button.textContent=I18n.t('Livraison & taxes');button.onclick=()=>switchAdminTab('commerce',button);
       const studio=tabs.querySelector('[data-admin-studio-tab]');studio?.insertAdjacentElement('afterend',button)||tabs.append(button);
     }
     if(!document.getElementById('adminCommercePanel')){
@@ -40,6 +48,7 @@
   }
   function overrideMap(){return new Map((commerceConfig.shipping.productOverrides||[]).map(item=>[String(item.kitId),Number(item.price)]))}
   window.renderAdminCommerce=function(){
+    if(!canManageCommerceAdmin())return;
     ensureCommerceAdminScaffold();const panel=document.getElementById('adminCommercePanel');if(!panel)return;
     const shipping=commerceConfig.shipping,taxes=commerceConfig.taxes,overrides=overrideMap();
     const overrideRows=(allKits||[]).map(kit=>`<div class="commerce-override-row"><span><strong>${safeText(I18n.field(kit,'name'))}</strong><small>${safeText(I18n.t('Laisser vide pour utiliser le tarif standard'))}</small></span><div class="admin-price-input"><span>$</span><input type="number" min="0" step="0.01" data-commerce-kit="${safeAttr(kit.id)}" value="${overrides.has(String(kit.id))?safeAttr(overrides.get(String(kit.id))):''}" placeholder="${safeAttr(shipping.defaultPrice)}"></div></div>`).join('')||I18n.html('<p class="admin-muted">Aucun produit.</p>');
@@ -60,6 +69,7 @@
     injectCommerceStyles();
   };
   window.saveAdminCommerce=async function(){
+    if(!canManageCommerceAdmin())return;
     const overrides=Array.from(document.querySelectorAll('[data-commerce-kit]')).map(input=>({kitId:Number(input.dataset.commerceKit),raw:input.value.trim()})).filter(item=>item.raw!=='').map(item=>({kitId:item.kitId,price:Math.max(0,Number(item.raw)||0)}));
     const payload={version:1,shipping:{enabled:!!document.getElementById('commerceShippingEnabled')?.checked,defaultPrice:Math.max(0,Number(document.getElementById('commerceShippingPrice')?.value)||0),freeShippingEnabled:!!document.getElementById('commerceFreeEnabled')?.checked,freeShippingThreshold:Math.max(0,Number(document.getElementById('commerceFreeThreshold')?.value)||0),canadaOnly:!!document.getElementById('commerceCanadaOnly')?.checked,productOverrides:overrides},taxes:{enabled:!!document.getElementById('commerceTaxesEnabled')?.checked,defaultProvince:document.getElementById('commerceDefaultProvince')?.value||'QC',collectGSTHST:!!document.getElementById('commerceGST')?.checked,collectQST:!!document.getElementById('commerceQST')?.checked,collectBCPST:!!document.getElementById('commerceBCPST')?.checked,collectMBRST:!!document.getElementById('commerceMBRST')?.checked,collectSKPST:!!document.getElementById('commerceSKPST')?.checked}};
     try{const response=await artyFetch('/api/admin/commerce-config',{method:'PUT',headers:authH(),body:JSON.stringify(payload)}),data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||I18n.t('Erreur'));commerceConfig=normalizeConfig(data.config||payload);renderAdminCommerce();showToast(I18n.t('Livraison et taxes sauvegardées'),'success')}catch(error){showToast(error.message||I18n.t('Erreur'),'error')}
@@ -122,6 +132,7 @@
   if(typeof originalSwitch==='function')window.switchAdminTab=function(tab,button){
     ensureCommerceAdminScaffold();
     if(tab==='commerce'){
+      if(!canManageCommerceAdmin())return;
       try{window.closeAdminOrderDetail?.()}catch{}
       document.querySelectorAll('.admin-tab').forEach(item=>item.classList.remove('active'));if(button)button.classList.add('active');
       document.querySelectorAll('#page-admin [id^="admin"][id$="Panel"]').forEach(panel=>panel.style.display='none');
@@ -130,7 +141,7 @@
     const result=originalSwitch.call(this,tab,button);const panel=document.getElementById('adminCommercePanel');if(panel)panel.style.display='none';return result;
   };
   const originalLoadAdminData=window.loadAdminData;
-  if(typeof originalLoadAdminData==='function')window.loadAdminData=async function(...args){const result=await originalLoadAdminData.apply(this,args);ensureCommerceAdminScaffold();await loadCommerceConfig(true);return result};
+  if(typeof originalLoadAdminData==='function')window.loadAdminData=async function(...args){const result=await originalLoadAdminData.apply(this,args);ensureCommerceAdminScaffold();if(canManageCommerceAdmin())await loadCommerceConfig(true);return result};
   const originalRenderCheckout=window.renderCheckoutPage;
   if(typeof originalRenderCheckout==='function')window.renderCheckoutPage=function(...args){const result=originalRenderCheckout.apply(this,args);setTimeout(mountCheckoutCommerce,0);return result};
   const originalProfileOrder=window.viewProfileOrder;
