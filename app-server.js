@@ -304,6 +304,20 @@ function installExtensionRoutes(app){
     const lead=crmCore.updateLead(db,req.params.kind,req.params.id,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
     const calendarSync=await syncCrmCalendar(db,lead);writeDb(db);res.json({success:true,lead,calendarSync});
   });
+  app.delete('/api/admin/crm/leads/:kind/:id',adminOnly,async(req,res)=>{
+    const db=readDb(),kind=String(req.params.kind||''),id=String(req.params.id||'');
+    if(kind!=='manual')return res.status(409).json({error:crmError(req,'Les prospects créés automatiquement par le système ne peuvent pas être supprimés','System-created leads cannot be deleted')});
+    const index=(db.crmLeads||[]).findIndex(item=>String(item.id)===id);
+    if(index<0)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
+    const raw=db.crmLeads[index],crm=crmCore.crmMeta(raw.crm||{}),actor=crmSessionEmail(req);
+    if(raw.convertedEventRequestId)return res.status(409).json({error:crmError(req,'Ce prospect est lié à un événement et ne peut plus être supprimé','This lead is linked to an event and can no longer be deleted')});
+    if(req.extensionSession?.role!=='admin'&&String(crm.createdBy||'').toLowerCase()!==actor)return res.status(403).json({error:crmError(req,'Vous pouvez supprimer uniquement les prospects que vous avez créés','You can delete only leads you created')});
+    const lead=crmCore.buildLeads(db).find(item=>item.kind==='manual'&&String(item.id)===id);
+    if(lead&&crm.calendar?.eventId){
+      try{await googleCalendar.syncFollowUp({...lead,nextFollowUp:''},crm.calendar,googleCalendarIntegration(db))}catch{}
+    }
+    db.crmLeads.splice(index,1);writeDb(db);res.json({success:true,id});
+  });
   app.get('/api/admin/crm/export/customers.csv',adminOnly,(req,res)=>{
     const rows=crmCustomerRows(readDb(),req),body=csv(rows,[
       {label:'Name',value:'name'},{label:'Email',value:'email'},{label:'Phone',value:'phone'},{label:'Account',value:r=>r.hasAccount?'yes':'no'},
