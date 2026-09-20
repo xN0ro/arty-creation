@@ -98,15 +98,15 @@ englishAdminHook('applyProductTemplate',()=>{
 /* Load admin enhancements in a deterministic order. */
 (() => {
   const queue=[
-    ['marketing-client.js?v=20260919-staff-permissions-1','artyMarketingReadiness'],
-    ['marketing-admin-fix.js?v=20260919-staff-permissions-1','artyMarketingAdminFix'],
+    ['marketing-client.js?v=20260919-admin-fixes-2','artyMarketingReadiness'],
+    ['marketing-admin-fix.js?v=20260919-admin-fixes-2','artyMarketingAdminFix'],
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
     ['studio-admin.js?v=20260919-staff-permissions-1','artyStudioAdminEnhancements'],
     ['commerce-client.js?v=20260919-staff-permissions-1','artyCommerceEnhancements'],
     ['commerce-profile-fix.js','artyCommerceProfileEnhancement'],
     ['admin-management-enhancements.js?v=20260918-admin-scale-3','artyAdminManagementEnhancements'],
     ['discount-enhancements.js?v=20260918-promotions-1','artyDiscountExperience'],
-    ['admin-access-control.js?v=20260919-staff-permissions-1','artyStaffAccessControl']
+    ['admin-access-control.js?v=20260919-admin-fixes-2','artyStaffAccessControl']
   ];
   const next=()=>{
     const item=queue.shift();if(!item)return;
