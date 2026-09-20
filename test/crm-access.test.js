@@ -98,6 +98,35 @@ test('assigned sales staff can reach secure quote creation but cannot quote anot
   assert.equal(other.status,403);
 });
 
+test('staff can permanently delete only manual leads they created',async()=>{
+  const sales=await login('sales@example.test');
+  const created=await request('/admin/crm/leads',{method:'POST',body:{name:'Manual Lead',email:'manual@example.test',title:'Instagram inquiry',source:'instagram',value:150},token:sales.data.token});
+  assert.equal(created.status,200);
+  assert.equal(created.data.lead.kind,'manual');
+  assert.equal(created.data.lead.createdBy,'sales@example.test');
+
+  const deleted=await request('/admin/crm/leads/manual/'+encodeURIComponent(created.data.lead.id),{method:'DELETE',token:sales.data.token});
+  assert.equal(deleted.status,200);
+  assert.equal((server.readDB().crmLeads||[]).some(item=>String(item.id)===String(created.data.lead.id)),false);
+});
+
+test('system-generated leads stay locked from permanent deletion',async()=>{
+  const sales=await login('sales@example.test');
+  const deleted=await request('/admin/crm/leads/event/101',{method:'DELETE',token:sales.data.token});
+  assert.equal(deleted.status,409);
+  assert.ok(server.readDB().eventRequests.some(item=>String(item.id)==='101'));
+});
+
+test('CRM manager cannot permanently delete another staff member manual lead',async()=>{
+  const sales=await login('sales@example.test');
+  const created=await request('/admin/crm/leads',{method:'POST',body:{name:'Sales Lead',email:'saleslead@example.test',title:'Phone lead',source:'phone'},token:sales.data.token});
+  assert.equal(created.status,200);
+  const manager=await login('manager@example.test');
+  const deleted=await request('/admin/crm/leads/manual/'+encodeURIComponent(created.data.lead.id),{method:'DELETE',token:manager.data.token});
+  assert.equal(deleted.status,403);
+  assert.ok(server.readDB().crmLeads.some(item=>String(item.id)===String(created.data.lead.id)));
+});
+
 test('sales manager permission can see the full CRM team',async()=>{
   const manager=await login('manager@example.test');
   assert.equal(manager.status,200);
