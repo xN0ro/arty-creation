@@ -127,6 +127,7 @@ test('admin permission UI recognizes dynamically-created tabs and invitation cop
   assert.match(access,/marketing:'marketing'/);
   assert.match(access,/crm:\['crm_dashboard','customers','leads'\]/);
   assert.match(access,/MutationObserver/);
+  assert.match(access,/if\(tab!=='access'&&accessPanel\)accessPanel\.style\.display='none'/);
   assert.match(studio,/adminTabKey='studio'/);
   assert.match(commerce,/adminTabKey='commerce'/);
   assert.match(marketing,/adminTabKey='marketing'/);
