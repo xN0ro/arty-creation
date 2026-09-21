@@ -126,11 +126,7 @@
   body.mobile-menu-open .arty-mobile-product-dock,
   body.mobile-menu-open .arty-mobile-checkout-dock,
   body.arty-mobile-input-focus .arty-mobile-product-dock,
-  body.arty-mobile-input-focus .arty-mobile-checkout-dock,
-  body:has(.cart-sidebar.open) .arty-mobile-product-dock,
-  body:has(.cart-sidebar.open) .arty-mobile-checkout-dock,
-  body:has(.modal-overlay.open) .arty-mobile-product-dock,
-  body:has(.modal-overlay.open) .arty-mobile-checkout-dock{display:none}
+  body.arty-mobile-input-focus .arty-mobile-checkout-dock{display:none}
 }
 
 @media screen and (max-width:390px){
