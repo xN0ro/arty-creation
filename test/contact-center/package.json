@@ -1,0 +1,6 @@
+{
+  "name": "arty-contact-center-checks",
+  "private": true,
+  "scripts": {"test": "node --test check.cjs"},
+  "devDependencies": {"jsdom": "26.1.0"}
+}

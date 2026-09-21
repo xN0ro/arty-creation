@@ -19,8 +19,9 @@ function updateLanguageControls() {
     button.disabled = artyLanguageChanging;
   });
   document.documentElement.lang = I18n.language();
-  document.title = I18n.t('Arty! — Kits de Peinture & Événements Créatifs');
-  document.querySelector('meta[name="description"]')?.setAttribute('content',I18n.language()==='en'?'Creative painting kits, tutorials, and ARTY events. Explore our activities and create at your own pace.':'Kits de peinture créatifs, tutoriels et événements ARTY. Découvrez nos activités et créez à votre rythme.');
+  const contactPage=location.hash==='#/contact'||location.hash.startsWith('#/contact?')||(!location.hash&&/^\/contact\/?$/.test(location.pathname));
+  document.title = contactPage ? (I18n.language()==='en'?'Contact & support | ARTY':'Contact & assistance | ARTY') : I18n.t('Arty! — Kits de Peinture & Événements Créatifs');
+  document.querySelector('meta[name="description"]')?.setAttribute('content',contactPage ? (I18n.language()==='en'?'A question about an order, delivery, painting kit or event? Contact the ARTY team.':'Une question sur une commande, une livraison, un kit ou un événement ? Contactez l’équipe ARTY.') : I18n.language()==='en'?'Creative painting kits, tutorials, and ARTY events. Explore our activities and create at your own pace.':'Kits de peinture créatifs, tutoriels et événements ARTY. Découvrez nos activités et créez à votre rythme.');
 }
 function bindStaticLanguage() {
   // Keep option values stable even when their display text is translated.

@@ -7,6 +7,7 @@ const path = require('path');
 const https = require('https');
 const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');
 const crmCore = require('./crm-core');
+const contactCore = require('./contact-core');
 const googleCalendar = require('./google-calendar');
 
 const app = express();
@@ -1052,7 +1053,7 @@ const SUPPORT_PRIORITIES = ['low','normal','high','urgent'];
 function supportMessages(request) {
   if (Array.isArray(request.messages) && request.messages.length) return request.messages.map(message=>({
     id:String(message.id||''),role:['customer','staff'].includes(message.role)?message.role:'customer',
-    body:String(message.body||'').slice(0,2400),at:message.at||request.createdAt||'',by:String(message.by||'')
+    body:String(message.body||'').slice(0,3000),at:message.at||request.createdAt||'',by:String(message.by||'')
   })).filter(message=>message.body);
   const messages=[{id:`${request.id}-customer-1`,role:'customer',body:String(request.message||''),at:request.createdAt||'',by:request.customer?.email||''}];
   if(request.adminReply)messages.push({id:`${request.id}-staff-legacy`,role:'staff',body:String(request.adminReply),at:request.repliedAt||request.updatedAt||'',by:request.assignedTo||'ARTY'});
@@ -1061,8 +1062,8 @@ function supportMessages(request) {
 function supportAdminView(db, request) {
   const email=String(request.customer?.email||'').trim().toLowerCase();
   const customer=crmCore.customerDetail(db,email);
-  const linkedOrders=(db.orders||[]).filter(order=>order.userId===request.userId||String(order.customer?.email||'').trim().toLowerCase()===email);
-  const order=request.orderId?(db.orders||[]).find(item=>String(item.id)===String(request.orderId)):null;
+  const linkedOrders=(db.orders||[]).filter(order=>(request.userId!=null&&order.userId===request.userId)||(email&&String(order.customer?.email||'').trim().toLowerCase()===email));
+  const order=request.orderId?linkedOrders.find(item=>String(item.id)===String(request.orderId)):null;
   const spend=linkedOrders.filter(order=>order.paymentStatus==='paid'||['payée','préparation','expédiée','livrée'].includes(String(order.status||''))).reduce((sum,order)=>sum+Number(order.total||0),0);
   const activityDates=[
     customer?.summary?.lastActivity||'',
@@ -1817,6 +1818,7 @@ async function deliverPaidOrderCommunications(orderId, reason = 'payment') {
   };
 }
 function supportEmailChannel(request) {
+  if (request?.source === 'contact' && ['contact','orders','support','events'].includes(request.channel)) return request.channel;
   if (request?.orderId || ['commande','livraison','paiement'].includes(String(request?.topic || '').toLowerCase())) return 'orders';
   if (String(request?.topic || '').toLowerCase() === 'événement') return 'events';
   return 'support';
@@ -1834,9 +1836,9 @@ function sendSupportReplyEmail(request) {
       intro:request.subject,
       preheader:I18n.msg`Réponse à votre demande ${request.id}.`,
       content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.customer?.name || I18n.t('Client ARTY'))},</p>${emailTextPanel(request.adminReply,'teal')}`,
-      ctaLabel:I18n.t('Voir la demande'),
-      ctaUrl:`${normalizePublicUrl()}/?lang=${I18n.language()}#/profile`,
-      footer:I18n.msg`Demande ${request.id}. Vous pouvez répondre à ce courriel ou ouvrir votre compte ARTY.`
+      ctaLabel:request.userId != null ? I18n.t('Voir la demande') : '',
+      ctaUrl:request.userId != null ? `${normalizePublicUrl()}/?lang=${I18n.language()}#/profile` : '',
+      footer:request.userId != null ? I18n.msg`Demande ${request.id}. Vous pouvez répondre à ce courriel ou ouvrir votre compte ARTY.` : I18n.msg`Demande ${request.id}. Vous pouvez répondre directement à ce courriel.`
     })
   });
 
@@ -1855,13 +1857,22 @@ function sendSupportRequestReceiptEmail(request) {
       intro:request.subject,
       preheader:I18n.msg`Confirmation de votre demande ${request.id}.`,
       content:I18n.html`<p>Bonjour ${escapeEmailHTML(request.customer?.name || I18n.t('Client ARTY'))},</p><p>Notre équipe examinera votre message et vous répondra dès que possible.</p>${emailTextPanel(request.message,'neutral')}`,
-      ctaLabel:I18n.t('Voir mes demandes'),
-      ctaUrl:`${normalizePublicUrl()}/?lang=${I18n.language()}#/profile`,
+      ctaLabel:request.userId != null ? I18n.t('Voir mes demandes') : '',
+      ctaUrl:request.userId != null ? `${normalizePublicUrl()}/?lang=${I18n.language()}#/profile` : '',
       footer:I18n.msg`Demande ${request.id}. Vous pouvez répondre directement à ce courriel.`
     })
   });
 
   });
+}
+function supportSubmittedDetailsHTML(request) {
+  const en = I18n.language() === 'en';
+  const details = [
+    [en ? 'Submitted order reference (unverified)' : 'Référence de commande fournie (non vérifiée)', request.orderReference && !request.orderId ? request.orderReference : ''],
+    [en ? 'Preferred date' : 'Date souhaitée', request.eventDate],
+    [en ? 'Group size' : 'Nombre de personnes', request.guests]
+  ].filter(([,value]) => value);
+  return details.length ? emailPanel(details.map(([label,value]) => `<strong>${escapeEmailHTML(label)} :</strong> ${escapeEmailHTML(String(value))}`).join('<br>'), 'neutral') : '';
 }
 function sendSupportRequestAdminEmail(request) {
   return withLocale(request.locale, () => {
@@ -1876,7 +1887,7 @@ function sendSupportRequestAdminEmail(request) {
       title:I18n.t('Nouvelle demande client'),
       intro:I18n.msg`${request.customer?.name || I18n.t('Un client')} a contacté ARTY.`,
       preheader:I18n.msg`Nouvelle demande ${request.id} à traiter.`,
-      content:`${emailPanel(I18n.html`<strong style="display:block;margin-bottom:5px;color:#332b22">Client</strong>${escapeEmailHTML(request.customer?.name || '')}<br>${escapeEmailHTML(request.customer?.email || '')}<br><br><strong>Catégorie :</strong> ${escapeEmailHTML(request.topic || 'autre')}${request.orderId?I18n.html`<br><strong>Commande :</strong> ${escapeEmailHTML(request.orderId)}`:''}`,'orange')}${emailTextPanel(request.message,'neutral')}`,
+      content:`${emailPanel(I18n.html`<strong style="display:block;margin-bottom:5px;color:#332b22">Client</strong>${escapeEmailHTML(request.customer?.name || '')}<br>${escapeEmailHTML(request.customer?.email || '')}<br><br><strong>Catégorie :</strong> ${escapeEmailHTML(request.topic || 'autre')}${request.orderId?I18n.html`<br><strong>Commande :</strong> ${escapeEmailHTML(request.orderId)}`:''}`,'orange')}${supportSubmittedDetailsHTML(request)}${emailTextPanel(request.message,'neutral')}`,
       ctaLabel:I18n.t('Ouvrir le service client'),
       ctaUrl:`${normalizePublicUrl()}/?lang=${I18n.language()}#/admin`,
       footer:I18n.msg`Demande ${request.id}. Répondez à ce courriel pour écrire directement au client.`
@@ -2466,42 +2477,39 @@ function sendContactAdminEmail(contact) {
 
   });
 }
-app.post('/api/contact', async (req, res) => {
-  const name = String(req.body?.name || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-  const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 240);
-  const message = String(req.body?.message || '').trim().slice(0, 3000);
-  const channel = contactChannel(req.body?.channel);
-  if (!name || !validEmail(email) || message.length < 10) return res.status(400).json({ error:I18n.t('Ajoutez votre nom, un courriel valide et un message détaillé') });
-  const id = `${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const contact = {
-    locale:req.locale,
-    id,
-    reference:`MSG-${Date.now().toString(36).toUpperCase()}`,
-    name,
-    email,
-    message,
-    channel,
-    marketingAttribution:marketingCore.normalizeAttribution(req.body?.marketingAttribution),
-    createdAt:new Date().toISOString(),
-    crm:{status:'new',nextFollowUp:'',owner:'',tags:[],adminNote:'',updatedAt:new Date().toISOString()}
-  };
-  const db = readDB();
-  db.contactRequests = Array.isArray(db.contactRequests) ? db.contactRequests : [];
-  db.contactRequests.push(contact);
-  writeDB(db);
-  const [customerEmail, adminEmail] = await Promise.all([sendContactReceiptEmail(contact), sendContactAdminEmail(contact)]);
-  const latest = readDB();
-  const saved = (latest.contactRequests || []).find(item => String(item.id) === String(contact.id));
-  if (saved) {
-    saved.emailDelivery = { customer:customerEmail.status, admin:adminEmail.status, sentAt:new Date().toISOString() };
-    saved.updatedAt = new Date().toISOString();
+app.post('/api/contact', optionalAuth, async (req, res, next) => {
+  try {
+    const normalized = contactCore.normalize(req.body, req.locale);
+    if (normalized.error) return res.status(400).json({ error:normalized.error });
+    const db = readDB();
+    db.contactRequests = Array.isArray(db.contactRequests) ? db.contactRequests : [];
+    const previous = normalized.requestKey && db.contactRequests.find(item => item.requestKey === normalized.requestKey);
+    const receipt = contact => ({ success:true, message:I18n.t('Votre demande est bien reçue'), reference:contact.reference, emailStatus:contact.emailDelivery?.customer || 'pending' });
+    if (previous) {
+      if (previous.fingerprint !== normalized.fingerprint) return res.status(409).json({ error:I18n.language() === 'en' ? 'This submission has changed. Please send a new request.' : 'Cet envoi a été modifié. Veuillez créer une nouvelle demande.' });
+      return res.json(receipt(previous));
+    }
+    const { contact, ticket } = contactCore.create(normalized, db, req.session, req.locale, req.body?.marketingAttribution);
+    db.contactRequests.push(contact);
+    db.supportRequests = Array.isArray(db.supportRequests) ? db.supportRequests : [];
+    db.supportRequests.push(ticket);
+    // Persist before awaiting email. A retry sees the saved key even while delivery is in flight.
+    writeDB(db);
+    const deliver = fn => Promise.resolve().then(fn).catch(() => ({ status:'failed' }));
+    const [customerEmail, adminEmail] = await Promise.all([
+      deliver(() => sendSupportRequestReceiptEmail(ticket)),
+      deliver(() => sendSupportRequestAdminEmail(ticket))
+    ]);
+    const latest = readDB();
+    const delivery = { customer:customerEmail.status, admin:adminEmail.status, recipient:businessEmailAddress(ticket.channel), sentAt:new Date().toISOString() };
+    const saved = (latest.contactRequests || []).find(item => item.id === contact.id);
+    const savedTicket = (latest.supportRequests || []).find(item => item.id === ticket.id);
+    if (saved) saved.emailDelivery = delivery;
+    if (savedTicket) savedTicket.emailDelivery = delivery;
     writeDB(latest);
-  }
-  if (adminEmail.status !== 'sent') {
-    console.error('Contact email delivery failed:', adminEmail.error || adminEmail.status);
-    return res.status(503).json({ error:I18n.t('Votre message n’a pas pu être transmis. Écrivez-nous directement à ') + businessEmailAddress(channel) });
-  }
-  res.json({ success:true, message:I18n.t('Merci! Votre message a été envoyé à la bonne équipe.'), reference:contact.reference, emailStatus:customerEmail.status });
+    // Email is a notification, not the source of truth: the support inbox already has the request.
+    return res.json(receipt(saved || contact));
+  } catch (error) { next(error); }
 });
 
 

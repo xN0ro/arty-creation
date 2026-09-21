@@ -127,6 +127,7 @@ function schemaFor(config,kind,entity,meta){
     if(startDate)schema.startDate=startDate;if(locationName)schema.location={'@type':'Place',name:locationName};return schema;
   }
   if(kind==='collection')return {'@context':'https://schema.org','@type':'CollectionPage',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,url:meta.url,image:meta.image};
+  if(kind==='contact')return {'@context':'https://schema.org','@type':'ContactPage',name:meta.title,url:meta.url,description:meta.description};
   return {'@context':'https://schema.org','@type':'WebSite',name:config.brandName,url:config.siteUrl,description:config.defaultDescription};
 }
 function injectMarketingHead(html,config,kind,entity,meta,landing){
@@ -157,7 +158,7 @@ function sendMarketingPage(req,res,kind){
   return res.type('html').send(injectMarketingHead(loadIndexHtml(),config,kind,resolved.entity,meta,landing));
 }
 function buildSitemap(){
-  const db=readDb(),config=getMarketingConfig(),urls=[{loc:config.siteUrl,lastmod:''}];
+  const db=readDb(),config=getMarketingConfig(),urls=[{loc:config.siteUrl,lastmod:''},{loc:config.siteUrl+'/contact',lastmod:''}];
   [['product',db.kits||[]],['event',db.events||[]],['collection',db.categories||[]]].forEach(([kind,list])=>list.forEach(entity=>urls.push({loc:marketingCore.publicUrl(config,kind,entity),lastmod:text(entity.updatedAt||entity.date||'',30)})));
   const xml=urls.map(item=>`  <url><loc>${escapeHtml(item.loc)}</loc>${item.lastmod?`<lastmod>${escapeHtml(item.lastmod.slice(0,10))}</lastmod>`:''}</url>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${xml}\n</urlset>`;
@@ -165,6 +166,11 @@ function buildSitemap(){
 function installMarketingPublicRoutes(app){
   if(app.__artyMarketingPublicInstalled)return;app.__artyMarketingPublicInstalled=true;
   app.get('/',(req,res)=>sendMarketingPage(req,res,'home'));
+  app.get('/contact',(req,res)=>{
+    const config=getMarketingConfig(),en=requestLanguage(req)==='en';
+    const meta={title:en?'Contact & support | ARTY':'Contact & assistance | ARTY',description:en?'A question about an order, delivery, painting kit or event? Contact the ARTY team.':'Une question sur une commande, une livraison, un kit ou un événement ? Contactez l’équipe ARTY.',url:config.siteUrl+'/contact',image:marketingCore.absoluteUrl(config,config.defaultSocialImage)};
+    res.type('html').send(injectMarketingHead(loadIndexHtml(),config,'contact',{},meta,{kind:'contact',url:meta.url}));
+  });
   app.get('/products/:slug',(req,res)=>sendMarketingPage(req,res,'product'));
   app.get('/events/:slug',(req,res)=>sendMarketingPage(req,res,'event'));
   app.get('/collections/:slug',(req,res)=>sendMarketingPage(req,res,'collection'));
