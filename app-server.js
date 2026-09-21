@@ -169,7 +169,11 @@ function installMarketingPublicRoutes(app){
   app.get('/contact',(req,res)=>{
     const config=getMarketingConfig(),en=requestLanguage(req)==='en';
     const meta={title:en?'Contact & support | ARTY':'Contact & assistance | ARTY',description:en?'A question about an order, delivery, painting kit or event? Contact the ARTY team.':'Une question sur une commande, une livraison, un kit ou un événement ? Contactez l’équipe ARTY.',url:config.siteUrl+'/contact',image:marketingCore.absoluteUrl(config,config.defaultSocialImage)};
-    res.type('html').send(injectMarketingHead(loadIndexHtml(),config,'contact',{},meta,{kind:'contact',url:meta.url}));
+    // Show the contact page from the first paint while the shared app loads its data.
+    // Other entry routes keep the original homepage markup and startup behavior.
+    const loading=`<div class="contact-shell" aria-busy="true" style="min-height:100vh"><header class="contact-hero"><p class="contact-eyebrow">${en?'Contact &amp; support':'Contact &amp; assistance'}</p><h1>${en?'We’re here':'On est là'}<br><span>${en?'for you.':'pour vous.'}</span></h1><p role="status">${en?'Loading the contact form…':'Chargement du formulaire…'}</p></header></div>`;
+    const html=loadIndexHtml().replace('<div class="page active" id="page-home">','<div class="page" id="page-home">').replace('<div class="page" id="page-contact">','<div class="page active" id="page-contact">').replace('<main id="contactPageContent"></main>',`<main id="contactPageContent">${loading}</main>`);
+    res.type('html').send(injectMarketingHead(html,config,'contact',{},meta,{kind:'contact',url:meta.url}));
   });
   app.get('/products/:slug',(req,res)=>sendMarketingPage(req,res,'product'));
   app.get('/events/:slug',(req,res)=>sendMarketingPage(req,res,'event'));
