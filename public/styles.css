@@ -2253,3 +2253,12 @@ body.product-lightbox-open{overflow:hidden}
 .account-private-event-refunds>strong{font-size:.7rem}
 .account-private-event-refunds>div{display:flex;justify-content:space-between;gap:12px;font-size:.66rem;color:var(--text-light,#7a6e62)}
 .account-private-event-refunds>div strong{color:var(--text,#332b22)}
+
+
+/* Public event scarcity: reveal availability only for the final five spots */
+.event-detail-floating-card.is-low,.event-scarcity-only.is-low{background:#fff7ee;border-color:rgba(232,134,58,.28);color:var(--orange)}
+.event-detail-floating-card.is-full,.event-scarcity-only.is-full{background:#fff3f2;border-color:rgba(204,68,68,.2);color:#c44}
+.event-detail-floating-card strong{display:block;font-size:.82rem;font-weight:900;letter-spacing:.02em}
+.event-scarcity-only{justify-content:center;text-align:center;padding:12px 14px}
+.event-scarcity-only strong{font-size:.86rem}
+.event-card-spots.is-low{color:var(--orange);font-weight:800}
