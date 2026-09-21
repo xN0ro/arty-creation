@@ -236,6 +236,13 @@ function formatEventDate(ev,withYear=false){
   return d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long',year:withYear?'numeric':undefined});
 }
 function spotsLeft(ev){return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
+function publicEventScarcity(ev){
+  const left=spotsLeft(ev);
+  if(left<=0)return {show:true,left:0,label:I18n.t('Complet'),className:'is-full'};
+  if(left>5)return {show:false,left,label:'',className:''};
+  const english=I18n.language?.()==='en';
+  return {show:true,left,label:english?`Only ${left} spot${left===1?'':'s'} left`:`Plus que ${left} place${left===1?'':'s'}`,className:'is-low'};
+}
 function eventIncludes(ev){
   const raw=ev?.includes||[];
   if(Array.isArray(raw))return raw.map(x=>String(x).trim()).filter(Boolean);
@@ -484,9 +491,7 @@ function renderEventPage(id){
   const c=document.getElementById('eventPageContent');
   if(!ev){c.innerHTML=I18n.html('<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">📅</div><p>Événement non trouvé</p></div>');return}
   const left=spotsLeft(ev);
-  const booked=parseInt(ev.bookedSpots)||0;
-  const max=parseInt(ev.maxSpots)||0;
-  const pct=max?Math.min(100,(booked/max)*100):0;
+  const scarcity=publicEventScarcity(ev);
   const includes=eventIncludes(ev);
   c.innerHTML=I18n.html`
     <button class="product-back" onclick="navigate('#/party')">← Retour aux événements</button>
@@ -494,10 +499,7 @@ function renderEventPage(id){
       <div class="event-detail-media">
         <img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" class="event-detail-img">
         <button type="button" class="event-share-button" onclick="shareEvent(${ev.id})" aria-label="${safeAttr(I18n.t('Partager cet événement'))}">${eventShareIcon()}<span>${safeText(I18n.t('Partager'))}</span></button>
-        <div class="event-detail-floating-card">
-          <span>${left>0?left:'0'}</span>
-          <small>place${left!==1?'s':''} disponible${left!==1?'s':''}</small>
-        </div>
+        ${scarcity.show?`<div class="event-detail-floating-card ${scarcity.className}"><strong>${safeText(scarcity.label)}</strong></div>`:''}
       </div>
       <div class="event-detail-info event-detail-modern-info">
         <div class="event-type-badge">${safeText(I18n.t(ev.eventType)||I18n.t('Atelier peinture'))}</div>
@@ -508,13 +510,9 @@ function renderEventPage(id){
         <div class="event-detail-meta">
           <span class="event-meta-tag">⏱ ${safeText(ev.duration||I18n.t('2 heures'))}</span>
           <span class="event-meta-tag">📍 ${safeText(ev.location||I18n.t('Lieu à confirmer'))}</span>
-          ${ev.showMaxCapacity?`<span class="event-meta-tag event-capacity-public">${eventExperienceIcon('people')} ${safeText(I18n.t('Maximum'))} ${max||20} ${safeText(I18n.t('personnes'))}</span>`:''}
         </div>
         ${includes.length?I18n.html`<div class="event-includes-box"><h3>Inclus dans l’événement</h3><ul>${includes.map(i=>`<li>${safeText(i)}</li>`).join('')}</ul></div>`:''}
-        <div class="event-spots-info">
-          <div class="event-spots-row"><span class="spots-text">${left>0?left+I18n.t(' place')+(left>1?'s':'')+I18n.t(' restante')+(left>1?'s':''):I18n.t('Complet')}</span><span>${booked}/${max||0} réservé${booked>1?'s':''}</span></div>
-          <div class="event-spots-bar"><div class="event-spots-bar-fill" style="width:${pct}%"></div></div>
-        </div>
+        ${scarcity.show?`<div class="event-spots-info event-scarcity-only ${scarcity.className}"><strong>${safeText(scarcity.label)}</strong></div>`:''}
         ${ev.hostNote?`<p class="event-host-note">${safeText(ev.hostNote)}</p>`:''}
         <div class="event-detail-actions">
           <button class="btn btn-orange" onclick="openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>${left<=0?I18n.t('Complet'):I18n.t('Réserver mes billets →')}</button>
@@ -596,7 +594,7 @@ function renderPartyCalendarAgenda(eventsByDate){
         <span>${safeText(event.time||I18n.t('Heure à confirmer'))} · ${safeText(I18n.t(event.eventType)||I18n.t('Atelier'))}</span>
         <h4>${safeText(I18n.field(event,'title'))}</h4>
         <p>${safeText(event.location||I18n.t('Lieu à confirmer'))}</p>
-        <div><strong>${I18n.currency(toMoney(event.price))}</strong><small class="${left<=0?'is-full':''}">${left<=0?I18n.t('Complet'):I18n.t('Billets disponibles')}</small></div>
+        <div><strong>${I18n.currency(toMoney(event.price))}</strong><small class="${left<=0?'is-full':''}">${safeText(publicEventScarcity(event).show?publicEventScarcity(event).label:I18n.t('Billets disponibles'))}</small></div>
       </div>
       <span class="party-calendar-event-arrow">${partyCalendarArrow('right')}</span>
     </article>`;
@@ -643,9 +641,7 @@ function renderPartyEvents(){
   renderPartyCalendar();
   partyGrid.innerHTML=sorted.map(ev=>{
     const left=spotsLeft(ev);
-    const booked=parseInt(ev.bookedSpots)||0;
-    const max=parseInt(ev.maxSpots)||0;
-    const pct=max?Math.min(100,(booked/max)*100):0;
+    const scarcity=publicEventScarcity(ev);
     return I18n.html`<article class="event-card event-card-modern" onclick="navigate('#/event/${ev.id}')">
       <div class="event-card-img"><img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" loading="lazy"><span class="event-card-type">${safeText(I18n.t(ev.eventType)||I18n.t('Atelier'))}</span></div>
       <div class="event-card-body">
@@ -653,10 +649,9 @@ function renderPartyEvents(){
         <h3 class="event-card-title">${safeText(I18n.field(ev,'title'))}</h3>
         <p class="event-card-desc">${safeText(ev.description||I18n.t('Réservez votre place pour une activité peinture Arty.'))}</p>
         <div class="event-card-mini-meta"><span>${safeText(ev.duration||I18n.t('2 heures'))}</span><span>${safeText(ev.location||I18n.t('Lieu à confirmer'))}</span></div>
-        <div class="event-card-seatbar"><div style="width:${pct}%"></div></div>
         <div class="event-card-footer">
           <span class="event-card-price">${I18n.currency(toMoney(ev.price))}</span>
-          <span class="event-card-spots ${left<=0?'is-full':''}">${left<=0?I18n.t('Complet'):left+I18n.t(' place')+(left>1?'s':'')}</span>
+          ${scarcity.show?`<span class="event-card-spots ${scarcity.className}">${safeText(scarcity.label)}</span>`:''}
         </div>
         <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver des billets</button>
       </div>
@@ -1029,7 +1024,7 @@ function openBooking(eventId){
   const sel=document.getElementById('bookingGuests');
   if(sel)sel.innerHTML=Array.from({length:Math.min(left,10)},(_,i)=>I18n.html`<option value="${i+1}">${i+1} personne${i?'s':''}</option>`).join('');
   const summary=document.getElementById('bookingSummaryText');
-  if(summary)summary.textContent=I18n.msg`${formatEventDate(ev,true)} à ${ev.time||'18:00'} · ${left} place${left>1?'s':''} disponible${left>1?'s':''}`;
+  if(summary){const scarcity=publicEventScarcity(ev);summary.textContent=`${formatEventDate(ev,true)} à ${ev.time||'18:00'}${scarcity.show?' · '+scarcity.label:''}`}
   document.getElementById('bookingModal').classList.add('active');
   document.getElementById('bookingModal').dataset.eid=eventId;
   updateBookingTotal();
@@ -1043,7 +1038,7 @@ function confirmBooking(){
   const button=document.getElementById('bookingSubmitButton');
   const event=allEvents.find(item=>String(item.id)===String(eid));if(!event)return showToast(I18n.t('Événement introuvable'),'error');
   const qty=Math.max(1,parseInt(g)||1),id=`event-ticket-${event.id}`,existing=cart.find(item=>String(item.id)===id),combined=(Number(existing?.qty)||0)+qty;
-  if(combined>spotsLeft(event))return showToast(I18n.msg`Il reste seulement ${spotsLeft(event)} billet${spotsLeft(event)>1?'s':''}`,'error');
+  if(combined>spotsLeft(event)){const remaining=spotsLeft(event);return showToast(remaining<=5?(I18n.language?.()==='en'?`Only ${remaining} ticket${remaining===1?'':'s'} left`:`Il reste seulement ${remaining} billet${remaining===1?'':'s'}`):I18n.t('Cette quantité de billets n’est pas disponible'),'error')}
   if(button){button.disabled=true;button.textContent=I18n.t('Ajout au panier...')}
   const item={id,name:I18n.msg`Billet — ${event.title}`,price:Number(event.price)||0,image:event.image||'logoarty.png',qty,type:'event-ticket',customData:{kind:'event-ticket',eventId:event.id,eventDate:event.date||'',eventTime:event.time||'',eventLocation:event.location||''}};
   if(existing)existing.qty=combined;else cart.push(item);
@@ -1169,7 +1164,7 @@ function renderAdminEvents(){
       <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!, Montréal"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg" placeholder="/images/evenement.jpg ou URL"></div></div>
       <div class="form-group"><label>Inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peintures, pinceaux, tutoriel, collation"></div>
       <div class="form-group"><label>Note importante</label><input type="text" id="aEvHostNote" placeholder="Ex: Arrivez 10 minutes avant le début."></div>
-      <div class="admin-event-visibility-options"><label class="catalog-check"><input type="checkbox" id="aEvShowCapacity"> Afficher la capacité maximale publiquement</label><small>La capacité reste utilisée pour limiter les ventes même si elle est masquée aux clients.</small></div><label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label>
+      <div class="admin-event-visibility-options"><small>La capacité est interne. Le site affiche uniquement une alerte lorsqu’il reste 5 billets ou moins.</small></div><label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label>
       <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn btn-orange" onclick="saveEv()">Sauvegarder l’événement</button><button class="btn btn-ghost" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div>
     </div>
     <div class="admin-section-title"><h3>Événements publiables</h3><p>Un événement avec statut “Publié” sera visible aux clients et disponible à la réservation.</p></div>
@@ -1181,7 +1176,7 @@ function renderAdminEvents(){
 }
 async function saveEv(){
   const eid=document.getElementById('editEvId').value;
-  const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value,eventType:document.getElementById('aEvType').value,status:document.getElementById('aEvStatus').value,includes:document.getElementById('aEvIncludes').value,hostNote:document.getElementById('aEvHostNote').value,showMaxCapacity:!!document.getElementById('aEvShowCapacity')?.checked,featured:document.getElementById('aEvFeatured').checked};
+  const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value,eventType:document.getElementById('aEvType').value,status:document.getElementById('aEvStatus').value,includes:document.getElementById('aEvIncludes').value,hostNote:document.getElementById('aEvHostNote').value,showMaxCapacity:false,featured:document.getElementById('aEvFeatured').checked};
   if(!p.title||!p.date)return showToast(I18n.t('Titre et date requis'),'error');
   const r=await artyFetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});
   const d=await r.json().catch(()=>({}));
@@ -2872,7 +2867,7 @@ function renderAdminEvents(){
       <div class="admin-table-wrap admin-guest-table"><table class="admin-table"><thead><tr><th>Participant et billet</th><th>Acheteur</th><th>Présence</th><th>Action</th></tr></thead><tbody>${guestRows||I18n.html('<tr><td colspan="4" class="admin-muted">Aucun billet pour cet événement.</td></tr>')}</tbody></table></div>
       ${selectedBookings.length?I18n.html`<details class="admin-booking-contacts"><summary>Coordonnées et envoi des billets (${selectedBookings.length})</summary><div>${bookingContacts}</div></details>`:''}
     </section>
-    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><div class="admin-event-visibility-options"><label class="catalog-check"><input type="checkbox" id="aEvShowCapacity"> Afficher la capacité maximale publiquement</label><small>La capacité reste utilisée pour limiter les ventes même si elle est masquée aux clients.</small></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
+    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><div class="admin-event-visibility-options"><small>La capacité est interne. Le site affiche uniquement une alerte lorsqu’il reste 5 billets ou moins.</small></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
     <div class="admin-section-title"><h3>Demandes d’événements privés</h3><p>Demandes sur mesure à traiter par votre équipe.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Client</th><th>Projet</th><th>Lieu</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${requestRows||I18n.html('<tr><td colspan="5" class="admin-muted">Aucune demande privée.</td></tr>')}</tbody></table></div>`;
 }
 
