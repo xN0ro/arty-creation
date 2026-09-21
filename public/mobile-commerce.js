@@ -92,7 +92,7 @@ function setCheckoutAutofill(){
   });
 }
 function visible(el){
-  return !!(el&&getComputedStyle(el).display!=='none');
+  return !!(el&&el.getClientRects&&el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');
 }
 function ensureCheckoutDock(){
   var hash=location.hash||'';
