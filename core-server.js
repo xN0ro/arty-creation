@@ -541,13 +541,18 @@ app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), c
 app.get('/api/kits', (req, res) => res.json(getPublicKits(readDB())));
 app.get('/api/kits/:id', (req, res) => { const db = readDB(); const k = getPublicKits(db).find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: I18n.t('Non trouvé') }); });
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
+function publicEventView(event) {
+  const max=Math.max(0,parseInt(event.maxSpots)||0),booked=Math.max(0,parseInt(event.bookedSpots)||0),remaining=Math.max(0,max-booked);
+  const {maxSpots,bookedSpots,showMaxCapacity,...publicEvent}=event;
+  return {...publicEvent,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
+}
 app.get('/api/events', (req, res) => {
   const now = new Date();
   const db = readDB();
   const events = (db.events || [])
     .filter(e => (e.status || 'published') === 'published')
     .sort((a,b) => new Date((a.date || '') + 'T' + (a.time || '00:00')) - new Date((b.date || '') + 'T' + (b.time || '00:00')));
-  res.json(events);
+  res.json(events.map(publicEventView));
 });
 require('./event-options')(app, {readDB,writeDB,adminOnly,I18n});
 app.get('/api/team-activities', (req, res) => res.json(readDB().teamActivities || []));
