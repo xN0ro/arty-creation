@@ -30,10 +30,10 @@ function ensureProductDock(){
   var hash=location.hash||'';
   var page=document.getElementById('page-product');
   var onProduct=isMobile()&&hash.indexOf('#/product/')===0&&page&&page.classList.contains('active');
-  if(!onProduct){removeDock('.arty-mobile-product-dock');return}
+  if(!onProduct){removeDock('.arty-mobile-product-dock');document.body.classList.remove('arty-mobile-product-ready');return}
   var original=document.querySelector('#page-product .product-buy-now');
   var price=document.getElementById('productConfiguredPrice');
-  if(!original||!price)return;
+  if(!original||!price){document.body.classList.remove('arty-mobile-product-ready');return;}
   var dock=document.querySelector('.arty-mobile-product-dock');
   if(!dock){
     dock=document.createElement('div');dock.className='arty-mobile-product-dock';
@@ -49,7 +49,7 @@ function ensureProductDock(){
   var button=dock.querySelector('button');
   button.textContent=original.disabled?copy('Épuisé','Sold out'):copy('Acheter maintenant','Buy now');
   button.disabled=!!original.disabled;
-  dock.hidden=hiddenByOverlay();
+  document.body.classList.add('arty-mobile-product-ready');\n  dock.hidden=hiddenByOverlay();
 }
 function enhanceCart(){
   if(!isMobile())return;
@@ -79,10 +79,10 @@ function ensureCheckoutDock(){
   var hash=location.hash||'';
   var page=document.getElementById('page-checkout');
   var onCheckout=isMobile()&&hash.indexOf('#/checkout')===0&&page&&page.classList.contains('active');
-  if(!onCheckout){removeDock('.arty-mobile-checkout-dock');return}
+  if(!onCheckout){removeDock('.arty-mobile-checkout-dock');document.body.classList.remove('arty-mobile-checkout-ready');return}
   var place=document.getElementById('placeOrderBtn');
   var stripe=document.getElementById('stripePayBtn');
-  if(!place&&!stripe)return;
+  if(!place&&!stripe){document.body.classList.remove('arty-mobile-checkout-ready');return;}
   var dock=document.querySelector('.arty-mobile-checkout-dock');
   if(!dock){
     dock=document.createElement('div');dock.className='arty-mobile-checkout-dock';
@@ -123,7 +123,7 @@ function sync(){
   requestAnimationFrame(function(){
     scheduled=false;cleanupLegacy();
     if(!isMobile()){
-      removeDock('.arty-mobile-product-dock');removeDock('.arty-mobile-checkout-dock');return;
+      removeDock('.arty-mobile-product-dock');removeDock('.arty-mobile-checkout-dock');document.body.classList.remove('arty-mobile-product-ready','arty-mobile-checkout-ready');return;
     }
     ensureProductDock();enhanceCart();enhanceCheckout();
   });
