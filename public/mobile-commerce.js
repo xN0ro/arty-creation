@@ -4,6 +4,8 @@
 var MOBILE_MAX=820;
 var scheduled=false;
 var observer=null;
+var stripeObserver=null;
+var stripeObservedPanel=null;
 
 function isMobile(){return window.matchMedia('(max-width:'+MOBILE_MAX+'px)').matches}
 function locale(){try{return String(I18n.locale()||'fr').toLowerCase()}catch(e){return 'fr'}}
@@ -91,8 +93,17 @@ function setCheckoutAutofill(){
     Object.keys(attrs[id]).forEach(function(key){field.setAttribute(key,attrs[id][key])});
   });
 }
-function visible(el){
-  return !!(el&&el.getClientRects&&el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden');
+function stripeStageActive(){
+  var panel=document.getElementById('stripePaymentPanel');
+  return !!(panel&&panel.getClientRects&&panel.getClientRects().length);
+}
+function bindStripeObserver(){
+  var panel=document.getElementById('stripePaymentPanel');
+  if(!panel||panel===stripeObservedPanel)return;
+  if(stripeObserver)stripeObserver.disconnect();
+  stripeObservedPanel=panel;
+  stripeObserver=new MutationObserver(sync);
+  stripeObserver.observe(panel,{attributes:true,subtree:true,attributeFilter:['style','class','disabled']});
 }
 function ensureCheckoutDock(){
   var hash=location.hash||'';
@@ -118,14 +129,14 @@ function ensureCheckoutDock(){
     dock.querySelector('button').addEventListener('click',function(){
       var stripeBtn=document.getElementById('stripePayBtn');
       var placeBtn=document.getElementById('placeOrderBtn');
-      var target=visible(stripeBtn)?stripeBtn:placeBtn;
+      var target=stripeStageActive()?stripeBtn:placeBtn;
       if(target&&!target.disabled)target.click();
     });
   }
   dock.querySelector('small').textContent=copy('Total • paiement sécurisé','Total • secure payment');
   dock.querySelector('strong').textContent=totalText();
   var action=dock.querySelector('button');
-  if(visible(stripe)){
+  if(stripeStageActive()){
     action.textContent=copy('Payer maintenant →','Pay now →');
     action.disabled=!!stripe.disabled;
   }else{
@@ -143,6 +154,7 @@ function enhanceCheckout(){
     return;
   }
   setCheckoutAutofill();
+  bindStripeObserver();
   ensureCheckoutDock();
 }
 function cleanupLegacy(){
