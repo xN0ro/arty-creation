@@ -1,5 +1,8 @@
 /* English catalog. French source messages are stable keys. */
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.ARTY_EN=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){return {
+  "Un petit coup de main ?": "Need a helping hand?",
+  "Une question sur votre commande ou un projet en tête ? Notre équipe est là pour vous.": "A question about your order or a project in mind? Our team is here for you.",
+  "Parlons-en": "Let’s talk",
   "Accès admin requis": "Administrator access required",
   "Ce compte est temporairement désactivé. Contactez ARTY pour obtenir de l’aide.": "This account is temporarily disabled. Contact ARTY for assistance.",
   "Un compte propriétaire ne peut pas être désactivé ici": "An owner account cannot be disabled here",

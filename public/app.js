@@ -36,7 +36,9 @@ let artyLastRouteAdmin=false;
 async function handleRoute(){
   if(artyLastRouteAdmin&&location.hash!=='#/admin')await Promise.all([loadKits(),loadCategories(),loadEvents(),loadEventOptions(),loadBundles()]);
   artyLastRouteAdmin=location.hash==='#/admin';
-  const h=window.location.hash||'#/';
+  if(document.getElementById('page-contact')?.classList.contains('active'))updateLanguageControls();
+  const h=window.location.hash||(/^\/contact\/?$/.test(location.pathname)?'#/contact':'#/');
+  document.querySelectorAll('[data-contact-link]').forEach(link=>{if(h==='#/contact'||h.startsWith('#/contact?'))link.setAttribute('aria-current','page');else link.removeAttribute('aria-current')});
   closeMobileNavigation();closeMobileFilters();
   const toastEl=document.getElementById('toast');
   if(toastEl){toastEl.classList.remove('show');}
@@ -63,11 +65,12 @@ async function handleRoute(){
   else if(h.startsWith('#/payment-complete')){show('page-checkout');await renderPaymentCompletePage();window.scrollTo(0,0)}
   else if(h.startsWith('#/reset-password')){show('page-home');renderHomePage();const token=new URLSearchParams(h.split('?')[1]||'').get('token')||'';openModal('auth','reset');const input=document.getElementById('resetPasswordToken');if(input)input.value=token;if(!token)showToast(I18n.t('Le lien de réinitialisation est incomplet'),'error');window.scrollTo(0,0)}
   else if(h==='#/forgot-password'){show('page-home');renderHomePage();openModal('auth','forgot');window.scrollTo(0,0)}
+  else if(h==='#/contact'||h.startsWith('#/contact?')||h==='#contact'){show('page-contact');renderContactPage();window.scrollTo(0,0)}
   else if(h==='#/privacy'){show('page-privacy');initScrollEffects();window.scrollTo(0,0)}
   else if(h==='#/policies'){show('page-policies');initScrollEffects();window.scrollTo(0,0)}
   else if(h.startsWith('#/party')){show('page-party');renderPartyPage();handlePartySection(h);window.scrollTo(0,0)}
   else if(h==='#/team'){show('page-party');renderPartyPage();setTimeout(scrollToTeamEvents,220)}
-  else{show('page-home');renderHomePage();if(h.includes('contact'))setTimeout(()=>document.getElementById('contact')?.scrollIntoView({behavior:'smooth'}),200)}
+  else{show('page-home');renderHomePage()}
 }
 function show(id){
   const el=document.getElementById(id);
@@ -89,7 +92,7 @@ function renderSiteAnnouncement(){
   document.body.classList.toggle('has-site-announcement',visible);
   updateMobileHeaderOffset();
 }
-function scrollToSection(id){navigate('#/');setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'})},200)}
+function scrollToSection(id){if(id==='contact'){navigate('#/contact');return}navigate('#/');setTimeout(()=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'})},200)}
 
 // ===== HOME PAGE RENDERING =====
 function renderHomePage(){
@@ -1067,7 +1070,7 @@ async function submitPrivateEventRequest(){
     const type=document.getElementById('reqType');if(type)type.value=I18n.t('Anniversaire');
   }catch{showToast(I18n.t('Erreur de connexion'),'error')}
 }
-async function submitContact(){const n=document.getElementById('contactName').value,e=document.getElementById('contactEmail').value,m=document.getElementById('contactMessage').value,channel=document.getElementById('contactTopic')?.value||'contact';if(!n||!e||!m)return showToast(I18n.t('Remplissez tous les champs'),'error');try{const r=await artyFetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,email:e,message:m,channel})});const d=await r.json();if(!r.ok)return showToast(d.error||I18n.t('Message non envoyé'),'error');showToast(d.message,'success');['contactName','contactEmail','contactMessage'].forEach(id=>document.getElementById(id).value='');const topic=document.getElementById('contactTopic');if(topic)topic.value='contact'}catch{showToast(I18n.t('Erreur'),'error')}}
+
 
 // ===== ADMIN =====
 function renderAdminOrders(){

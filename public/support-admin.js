@@ -33,7 +33,7 @@ function filtered(){
     if(state.priority!=='all'&&String(t.priority)!==state.priority)return false;
     if(state.assignee!=='all'&&String(t.assignedTo||'')!==state.assignee)return false;
     if(state.topic!=='all'&&String(t.topic)!==state.topic)return false;
-    if(q&&![t.id,t.subject,t.customer?.name,t.customer?.email,t.orderId,t.topic,...(t.customerContext?.tags||[])].join(' ').toLowerCase().includes(q))return false;
+    if(q&&![t.id,t.subject,t.customer?.name,t.customer?.email,t.orderId,t.orderReference,t.topic,...(t.customerContext?.tags||[])].join(' ').toLowerCase().includes(q))return false;
     return true;
   });
 }
@@ -67,6 +67,16 @@ function orderContext(t){
   const o=t.orderContext;if(!o)return t.orderId?`<div class="support-context-empty">${T('Commande liée','Linked order')}: <strong>${esc(t.orderId)}</strong></div>`:'';
   return `<div class="support-context-card"><div class="support-context-head"><span>${T('Commande','Order')}</span><strong>${esc(o.id)}</strong></div><div class="support-context-grid"><div><small>${T('Statut','Status')}</small><strong>${esc(o.status||'—')}</strong></div><div><small>${T('Paiement','Payment')}</small><strong>${esc(o.paymentStatus||'—')}</strong></div><div><small>${T('Total','Total')}</small><strong>${money(o.total)}</strong></div><div><small>${T('Date','Date')}</small><strong>${dateOnly(o.createdAt)}</strong></div></div>${o.tracking?.number?`<small class="support-tracking">${T('Suivi','Tracking')}: ${esc(o.tracking.number)}</small>`:''}</div>`;
 }
+function submittedContext(t){
+  if(t.source!=='contact')return '';
+  const rows=[
+    [T('Référence fournie (à vérifier)','Submitted reference (verify first)'),t.orderReference&&!t.orderId?t.orderReference:''],
+    [T('Date souhaitée','Preferred date'),t.eventDate],
+    [T('Nombre de personnes','Group size'),t.guests]
+  ].filter(([,value])=>value);
+  const email=t.emailDelivery||{};
+  return `<div class="support-context-card"><div class="support-context-head"><span>${T('Page contact','Contact page')}</span><strong>${t.userId!=null?T('Compte connecté','Signed-in account'):T('Invité · identité à vérifier','Guest · verify identity')}</strong></div>${rows.map(([label,value])=>`<p><small>${esc(label)}</small><br><strong>${esc(value)}</strong></p>`).join('')}<p><small>${T('Accusé de réception','Confirmation email')}: ${esc(email.customer==='sent'?T('Envoyé','Sent'):T('Non confirmé','Not confirmed'))}<br>${T('Alerte à l’équipe','Team notification')}: ${esc(email.admin==='sent'?T('Envoyée','Sent'):T('Non confirmée — demande enregistrée ici','Not confirmed — request saved here'))}</small></p></div>`;
+}
 function customerContext(t){
   const c=t.customerContext||{};
   return `<div class="support-context-card"><div class="support-context-head"><span>${T('Client','Customer')}</span><strong>${esc(t.customer?.name||t.customer?.email||'')}</strong></div><p class="support-customer-email">${esc(t.customer?.email||'')}</p><div class="support-context-grid"><div><small>${T('Commandes','Orders')}</small><strong>${Number(c.orderCount||0)}</strong></div><div><small>${T('Dépenses','Spend')}</small><strong>${money(c.lifetimeSpend||0)}</strong></div><div><small>${T('Prospects','Leads')}</small><strong>${Number(c.leadCount||0)}</strong></div><div><small>${T('Dernière activité','Last activity')}</small><strong>${dateOnly(c.lastActivity)}</strong></div></div>${(c.tags||[]).length?`<div class="support-tags">${c.tags.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:''}<button class="btn btn-ghost btn-sm" onclick="ARTYSupport.emailCustomer()">${T('Écrire au client','Email customer')}</button></div>`;
@@ -86,9 +96,10 @@ function detail(t){
       <div class="support-conversation">
         <div class="support-section-title"><div><span>${T('Conversation','Conversation')}</span><h3>${T('Échanges avec le client','Customer conversation')}</h3></div><small>${(t.messages||[]).length} ${T('message(s)','message(s)')}</small></div>
         <div class="support-thread">${messageThread(t)}</div>
-        ${t.status!=='fermée'?`<div class="support-reply-box"><textarea id="supportProReply" rows="4" placeholder="${T('Écrivez une réponse claire au client…','Write a clear reply to the customer…')}"></textarea><div><small>${T('La réponse sera envoyée par courriel et visible dans le compte ARTY du client.','The reply will be emailed and visible in the customer’s ARTY account.')}</small><button class="btn btn-teal" onclick="ARTYSupport.reply()">${T('Envoyer la réponse','Send reply')}</button></div></div>`:`<div class="support-closed-note">${T('Cette demande est fermée. Changez son statut pour la rouvrir.','This ticket is closed. Change its status to reopen it.')}</div>`}
+        ${t.status!=='fermée'?`<div class="support-reply-box"><textarea id="supportProReply" rows="4" placeholder="${T('Écrivez une réponse claire au client…','Write a clear reply to the customer…')}"></textarea><div><small>${t.userId!=null?T('La réponse sera envoyée par courriel et visible dans le compte ARTY du client.','The reply will be emailed and visible in the customer’s ARTY account.'):T('La réponse sera envoyée par courriel. Le client peut répondre au courriel; surveillez aussi cette boîte de réception.','The reply will be emailed. The customer can reply by email; monitor that mailbox too.')}</small><button class="btn btn-teal" onclick="ARTYSupport.reply()">${T('Envoyer la réponse','Send reply')}</button></div></div>`:`<div class="support-closed-note">${T('Cette demande est fermée. Changez son statut pour la rouvrir.','This ticket is closed. Change its status to reopen it.')}</div>`}
       </div>
       <aside class="support-context">
+        ${submittedContext(t)}
         ${customerContext(t)}
         ${orderContext(t)}
         <div class="support-context-card"><div class="support-context-head"><span>${T('Notes internes','Internal notes')}</span><strong>${notes.length}</strong></div><div class="support-note-list">${notes.slice().reverse().map(n=>`<div><p>${esc(n.body)}</p><small>${esc(dt(n.at))} · ${esc(n.by||'')}</small></div>`).join('')||`<small>${T('Aucune note interne.','No internal notes.')}</small>`}</div><textarea id="supportProNote" rows="3" placeholder="${T('Note visible uniquement par l’équipe…','Team-only note…')}"></textarea><button class="btn btn-ghost btn-sm" onclick="ARTYSupport.addNote()">${T('Ajouter la note','Add note')}</button></div>
