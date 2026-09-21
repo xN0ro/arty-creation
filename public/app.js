@@ -235,7 +235,7 @@ function formatEventDate(ev,withYear=false){
   const d=new Date(ev.date+'T00:00:00');
   return d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long',year:withYear?'numeric':undefined});
 }
-function spotsLeft(ev){return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
+function spotsLeft(ev){if(Number.isFinite(Number(ev?.bookingLimit)))return Math.max(0,parseInt(ev.bookingLimit)||0);return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
 function publicEventScarcity(ev){
   const left=spotsLeft(ev);
   if(left<=0)return {show:true,left:0,label:I18n.t('Complet'),className:'is-full'};
