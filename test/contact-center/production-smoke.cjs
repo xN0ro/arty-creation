@@ -19,9 +19,11 @@ test('production wrapper serves the contact URL, assets, metadata and durable re
     for(const route of ['/contact','/contact/']){
       const response=await fetch(base+route),html=await response.text();assert.equal(response.status,200);
       assert(html.includes('<base href="/">'));assert(html.includes('Contact &amp; assistance | ARTY'));assert(html.includes('"@type":"ContactPage"'));assert(html.includes('id="page-contact"'));
+      assert(html.includes('<div class="page active" id="page-contact">'));assert(!html.includes('<div class="page active" id="page-home">'));assert(html.includes('Chargement du formulaire…'));
       assert(html.includes('contact-center.js?v='));assert(html.includes('contact-center.css?v='));
     }
     assert((await (await fetch(base+'/contact?lang=en')).text()).includes('Contact &amp; support | ARTY'));
+    assert((await (await fetch(base+'/')).text()).includes('<div class="page active" id="page-home">'));
     assert((await (await fetch(base+'/sitemap.xml')).text()).includes('/contact</loc>'));
     for(const asset of ['/contact-center.css','/contact-center.js'])assert.equal((await fetch(base+asset)).status,200);
     const response=await fetch(base+'/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Smoke Test',email:'nobody@example.test',topic:'livraison',message:'This is a local test. Do not deliver email.',requestKey:'production-smoke-key-123'})});
