@@ -1,0 +1,6 @@
+{
+  "name": "arty-mobile-commerce-checks",
+  "private": true,
+  "scripts": {"test": "node check.cjs"},
+  "devDependencies": {"jsdom": "26.1.0"}
+}
