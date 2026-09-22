@@ -2816,8 +2816,18 @@ app.post('/api/admin/orders/:id/refund', adminOnly, async (req, res) => {
   const db=readDB(),order=(db.orders||[]).find(item=>String(item.id)===String(req.params.id));
   if(!order)return res.status(404).json({error:I18n.t('Commande non trouvée')});
   if(order.paymentProvider!=='stripe'||!order.paymentReference)return res.status(409).json({error:I18n.t('Cette commande n’a pas de paiement Stripe remboursable. Aucun remboursement bancaire n’a été effectué.')});
+  if(!['paid','refund_pending'].includes(String(order.paymentStatus||'')))return res.status(409).json({error:I18n.t('Aucun paiement Stripe confirmé n’a été encaissé pour cette commande. Aucun remboursement n’est nécessaire.')});
   if(!isStripeEnabled())return res.status(503).json({error:I18n.t('Stripe n’est pas configuré')});
-  const state=recomputeOrderRefundState(db,order),maxRefundable=money(Math.max(0,Number(order.total||0)-state.committedTotal));
+  let paymentIntent;
+  try{paymentIntent=await retrieveStripePaymentIntent(order.paymentReference)}
+  catch(error){return res.status(502).json({error:I18n.t('Impossible de vérifier le paiement Stripe avant remboursement: ')+error.message})}
+  if(String(paymentIntent.status||'')!=='succeeded'){
+    syncOrderFromStripePaymentIntent(db,paymentIntent,'admin-refund-check');writeDB(db);
+    return res.status(409).json({error:I18n.t('Stripe ne confirme aucun paiement réussi pour cette commande. Aucun remboursement n’a été envoyé.')});
+  }
+  const state=recomputeOrderRefundState(db,order);
+  if(state.pendingTotal>0)return res.status(409).json({error:I18n.t('Un remboursement Stripe est déjà en cours. Attendez sa confirmation avant d’en créer un autre.')});
+  const maxRefundable=money(Math.max(0,Number(order.total||0)-state.committedTotal));
   let amount=Number(req.body.amount);if(!Number.isFinite(amount)||amount<=0)amount=maxRefundable;amount=money(Math.min(maxRefundable,amount));
   if(amount<=0)return res.status(400).json({error:I18n.t('Aucun montant remboursable')});
   const reason=String(req.body.reason||I18n.t('Demande client')).trim().slice(0,450),fullRefund=Math.abs(amount-maxRefundable)<0.01&&state.committedTotal+amount>=Number(order.total||0)-0.001;
