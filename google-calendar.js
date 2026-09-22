@@ -48,6 +48,7 @@ function httpsJson(options,body=''){
       });
     });
     req.on('error',reject);
+    req.setTimeout(15000,()=>req.destroy(new Error('Google Calendar request timed out')));
     if(body)req.write(body);
     req.end();
   });
@@ -218,7 +219,7 @@ async function deleteEvent(eventId,integration={}){
 async function syncFollowUp(lead,calendarMeta={},integration={}){
   const existingId=String(calendarMeta.eventId||'');
   if(!connected(integration))return{action:'not_configured',eventId:existingId,htmlLink:String(calendarMeta.htmlLink||'')};
-  const shouldDelete=!lead.nextFollowUp||!lead.owner||['won','lost'].includes(String(lead.status||''));
+  const shouldDelete=!lead.nextFollowUp||!lead.owner||['won','refunded','lost'].includes(String(lead.status||''));
   if(shouldDelete)return deleteEvent(existingId,integration);
   const event=buildEvent(lead,integration);if(!event)return deleteEvent(existingId,integration);
   if(existingId){
