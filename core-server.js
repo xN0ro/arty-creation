@@ -2163,20 +2163,9 @@ function syncEventRequestFromStripePaymentIntent(db, paymentIntent, source = 'st
   return request;
 }
 async function syncEventRequestCalendar(db, requestId) {
-  const request=(db.eventRequests||[]).find(item=>String(item.id)===String(requestId));
-  if(!request)return { action:'missing' };
-  const lead=crmCore.buildLeads(db).find(item=>item.kind==='event'&&String(item.id)===String(requestId));
-  if(!lead)return { action:'missing' };
-  request.crm=request.crm||{};const prior=request.crm.calendar||{};
-  try {
-    const result=await googleCalendar.syncFollowUp(lead,prior,db.crmIntegrations?.googleCalendar||{});
-    request.crm.calendar={eventId:String(result.eventId||''),htmlLink:String(result.htmlLink||prior.htmlLink||''),status:String(result.action||''),syncedAt:new Date().toISOString(),error:''};
-    return result;
-  } catch (error) {
-    request.crm.calendar={...prior,status:'error',syncedAt:new Date().toISOString(),error:String(error.message||error).slice(0,1000)};
-    return { action:'error', error:String(error.message||error) };
-  }
+  return require('./crm-calendar-sync').sync({kind:'event',id:requestId,read:readDB,write:writeDB});
 }
+
 function eventQuoteEmailBreakdown(request) {
   const subtotal=money(request.quoteSubtotal??request.quoteAmount??0),shipping=money(request.quoteShipping||0),taxLines=Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[];
   return `${emailAmountSummary(I18n.t('Sous-total'),`${I18n.currency(subtotal.toFixed(2))} CAD`)}${shipping?emailAmountSummary(I18n.t('Livraison / déplacement'),`${I18n.currency(shipping.toFixed(2))} CAD`):''}${taxLines.map(line=>emailAmountSummary(`${line.label} ${line.rate}%`,`${I18n.currency(money(line.amount).toFixed(2))} CAD`)).join('')}${emailAmountSummary(I18n.t('Total à payer'),`${I18n.currency(money(request.quoteAmount).toFixed(2))} CAD`)}`;
@@ -2380,8 +2369,8 @@ app.get('/api/event-quotes/:token', (req, res) => {
 app.post('/api/event-quotes/:token/payment', async (req, res) => {
   try {
     if (!isStripeEnabled()) return res.status(503).json({ error:I18n.t('Le paiement Stripe n’est pas disponible') });
-    const db = readDB();
-    const request = findEventRequestByPaymentToken(db, req.params.token);
+    let db = readDB();
+    let request = findEventRequestByPaymentToken(db, req.params.token);
     if (!request || !eventQuoteTokenIsValid(request)) return res.status(404).json({ error:I18n.t('Ce lien de paiement est invalide ou expiré') });
     if (request.quotePaymentStatus === 'paid') return res.json({ success:true, paid:true, quote:publicEventQuoteView(request) });
     if (money(request.quoteAmount) < 0.5) return res.status(400).json({ error:I18n.t('Le montant du devis est invalide') });
@@ -2389,17 +2378,26 @@ app.post('/api/event-quotes/:token/payment', async (req, res) => {
     if (request.paymentReference) {
       try {
         const existing = await retrieveStripePaymentIntent(request.paymentReference);
+        db=readDB();request=findEventRequestByPaymentToken(db,req.params.token);
+        if(!request||!eventQuoteTokenIsValid(request))return res.status(404).json({error:I18n.t('Ce lien de paiement est invalide ou expiré')});
+        if(['paid','refund_pending','refunded'].includes(request.quotePaymentStatus))return res.json({success:true,paid:true,quote:publicEventQuoteView(request)});
+        if(request.paymentReference!==existing.id)return res.status(409).json({error:I18n.t('Paiement non associé à ce devis')});
         if (!['canceled','succeeded'].includes(existing.status) && Number(existing.amount) === stripeAmountCents(request.quoteAmount)) paymentIntent = existing;
         if (existing.status === 'succeeded') {
           syncEventRequestFromStripePaymentIntent(db, existing, 'payment-link-open');
-          await syncEventRequestCalendar(db, request.id);
           writeDB(db);
+          await syncEventRequestCalendar(db, request.id);
           await deliverEventQuotePaidEmail(request.id);
           return res.json({ success:true, paid:true, quote:publicEventQuoteView(request) });
         }
       } catch {}
     }
+    const expectedReference=request.paymentReference||'';
     if (!paymentIntent) paymentIntent = await createStripePaymentIntentForEventQuote(request);
+    db=readDB();request=findEventRequestByPaymentToken(db,req.params.token);
+    if(!request||!eventQuoteTokenIsValid(request))return res.status(404).json({error:I18n.t('Ce lien de paiement est invalide ou expiré')});
+    if(['paid','refund_pending','refunded'].includes(request.quotePaymentStatus))return res.json({success:true,paid:true,quote:publicEventQuoteView(request)});
+    if((request.paymentReference||'')!==expectedReference||Number(paymentIntent.amount)!==stripeAmountCents(request.quoteAmount))return res.status(409).json({error:I18n.t('Paiement non associé à ce devis')});
     request.paymentReference = paymentIntent.id || '';
     request.quotePaymentStatus = paymentIntent.status === 'processing' ? 'processing' : 'pending';
     crmCore.syncEventWorkflow(db, request.id, 'payment_pending', 'system:payment-started');
@@ -2413,15 +2411,17 @@ app.post('/api/event-quotes/:token/payment', async (req, res) => {
 });
 app.post('/api/event-quotes/:token/confirm', async (req, res) => {
   try {
-    const db = readDB();
-    const request = findEventRequestByPaymentToken(db, req.params.token);
+    let db = readDB();
+    let request = findEventRequestByPaymentToken(db, req.params.token);
     if (!request || !eventQuoteTokenIsValid(request)) return res.status(404).json({ error:I18n.t('Ce lien de paiement est invalide ou expiré') });
     const paymentIntentId = String(req.body.paymentIntentId || '').trim();
     if (!paymentIntentId || paymentIntentId !== request.paymentReference) return res.status(400).json({ error:I18n.t('Paiement non associé à ce devis') });
     const paymentIntent = await retrieveStripePaymentIntent(paymentIntentId);
+    db=readDB();request=findEventRequestByPaymentToken(db,req.params.token);
+    if(!request||request.paymentReference!==paymentIntentId)return res.status(409).json({error:I18n.t('Paiement non associé à ce devis')});
     const synced = syncEventRequestFromStripePaymentIntent(db, paymentIntent, 'client-confirm');
-    if (synced) await syncEventRequestCalendar(db, synced.id);
     writeDB(db);
+    if (synced) await syncEventRequestCalendar(db, synced.id);
     if (synced?.quotePaymentStatus === 'paid') await deliverEventQuotePaidEmail(synced.id);
     res.json({ success:true, paid:synced?.quotePaymentStatus === 'paid', quote:publicEventQuoteView(synced || request) });
   } catch (error) {
@@ -3053,8 +3053,8 @@ app.patch('/api/admin/event-requests/:id', adminOnly, async (req, res) => {
   if (nextStatus === 'payée') crmCore.syncEventWorkflow(db, workflowRequest.id, 'manual_paid', req.session.email || 'admin');
   else if (nextStatus === 'devis préparé' || pricing.quoteSubtotal > 0) crmCore.syncEventWorkflow(db, workflowRequest.id, 'quote_drafted', req.session.email || 'admin');
   else if (nextStatus === 'contactée') crmCore.syncEventWorkflow(db, workflowRequest.id, 'contacted', req.session.email || 'admin');
-  if (nextStatus === 'payée') await syncEventRequestCalendar(db, workflowRequest.id);
   writeDB(db);
+  if (nextStatus === 'payée') await syncEventRequestCalendar(db, workflowRequest.id);
   res.json({ success: true, request: db.eventRequests[i] });
 });
 app.post('/api/admin/event-requests/:id/quote-preview',adminOnly,(req,res)=>{
@@ -3815,8 +3815,8 @@ async function handleStripeWebhook(req, res) {
       const eventRequest = syncEventRequestFromStripePaymentIntent(db, obj, 'webhook:' + event.type);
       if (order?.paymentStatus === 'paid') ensurePaidOrderBookings(db, order);
       if (order?.paymentStatus === 'cancelled') { releaseEventSeatsForOrder(db, order); cancelOrderTicketBookings(db, order); }
-      if (eventRequest) await syncEventRequestCalendar(db, eventRequest.id);
       writeDB(db);
+      if (eventRequest) await syncEventRequestCalendar(db, eventRequest.id);
       if (order?.paymentStatus === 'paid') await deliverPaidOrderCommunications(order.id, 'stripe-webhook');
       if (eventRequest?.quotePaymentStatus === 'paid') await deliverEventQuotePaidEmail(eventRequest.id);
     }

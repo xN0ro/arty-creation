@@ -1,4 +1,5 @@
 'use strict';
+const workflow=require('./crm-workflow');
 
 const CRM_LEAD_STATUSES = Object.freeze(['new','contacted','qualified','quote_sent','follow_up','won','refunded','lost']);
 const CRM_LOST_REASONS = Object.freeze(['price','no_response','date_unavailable','cancelled','not_fit','competitor','other']);
@@ -8,7 +9,7 @@ function emailKey(value){return text(value,240).toLowerCase()}
 function money(value){return Number((Number(value)||0).toFixed(2))}
 function list(value,max=20){return Array.from(new Set((Array.isArray(value)?value:[]).map(v=>text(v,80)).filter(Boolean))).slice(0,max)}
 function iso(value){const d=new Date(value||0);return Number.isFinite(d.getTime())?d.toISOString():''}
-function today(){return new Date().toISOString().slice(0,10)}
+function today(){return workflow.clock().slice(0,10)}
 function dayDiff(a,b){const aa=new Date(a||0).getTime(),bb=new Date(b||0).getTime();return aa&&bb?Math.max(0,(bb-aa)/86400000):0}
 function cleanAttribution(raw={}){
   const out={},src=raw&&typeof raw==='object'?raw:{};
@@ -27,6 +28,9 @@ function crmMeta(raw={}){
   const status=CRM_LEAD_STATUSES.includes(String(raw.status||''))?String(raw.status):'new';
   return {
     status,
+    tasks:workflow.tasks(raw),
+    activities:Array.isArray(raw.activities)?raw.activities:[],
+    revision:Number(raw.revision)||0,
     nextFollowUp:text(raw.nextFollowUp,40),
     followUpType:['call','email','meeting','quote','other'].includes(String(raw.followUpType||''))?String(raw.followUpType):'call',
     followUpDuration:Math.max(5,Math.min(480,Number(raw.followUpDuration)||30)),
@@ -48,7 +52,7 @@ function crmMeta(raw={}){
     createdBy:text(raw.createdBy,240),
     updatedBy:text(raw.updatedBy,240),
     updatedAt:text(raw.updatedAt,60),
-    statusHistory:Array.isArray(raw.statusHistory)?raw.statusHistory.slice(-100).map(h=>({
+    statusHistory:Array.isArray(raw.statusHistory)?raw.statusHistory.map(h=>({
       status:CRM_LEAD_STATUSES.includes(String(h.status||''))?String(h.status):'new',
       at:text(h.at,60),by:text(h.by,240)
     })):[]
@@ -62,7 +66,7 @@ function customerMeta(db,email){
   const key=emailKey(email),raw=ensureCustomerStore(db)[key]||{};
   return {
     tags:list(raw.tags),
-    notes:Array.isArray(raw.notes)?raw.notes.slice(-100):[],
+    notes:Array.isArray(raw.notes)?raw.notes:[],
     preferredLanguage:['fr','en'].includes(raw.preferredLanguage)?raw.preferredLanguage:'',
     marketingConsent:raw.marketingConsent===true,
     marketingConsentAt:text(raw.marketingConsentAt,60),
@@ -81,6 +85,9 @@ function orderName(order,usersById){
 function paidOrder(order){
   return !order?.isTest && order?.paymentStatus==='paid' && !['annulée','remboursée','cancelled','refunded'].includes(String(order?.status||'').toLowerCase());
 }
+function netOrder(order){return paidOrder(order)?money(Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0))):0}
+function paidEvent(request){return !request.isTest&&(request.quotePaymentStatus==='paid'||Number(request.paymentAmountReceived)>0||request.status==='payée')}
+function netEvent(request){return paidEvent(request)?money(Math.max(0,Number(request.quoteNetPaid??(Number(request.paymentAmountReceived||request.quoteAmount||request.crm?.finalValue||0)-Number(request.quoteRefundedTotal||0))))):0}
 function buildCustomerIndex(db={}){
   const users=Array.isArray(db.users)?db.users:[];
   const orders=Array.isArray(db.orders)?db.orders:[];
@@ -106,9 +113,10 @@ function buildCustomerIndex(db={}){
   for(const booking of bookings){const c=ensure(booking.email||booking.customer?.email,booking.name||booking.customer?.name,booking.phone||booking.customer?.phone);if(c)c.bookings.push(booking)}
   for(const contact of contacts){if(contact.convertedEventRequestId)continue;const c=ensure(contact.email,contact.name,contact.phone);if(c)c.contacts.push(contact)}
   for(const lead of manualLeads){if(lead.convertedEventRequestId)continue;const c=ensure(lead.email,lead.name,lead.phone);if(c)c.manualLeads.push(lead)}
+  for(const ticket of db.supportRequests||[])ensure(ticket.customer?.email,ticket.customer?.name);
 
   return Array.from(map.values()).map(c=>{
-    const paid=c.orders.filter(paidOrder),lifetimeSpend=money(paid.reduce((sum,o)=>sum+Number(o.total||0),0));
+    const paid=c.orders.filter(paidOrder),orderSpend=money(c.orders.reduce((sum,o)=>sum+netOrder(o),0)),eventSpend=money(c.eventRequests.reduce((sum,r)=>sum+netEvent(r),0)),lifetimeSpend=money(orderSpend+eventSpend);
     const dates=[
       c.account?.createdAt,c.account?.lastLoginAt,c.meta.updatedAt,
       ...c.orders.map(o=>o.updatedAt||o.paidAt||o.createdAt),
@@ -121,8 +129,8 @@ function buildCustomerIndex(db={}){
       key:c.key,email:c.email,name:c.name||c.email,phone:c.phone||'',
       hasAccount:!!c.account,accountId:c.account?.id??null,createdAt:c.account?.createdAt||'',
       lastLoginAt:c.account?.lastLoginAt||'',disabled:!!c.account?.accountDisabledAt,disabledAt:c.account?.accountDisabledAt||'',
-      orderCount:c.orders.filter(o=>!o.isTest).length,paidOrderCount:paid.length,lifetimeSpend,
-      averageOrder:paid.length?money(lifetimeSpend/paid.length):0,
+      orderCount:c.orders.filter(o=>!o.isTest).length,paidOrderCount:paid.length,paidEventCount:c.eventRequests.filter(paidEvent).length,orderSpend,eventSpend,lifetimeSpend,
+      averageOrder:paid.length?money(orderSpend/paid.length):0,
       eventRequestCount:c.eventRequests.length,bookingCount:c.bookings.length,contactCount:c.contacts.length,
       leadCount:c.eventRequests.length+c.contacts.length+c.manualLeads.length,lastActivity:dates.length?dates[dates.length-1]:'',
       owners:list([
@@ -135,7 +143,7 @@ function buildCustomerIndex(db={}){
     };
   }).sort((a,b)=>String(b.lastActivity||'').localeCompare(String(a.lastActivity||'')));
 }
-function customerDetail(db={},key=''){
+function customerDetail(db={},key='',options={}){
   const email=emailKey(key),summary=buildCustomerIndex(db).find(c=>c.key===email);if(!summary)return null;
   const users=Array.isArray(db.users)?db.users:[],user=users.find(u=>emailKey(u.email)===email)||null,usersById=new Map(users.map(u=>[String(u.id),u]));
   const orders=(db.orders||[]).filter(o=>orderEmail(o,usersById)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
@@ -144,6 +152,15 @@ function customerDetail(db={},key=''){
   const contacts=(db.contactRequests||[]).filter(c=>!c.convertedEventRequestId&&emailKey(c.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const manualLeads=(db.crmLeads||[]).filter(l=>!l.convertedEventRequestId&&emailKey(l.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const meta=customerMeta(db,email),timeline=[];
+  const support=options.includeSupport===false?[]:(db.supportRequests||[]).filter(t=>emailKey(t.customer?.email)===email);
+  for(const ticket of support){
+    for(const message of ticket.messages||[])timeline.push({type:'support',at:message.at||ticket.createdAt,label:'support',id:String(ticket.id),status:ticket.status,detail:message.body||'',author:message.by||'',subject:ticket.subject||''});
+  }
+  const leadRows=buildLeads(db).filter(l=>l.email===email);
+  for(const lead of leadRows){
+    for(const activity of lead.activities||[])timeline.push({type:'activity',at:activity.at,id:activity.id,detail:activity.note||'',author:activity.by||'',activity,leadKind:lead.kind,leadId:lead.id,subject:lead.title});
+    for(const h of lead.statusHistory||[])timeline.push({type:'stage',at:h.at,id:lead.key+':'+h.at,status:h.status,author:h.by,detail:lead.title});
+  }
   if(user?.createdAt)timeline.push({type:'account',at:user.createdAt,label:'account_created',id:String(user.id)});
   if(user?.lastLoginAt)timeline.push({type:'login',at:user.lastLoginAt,label:'last_login',id:String(user.id)});
   for(const o of orders)timeline.push({type:'order',at:o.paidAt||o.createdAt||'',label:'order',id:String(o.id),status:o.status||'',amount:money(o.total),detail:(o.items||[]).map(i=>i.name).filter(Boolean).slice(0,3).join(', ')});
@@ -156,7 +173,7 @@ function customerDetail(db={},key=''){
   return {
     summary,
     account:user?{id:user.id,name:user.name,email:user.email,phone:user.phone||'',picture:user.picture||'',provider:user.provider||'',createdAt:user.createdAt||'',lastLoginAt:user.lastLoginAt||'',accountDisabledAt:user.accountDisabledAt||'',defaultAddress:user.defaultAddress||{}}:null,
-    preferences:meta,orders,eventRequests,bookings,contacts,manualLeads,notes:meta.notes,timeline
+    preferences:meta,orders,eventRequests,bookings,contacts,manualLeads,notes:meta.notes,timeline,support:support.map(t=>({id:t.id,subject:t.subject,status:t.status,updatedAt:t.updatedAt})),leads:leadRows,tasks:leadRows.flatMap(l=>(l.tasks||[]).map(t=>({...t,leadKind:l.kind,leadId:l.id,leadTitle:l.title,owner:l.owner})))
   };
 }
 function leadBase(kind,id,name,email,phone,title,createdAt,rawCrm={}){
@@ -166,15 +183,15 @@ function leadBase(kind,id,name,email,phone,title,createdAt,rawCrm={}){
 function leadFromEvent(request){
   const base=leadBase('event',request.id,request.name,request.email,request.phone,request.eventType||request.eventName||'Event',request.createdAt,request.crm);
   const attribution=cleanAttribution(request.marketingAttribution),touch=attribution.lastTouch||attribution.firstTouch||{};
-  const refunded=money(request.quoteRefundedTotal||0),pendingRefund=money(request.quoteRefundPendingTotal||0),netPaid=money(request.quoteNetPaid??Math.max(0,Number(request.paymentAmountReceived||request.quoteAmount||0)-refunded));
-  const settled=['won','refunded'].includes(base.status),settledValue=settled?netPaid:money(base.finalValue||request.quoteAmount);
+  const refunded=money(request.quoteRefundedTotal||0),pendingRefund=money(request.quoteRefundPendingTotal||0),netPaid=netEvent(request);
+  const settled=['won','refunded'].includes(base.status),settledValue=settled?(paidEvent(request)?netPaid:money(base.finalValue)):money(base.finalValue||request.quoteAmount);
   const refunds=Array.isArray(request.quoteRefunds)?request.quoteRefunds:[],latestRefund=refunds.slice().sort((a,b)=>String(b.completedAt||b.lastSyncedAt||b.createdAt||'').localeCompare(String(a.completedAt||a.lastSyncedAt||a.createdAt||'')))[0]||null;
-  return {...base,finalValue:settled?netPaid:base.finalValue,reference:request.reference||'',value:settledValue,expectedValue:money(request.quoteSubtotal??request.quoteAmount),quoteSubtotal:money(request.quoteSubtotal??request.quoteAmount),quoteShipping:money(request.quoteShipping||0),quoteTaxTotal:money(request.quoteTaxTotal||0),quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],quoteAmount:money(request.quoteAmount||0),quoteRefundedTotal:refunded,quoteRefundPendingTotal:pendingRefund,quoteNetPaid:netPaid,quoteRefundStatus:request.quoteRefundStatus||'none',quoteLastRefundAmount:money(latestRefund?.amount||0),quoteRefundReason:text(latestRefund?.reason,450),quoteRefundedAt:text(latestRefund?.completedAt||latestRefund?.lastSyncedAt||latestRefund?.createdAt,60),quoteAddress:request.quoteAddress||request.address||{},quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.quoteRefundStatus==='refunded'?'remboursée':request.quotePaymentStatus==='paid'?'payée':(request.status||''),quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||'',location:request.location||''};
+  return {...base,finalValue:settled?(paidEvent(request)||request.quotePaymentStatus==='refunded'?netPaid:base.finalValue):base.finalValue,reference:request.reference||'',value:settledValue,expectedValue:money(request.quoteSubtotal??request.quoteAmount),quoteSubtotal:money(request.quoteSubtotal??request.quoteAmount),quoteShipping:money(request.quoteShipping||0),quoteTaxTotal:money(request.quoteTaxTotal||0),quoteTaxLines:Array.isArray(request.quoteTaxLines)?request.quoteTaxLines:[],quoteAmount:money(request.quoteAmount||0),quoteRefundedTotal:refunded,quoteRefundPendingTotal:pendingRefund,quoteNetPaid:netPaid,quoteRefundStatus:request.quoteRefundStatus||'none',quoteLastRefundAmount:money(latestRefund?.amount||0),quoteRefundReason:text(latestRefund?.reason,450),quoteRefundedAt:text(latestRefund?.completedAt||latestRefund?.lastSyncedAt||latestRefund?.createdAt,60),quoteAddress:request.quoteAddress||request.address||{},quoteDescription:text(request.quoteDescription,3000),paymentLinkUrl:text(request.paymentLinkUrl,1200),quoteEmailStatus:text(request.quoteEmailDelivery?.status,80),operationalStatus:request.quoteRefundStatus==='refunded'?'remboursée':request.quotePaymentStatus==='paid'?'payée':(request.status||''),quotePaymentStatus:request.quotePaymentStatus||'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:request.eventType||request.eventName||'',preferredDate:request.preferredDate||'',location:request.location||''};
 }
 function leadFromContact(contact){
-  const base=leadBase('contact',contact.id,contact.name,contact.email,contact.phone,contact.channel==='events'?'Event inquiry':'General inquiry',contact.createdAt,contact.crm);
+  const base=leadBase('contact',contact.id,contact.name,contact.email,contact.phone,contact.subject||(contact.channel==='events'?'Event inquiry':'General inquiry'),contact.createdAt,contact.crm);
   const attribution=cleanAttribution(contact.marketingAttribution),touch=attribution.lastTouch||attribution.firstTouch||{};
-  return {...base,reference:contact.reference||'',value:money(base.finalValue),expectedValue:0,operationalStatus:'',quotePaymentStatus:'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:contact.channel==='events'?'Event inquiry':'General inquiry',preferredDate:''};
+  return {...base,reference:contact.reference||'',value:money(base.finalValue),expectedValue:0,operationalStatus:'',quotePaymentStatus:'',source:touch.source||'',campaign:touch.campaign||'',medium:touch.medium||'',eventType:contact.subject||(contact.channel==='events'?'Event inquiry':'General inquiry'),preferredDate:''};
 }
 function leadFromManual(lead){
   const base=leadBase('manual',lead.id,lead.name,lead.email,lead.phone,lead.title||lead.eventType||'Lead',lead.createdAt,lead.crm);
@@ -188,12 +205,12 @@ function buildLeads(db={}){
 }
 function crmLeadRevenueValue(lead){return lead.status==='won'?money(lead.finalValue||0):money(lead.value||lead.expectedValue||0)}
 function crmSummary(db={}){
-  const leads=buildLeads(db),customers=buildCustomerIndex(db),open=leads.filter(l=>!['won','refunded','lost'].includes(l.status)),day=today();
+  const leads=buildLeads(db),customers=buildCustomerIndex(db),open=leads.filter(l=>!['won','refunded','lost'].includes(l.status)),day=today(),pending=leads.flatMap(l=>l.tasks.filter(t=>t.status==='open'));
   return {
     customers:customers.length,accountCustomers:customers.filter(c=>c.hasAccount).length,leads:leads.length,
     newLeads:leads.filter(l=>l.status==='new').length,
-    followUpsDue:open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)<day).length,
-    followUpsToday:open.filter(l=>l.nextFollowUp&&l.nextFollowUp.slice(0,10)===day).length,
+    followUpsDue:pending.filter(t=>t.dueAt&&t.dueAt.slice(0,10)<day).length,
+    followUpsToday:pending.filter(t=>t.dueAt&&t.dueAt.slice(0,10)===day).length,
     openPipelineValue:money(open.reduce((sum,l)=>sum+Number(l.value||l.expectedValue||0),0)),
     wonValue:money(leads.filter(l=>l.status==='won').reduce((sum,l)=>sum+crmLeadRevenueValue(l),0)),
     byStatus:CRM_LEAD_STATUSES.reduce((acc,s)=>(acc[s]=leads.filter(l=>l.status===s).length,acc),{})
@@ -202,7 +219,7 @@ function crmSummary(db={}){
 function createManualLead(db,input={},actor=''){
   if(!db.crmLeads||!Array.isArray(db.crmLeads))db.crmLeads=[];
   const name=text(input.name,140),email=emailKey(input.email),phone=text(input.phone,80),title=text(input.title||input.eventType||'Lead',180);
-  if(!name||!email)return null;
+  if(!name||!email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return null;
   const createdAt=new Date().toISOString(),id=`LEAD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,7).toUpperCase()}`;
   const lead={
     id,reference:id,name,email,phone,title,eventType:text(input.eventType,180),preferredDate:text(input.preferredDate,30),
@@ -210,7 +227,7 @@ function createManualLead(db,input={},actor=''){
     createdAt,updatedAt:createdAt,
     crm:{status:CRM_LEAD_STATUSES.includes(String(input.status||''))?String(input.status):'new',nextFollowUp:text(input.nextFollowUp,40),followUpType:['call','email','meeting','quote','other'].includes(String(input.followUpType||''))?String(input.followUpType):'call',followUpDuration:Math.max(5,Math.min(480,Number(input.followUpDuration)||30)),calendar:{eventId:'',htmlLink:'',status:'',syncedAt:'',error:''},owner:text(input.owner,240),tags:list(input.tags),adminNote:text(input.adminNote,3000),lostReason:'',finalValue:0,wonAt:'',lostAt:'',createdBy:text(actor,240),updatedBy:text(actor,240),updatedAt:createdAt,statusHistory:[{status:'new',at:createdAt,by:text(actor,240)}]}
   };
-  db.crmLeads.push(lead);return leadFromManual(lead);
+  lead.crm.tasks=[];lead.crm.activities=[];workflow.applyLegacy(lead.crm,{nextFollowUp:'',status:'new'},{nextFollowUp:input.nextFollowUp||''},actor);db.crmLeads.push(lead);return leadFromManual(lead);
 }
 function syncEventWorkflow(db,id,signal,actor='system',options={}){
   const request=(db.eventRequests||[]).find(item=>String(item.id)===String(id));
@@ -239,7 +256,11 @@ function syncEventWorkflow(db,id,signal,actor='system',options={}){
 function updateLead(db,kind,id,patch={},actor=''){
   const collection=kind==='event'?(db.eventRequests||[]):kind==='contact'?(db.contactRequests||[]):kind==='manual'?(db.crmLeads||[]):null;if(!collection)return null;
   const item=collection.find(x=>String(x.id)===String(id));if(!item)return null;
-  const current=crmMeta(item.crm),nextStatus=CRM_LEAD_STATUSES.includes(String(patch.status||''))?String(patch.status):current.status,now=new Date().toISOString();
+  if(kind==='manual'){if(patch.name!==undefined&&!text(patch.name,140))workflow.invalid('Nom requis','Name is required');if(patch.email!==undefined&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailKey(patch.email)))workflow.invalid('Courriel invalide','Invalid email')}
+  const current=crmMeta(item.crm);
+  if(patch.expectedRevision!==undefined&&Number(patch.expectedRevision)!==current.revision){const error=new Error('This lead changed. Refresh it before saving.');error.fr='Ce prospect a changé. Actualisez-le avant de sauvegarder.';error.status=409;throw error}
+  if(patch.nextFollowUp!==undefined)workflow.due(patch.nextFollowUp);
+  const nextStatus=CRM_LEAD_STATUSES.includes(String(patch.status||''))?String(patch.status):current.status,now=new Date().toISOString();
   const history=[...current.statusHistory];
   if(nextStatus!==current.status)history.push({status:nextStatus,at:now,by:text(actor,240)});
   let wonAt=current.wonAt,refundedAt=current.refundedAt,lostAt=current.lostAt,lostReason=current.lostReason;
@@ -255,7 +276,7 @@ function updateLead(db,kind,id,patch={},actor=''){
     owner:text(patch.owner??current.owner,240),
     tags:patch.tags===undefined?current.tags:list(patch.tags),adminNote:text(patch.adminNote??current.adminNote,3000),
     lostReason,finalValue:patch.finalValue===undefined?current.finalValue:money(patch.finalValue),wonAt,refundedAt,lostAt,
-    createdBy:current.createdBy||text(actor,240),updatedBy:text(actor,240),updatedAt:now,statusHistory:history.slice(-100)
+    createdBy:current.createdBy||text(actor,240),updatedBy:text(actor,240),updatedAt:now,statusHistory:history,revision:current.revision+1
   };
   if(kind==='manual'){
     if(patch.name!==undefined)item.name=text(patch.name,140);
@@ -269,6 +290,8 @@ function updateLead(db,kind,id,patch={},actor=''){
     if(patch.campaign!==undefined)item.campaign=text(patch.campaign,140);
     if(patch.message!==undefined)item.message=text(patch.message,3000);
   }
+  workflow.applyLegacy(item.crm,current,patch,actor);
+  if(patch.adminNote!==undefined&&patch.adminNote!==current.adminNote)workflow.event(item.crm,'note_updated',actor,{note:item.crm.adminNote});
   item.updatedAt=now;
   return kind==='event'?leadFromEvent(item):kind==='contact'?leadFromContact(item):leadFromManual(item);
 }
@@ -279,7 +302,7 @@ function updateCustomerTags(db,email,tags){
 function addCustomerNote(db,email,note,actor=''){
   const key=emailKey(email),value=text(note,3000);if(!key||!value)return null;const store=ensureCustomerStore(db),existing=store[key]||{},notes=Array.isArray(existing.notes)?existing.notes:[];
   const item={id:`NOTE-${Date.now().toString(36).toUpperCase()}`,text:value,author:text(actor,240),createdAt:new Date().toISOString()};
-  store[key]={...existing,tags:list(existing.tags),notes:[...notes,item].slice(-100),updatedAt:item.createdAt};return item;
+  store[key]={...existing,tags:list(existing.tags),notes:[...notes,item],updatedAt:item.createdAt};return item;
 }
 function updateCustomerPreferences(db,email,input={},actor=''){
   const key=emailKey(email);if(!key)return null;const store=ensureCustomerStore(db),existing=store[key]||{},now=new Date().toISOString();
@@ -304,11 +327,17 @@ function crmActionCenter(db={}){
   const paymentPending=orderPaymentsPending+eventPaymentsPending;
   const recentOrders=(db.orders||[]).filter(o=>!o.isTest).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,6).map(o=>({id:o.id,total:money(o.total),status:o.status||'',paymentStatus:o.paymentStatus||'',createdAt:o.createdAt||''}));
   const lowInventory=(db.kits||[]).filter(k=>k.inStock===false||(Number.isFinite(Number(k.stockQty))&&Number(k.stockQty)<=Number(k.lowStockThreshold??3))).slice(0,12).map(k=>({id:k.id,name:k.name||'',stockQty:Number(k.stockQty)||0,inStock:k.inStock!==false}));
-  return {newLeads,overdue,dueToday,quoteWaiting,paymentPending,orderPaymentsPending,eventPaymentsPending,recentOrders,lowInventory};
+  const taskRows=leads.flatMap(l=>l.tasks.filter(t=>t.status==='open').map(t=>({...t,leadKind:l.kind,leadId:l.id,leadKey:l.key,name:l.name,email:l.email,title:t.title||l.title,owner:l.owner,leadStatus:l.status}))).sort((a,b)=>a.dueAt.localeCompare(b.dueAt)||(a.priority==='high'?-1:1));
+  const noNextAction=open.filter(l=>!l.tasks.some(t=>t.status==='open'));
+  const unassigned=open.filter(l=>!l.owner);
+  const staleQuotes=quoteWaiting.filter(l=>dayDiff(l.statusHistory.filter(h=>h.status==='quote_sent').at(-1)?.at||l.updatedAt||l.createdAt,new Date())>=3);
+  return {newLeads,overdue,dueToday,quoteWaiting,paymentPending,orderPaymentsPending,eventPaymentsPending,recentOrders,lowInventory,tasks:taskRows,noNextAction,unassigned,staleQuotes,timeZone:workflow.zone(),today:day,now:workflow.clock(),queues:{overdue:taskRows.filter(t=>t.dueAt.slice(0,10)<day).length,today:taskRows.filter(t=>t.dueAt.slice(0,10)===day).length,upcoming:taskRows.filter(t=>t.dueAt.slice(0,10)>day).length,unassigned:unassigned.length,no_next:noNextAction.length}};
 }
 function crmReporting(db={}){
-  const leads=buildLeads(db),customers=buildCustomerIndex(db),won=leads.filter(l=>l.status==='won'),qualified=leads.filter(l=>['qualified','quote_sent','follow_up','won','refunded','lost'].includes(l.status));
-  const quoted=leads.filter(l=>['quote_sent','follow_up','won','refunded','lost'].includes(l.status));
+  const leads=buildLeads(db),customers=buildCustomerIndex(db),won=leads.filter(l=>l.status==='won');
+  const quoted=leads.filter(l=>l.quoteEmailStatus==='sent'||l.status==='quote_sent'||l.statusHistory.some(h=>h.status==='quote_sent'));
+  const qualified=leads.filter(l=>l.status==='qualified'||l.statusHistory.some(h=>h.status==='qualified')||quoted.includes(l));
+  const quotedWon=quoted.filter(l=>l.status==='won');
   const sourceMap={};
   for(const lead of leads){
     const key=lead.source||'direct/manual';if(!sourceMap[key])sourceMap[key]={source:key,leads:0,won:0,value:0};
@@ -320,12 +349,12 @@ function crmReporting(db={}){
     eventMap[key].leads++;if(lead.status==='won'){eventMap[key].won++;eventMap[key].value+=crmLeadRevenueValue(lead)}
   }
   const salesCycles=won.map(l=>dayDiff(l.createdAt,l.wonAt||l.updatedAt)).filter(Number.isFinite);
-  const paying=customers.filter(c=>c.paidOrderCount>0),repeat=paying.filter(c=>c.paidOrderCount>1);
+  const paying=customers.filter(c=>c.paidOrderCount+c.paidEventCount>0),repeat=paying.filter(c=>c.paidOrderCount+c.paidEventCount>1);
   return {
     totals:{leads:leads.length,qualified:qualified.length,quoted:quoted.length,won:won.length,refunded:leads.filter(l=>l.status==='refunded').length,lost:leads.filter(l=>l.status==='lost').length},
     rates:{
       leadToQuote:leads.length?Number((quoted.length/leads.length*100).toFixed(1)):0,
-      quoteToWon:quoted.length?Number((won.length/quoted.length*100).toFixed(1)):0,
+      quoteToWon:quoted.length?Number((quotedWon.length/quoted.length*100).toFixed(1)):0,
       repeatCustomer:paying.length?Number((repeat.length/paying.length*100).toFixed(1)):0
     },
     averageWonValue:won.length?money(won.reduce((s,l)=>s+crmLeadRevenueValue(l),0)/won.length):0,
@@ -337,5 +366,5 @@ function crmReporting(db={}){
 
 module.exports={
   CRM_LEAD_STATUSES,CRM_LOST_REASONS,emailKey,crmMeta,cleanAttribution,buildCustomerIndex,customerDetail,buildLeads,crmSummary,
-  createManualLead,updateLead,syncEventWorkflow,updateCustomerTags,addCustomerNote,updateCustomerPreferences,crmActionCenter,crmReporting
+  createManualLead,updateLead,syncEventWorkflow,updateCustomerTags,addCustomerNote,updateCustomerPreferences,crmActionCenter,crmReporting,netOrder,netEvent
 };

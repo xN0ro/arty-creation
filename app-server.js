@@ -9,6 +9,8 @@ const commerceCore=require('./commerce-core');
 const marketingCore=require('./marketing-core');
 const crmCore=require('./crm-core');
 const googleCalendar=require('./google-calendar');
+const crmWorkflow=require('./crm-workflow');
+const crmCalendar=require('./crm-calendar-sync');
 
 const DEFAULT_STUDIO_CONFIG={
   version:1,
@@ -23,8 +25,8 @@ function resolveDbPath(){
   const dataDir=process.env.ARTY_DATA_DIR||process.env.DATA_DIR||process.env.RENDER_DISK_PATH||(process.env.RENDER&&fs.existsSync('/var/data')?'/var/data':path.join(__dirname,'data'));
   return path.resolve(dataDir,'db.json');
 }
-function readDb(){try{return JSON.parse(fs.readFileSync(resolveDbPath(),'utf8'))}catch{return {}}}
-function writeDb(db){const file=resolveDbPath(),dir=path.dirname(file);if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const tmp=`${file}.${process.pid}.${Date.now()}.ext.tmp`;fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,file)}
+function readDb(){const file=resolveDbPath();if(!fs.existsSync(file))return {};return JSON.parse(fs.readFileSync(file,'utf8'))}
+function writeDb(db){const file=resolveDbPath(),dir=path.dirname(file);if(!fs.existsSync(dir))fs.mkdirSync(dir,{recursive:true});const tmp=`${file}.${process.pid}.${Date.now()}.ext.tmp`;if(fs.existsSync(file))fs.copyFileSync(file,file+'.bak');fs.writeFileSync(tmp,JSON.stringify(db,null,2));fs.renameSync(tmp,file)}
 function hashToken(token){return crypto.createHash('sha256').update(String(token||'')).digest('hex')}
 function extensionGrant(db,email){const normalized=String(email||'').trim().toLowerCase();return(db.adminAccessGrants||[]).find(grant=>grant.active!==false&&String(grant.email||'').trim().toLowerCase()===normalized&&(grant.emailVerifiedAt||grant.acceptedAt))||null}
 function extensionPermission(req){
@@ -51,7 +53,7 @@ function adminOnly(req,res,next){
 }
 function text(value,max=160){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
 function crmError(req,fr,en){return requestLanguage(req)==='en'?en:fr}
-function csvCell(value){const s=String(value??'');return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function csvCell(value){const raw=String(value??'');const s=/^[=+@\-\t\r]/.test(raw)?"'"+raw:raw;return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 function csv(rows,columns){return [columns.map(c=>csvCell(c.label)).join(','),...rows.map(row=>columns.map(c=>csvCell(typeof c.value==='function'?c.value(row):row[c.value])).join(','))].join('\r\n')}
 function crmSessionEmail(req){return String(req.extensionSession?.email||'').trim().toLowerCase()}
 function crmStaffScoped(req){return req.extensionSession?.role==='staff'&&!(req.extensionSession?.permissions||[]).includes('crm_manager')}
@@ -70,7 +72,9 @@ function crmCustomerRows(db,req){
 function crmScopedDb(db,req){
   if(!crmStaffScoped(req))return db;
   const email=crmSessionEmail(req),owned=item=>String(item?.crm?.owner||'').trim().toLowerCase()===email;
-  return{...db,eventRequests:(db.eventRequests||[]).filter(owned),contactRequests:(db.contactRequests||[]).filter(owned),crmLeads:(db.crmLeads||[]).filter(owned)};
+  const keys=new Set(crmCustomerRows(db,req).map(c=>c.email));
+  const users=(db.users||[]).filter(u=>keys.has(crmCore.emailKey(u.email))),ids=new Set(users.map(u=>String(u.id)));
+  return{...db,users,orders:(db.orders||[]).filter(o=>keys.has(crmCore.emailKey(o.customer?.email||o.guestEmail))||ids.has(String(o.userId))),bookings:(db.bookings||[]).filter(b=>keys.has(crmCore.emailKey(b.email||b.customer?.email))),crmCustomers:Object.fromEntries(Object.entries(db.crmCustomers||{}).filter(([key])=>keys.has(key))),supportRequests:(db.supportRequests||[]).filter(t=>keys.has(crmCore.emailKey(t.customer?.email))),eventRequests:(db.eventRequests||[]).filter(owned),contactRequests:(db.contactRequests||[]).filter(owned),crmLeads:(db.crmLeads||[]).filter(owned)};
 }
 function crmCanAccessCustomer(db,email,req){
   if(!crmStaffScoped(req))return true;
@@ -88,18 +92,8 @@ function crmRawLeadItem(db,kind,id){
 function googleCalendarIntegration(db){
   return db.crmIntegrations?.googleCalendar||{};
 }
-async function syncCrmCalendar(db,lead){
-  const item=crmRawLeadItem(db,lead.kind,lead.id);if(!item)return{action:'missing'};
-  item.crm=item.crm||{};const prior=item.crm.calendar||{};
-  try{
-    const result=await googleCalendar.syncFollowUp(lead,prior,googleCalendarIntegration(db));
-    item.crm.calendar={eventId:String(result.eventId||''),htmlLink:String(result.htmlLink||prior.htmlLink||''),status:String(result.action||''),syncedAt:new Date().toISOString(),error:''};
-    return result;
-  }catch(error){
-    item.crm.calendar={...prior,status:'error',syncedAt:new Date().toISOString(),error:String(error.message||error).slice(0,1000)};
-    return{action:'error',error:String(error.message||error)};
-  }
-}
+function syncCrmCalendar(lead){return crmCalendar.sync({kind:lead.kind,id:lead.id,read:readDb,write:writeDb})}
+function crmFailure(req,res,error){return res.status(error.status||500).json({error:requestLanguage(req)==='fr'?(error.fr||'Impossible d’enregistrer la modification'):(error.status?error.message:'Could not save the change')})}
 
 function num(value,fallback=0,min=0,max=100000){const n=Number(value);return Number.isFinite(n)?Math.min(max,Math.max(min,n)):fallback}
 function slug(value,fallback=`product-${Date.now()}`){const cleaned=String(value||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);return cleaned||fallback}
@@ -250,7 +244,7 @@ function installExtensionRoutes(app){
   app.get('/api/admin/crm/customers',adminOnly,(req,res)=>res.json(crmCustomerRows(readDb(),req)));
   app.get('/api/admin/crm/customers/:email',adminOnly,(req,res)=>{
     const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
-    const detail=crmCore.customerDetail(db,req.params.email);if(!detail)return res.status(404).json({error:crmError(req,'Client introuvable','Customer not found')});res.json(detail);
+    const detail=crmCore.customerDetail(crmScopedDb(db,req),req.params.email,{includeSupport:req.extensionSession.role==='admin'||(req.extensionSession.permissions||[]).includes('support')});if(!detail)return res.status(404).json({error:crmError(req,'Client introuvable','Customer not found')});res.json(detail);
   });
   app.put('/api/admin/crm/customers/:email/tags',adminOnly,(req,res)=>{
     const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
@@ -262,13 +256,14 @@ function installExtensionRoutes(app){
   });
   app.put('/api/admin/crm/customers/:email/preferences',adminOnly,(req,res)=>{
     const db=readDb();if(!crmCanAccessCustomer(db,req.params.email,req))return res.status(403).json({error:crmError(req,'Ce client ne vous est pas assigné','This customer is not assigned to you')});
+    if(req.body?.marketingConsent!==undefined)return res.status(400).json({error:crmError(req,'Le consentement marketing est modifié par le client depuis son compte','Marketing consent is changed by the customer from their account')});
     const preferences=crmCore.updateCustomerPreferences(db,req.params.email,req.body||{},crmSessionEmail(req)||'admin');if(!preferences)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,preferences});
   });
   app.get('/api/admin/crm/leads',adminOnly,(req,res)=>res.json(crmLeadRows(readDb(),req)));
   app.post('/api/admin/crm/leads',adminOnly,async(req,res)=>{
-    const db=readDb(),body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
+    try{const db=readDb(),body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
     const lead=crmCore.createManualLead(db,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(400).json({error:crmError(req,'Nom et courriel requis','Name and email are required')});
-    const calendarSync=await syncCrmCalendar(db,lead);writeDb(db);res.json({success:true,lead,calendarSync});
+    writeDb(db);const calendarSync=await syncCrmCalendar(lead);res.json({success:true,lead:crmCore.buildLeads(readDb()).find(l=>l.key===lead.key)||lead,calendarSync});}catch(error){crmFailure(req,res,error)}
   });
   app.post('/api/admin/crm/leads/:kind/:id/convert-event',adminOnly,(req,res)=>{
     const db=readDb(),kind=String(req.params.kind||''),id=String(req.params.id||'');
@@ -282,6 +277,7 @@ function installExtensionRoutes(app){
       const existing=crmCore.buildLeads(db).find(lead=>lead.kind==='event'&&String(lead.id)===String(source.convertedEventRequestId));
       if(existing)return res.json({success:true,lead:existing,converted:false});
     }
+    if(crmCalendar.isSyncing(kind,id))return res.status(409).json({error:crmError(req,'La synchronisation est en cours. Réessayez dans un instant.','Calendar sync is in progress. Try again in a moment.')});
     let eventId=Date.now();while((db.eventRequests||[]).some(item=>String(item.id)===String(eventId)))eventId++;
     const body=req.body||{},now=new Date().toISOString(),rawAddress=body.address&&typeof body.address==='object'?body.address:{},location=text(rawAddress.line1||body.location||'',240),crm=crmCore.crmMeta(source.crm||{});
     const eventType=text(body.eventType||currentLead.eventType||currentLead.title||'ARTY event',180)||'ARTY event';
@@ -309,10 +305,39 @@ function installExtensionRoutes(app){
     res.json({success:true,lead,converted:true});
   });
   app.patch('/api/admin/crm/leads/:kind/:id',adminOnly,async(req,res)=>{
-    const db=readDb();if(!crmCanAccessLead(db,req.params.kind,req.params.id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
+    try{const db=readDb();if(!crmCanAccessLead(db,req.params.kind,req.params.id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
     const body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
     const lead=crmCore.updateLead(db,req.params.kind,req.params.id,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
-    const calendarSync=await syncCrmCalendar(db,lead);writeDb(db);res.json({success:true,lead,calendarSync});
+    writeDb(db);const calendarSync=await syncCrmCalendar(lead);res.json({success:true,lead:crmCore.buildLeads(readDb()).find(l=>l.key===lead.key)||lead,calendarSync});}catch(error){crmFailure(req,res,error)}
+  });
+  for(const [method,path,operation] of [
+    ['post','/api/admin/crm/leads/:kind/:id/tasks','create'],
+    ['patch','/api/admin/crm/leads/:kind/:id/tasks/:taskId','update'],
+    ['post','/api/admin/crm/leads/:kind/:id/activities','activity']
+  ])app[method](path,adminOnly,async(req,res)=>{
+    try{
+      const db=readDb(),{kind,id}=req.params,actor=crmSessionEmail(req);
+      if(!crmCanAccessLead(db,kind,id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
+      const item=crmRawLeadItem(db,kind,id);if(!item||item.convertedEventRequestId)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
+      const meta=crmCore.crmMeta(item.crm),body=req.body||{};
+      if(body.expectedRevision!==undefined&&Number(body.expectedRevision)!==meta.revision)return res.status(409).json({error:crmError(req,'Ce prospect a changé. Actualisez-le avant de sauvegarder.','This lead changed. Refresh it before saving.')});
+      if(body.nextTask)crmWorkflow.due(body.nextTask.dueAt);
+      let result;
+      if(operation==='create')result=crmWorkflow.createTask(meta,body,actor);
+      else if(operation==='update')result=crmWorkflow.updateTask(meta,req.params.taskId,body,actor);
+      else result=crmWorkflow.logActivity(meta,body,actor);
+      if(!result)return res.status(404).json({error:crmError(req,'Suivi introuvable','Task not found')});
+      if(body.nextTask)crmWorkflow.createTask(meta,{...body.nextTask,requestKey:'next:'+result.id},actor);
+      meta.updatedAt=new Date().toISOString();meta.updatedBy=actor;meta.revision++;item.crm=meta;item.updatedAt=meta.updatedAt;
+      writeDb(db);
+      const calendarSync=operation==='activity'&&!body.nextTask?{action:'none'}:await syncCrmCalendar({kind,id});
+      res.json({success:true,result,calendarSync,lead:crmCore.buildLeads(readDb()).find(l=>l.kind===kind&&String(l.id)===String(id))});
+    }catch(error){crmFailure(req,res,error)}
+  });
+  app.post('/api/admin/crm/leads/:kind/:id/calendar-sync',adminOnly,async(req,res)=>{
+    try{if(!crmCanAccessLead(readDb(),req.params.kind,req.params.id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
+      const calendarSync=await syncCrmCalendar(req.params);res.json({success:true,calendarSync});
+    }catch(error){crmFailure(req,res,error)}
   });
   app.delete('/api/admin/crm/leads/:kind/:id',adminOnly,async(req,res)=>{
     const db=readDb(),kind=String(req.params.kind||''),id=String(req.params.id||'');
@@ -322,10 +347,9 @@ function installExtensionRoutes(app){
     const raw=db.crmLeads[index],crm=crmCore.crmMeta(raw.crm||{}),actor=crmSessionEmail(req);
     if(raw.convertedEventRequestId)return res.status(409).json({error:crmError(req,'Ce prospect est lié à un événement et ne peut plus être supprimé','This lead is linked to an event and can no longer be deleted')});
     if(req.extensionSession?.role!=='admin'&&String(crm.createdBy||'').toLowerCase()!==actor)return res.status(403).json({error:crmError(req,'Vous pouvez supprimer uniquement les prospects que vous avez créés','You can delete only leads you created')});
-    const lead=crmCore.buildLeads(db).find(item=>item.kind==='manual'&&String(item.id)===id);
-    if(lead&&crm.calendar?.eventId){
-      try{await googleCalendar.syncFollowUp({...lead,nextFollowUp:''},crm.calendar,googleCalendarIntegration(db))}catch{}
-    }
+    if(crmCalendar.isSyncing(kind,id))return res.status(409).json({error:crmError(req,'La synchronisation est en cours. Réessayez dans un instant.','Calendar sync is in progress. Try again in a moment.')});
+    const tasks=crmWorkflow.tasks(crm);
+    if(tasks.some(t=>t.status==='open'||t.calendar?.eventId))return res.status(409).json({error:crmError(req,'Annulez les suivis et synchronisez le calendrier avant de supprimer ce prospect','Cancel follow-ups and sync the calendar before deleting this lead')});
     db.crmLeads.splice(index,1);writeDb(db);res.json({success:true,id});
   });
   app.get('/api/admin/crm/export/customers.csv',adminOnly,(req,res)=>{
@@ -348,7 +372,7 @@ function installExtensionRoutes(app){
   });
   app.get('/api/admin/crm/export/backup.json',adminOnly,(req,res)=>{
     if(req.extensionSession?.role!=='admin')return res.status(403).json({error:crmError(req,'Accès propriétaire requis','Owner access required')});
-    const db=readDb(),backup={version:2,exportedAt:new Date().toISOString(),customers:crmCore.buildCustomerIndex(db),leads:crmCore.buildLeads(db),crmCustomers:db.crmCustomers||{},crmLeads:db.crmLeads||[]};
+    const db=readDb(),backup={version:3,exportedAt:new Date().toISOString(),customers:crmCore.buildCustomerIndex(db),leads:crmCore.buildLeads(db),crmCustomers:db.crmCustomers||{},crmLeads:db.crmLeads||[],eventRequests:db.eventRequests||[],contactRequests:db.contactRequests||[]};
     res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Content-Disposition','attachment; filename="arty-crm-backup.json"');res.send(JSON.stringify(backup,null,2));
   });
 }
