@@ -19,7 +19,10 @@ beforeEach(()=>server.writeDB({
   adminEmails:['owner@example.test'],
   users:[{id:1,name:'Owner',email:'owner@example.test',password:hash,provider:'local',role:'admin',emailVerifiedAt:'2026-01-01T00:00:00Z'}],
   adminAccessGrants:[],sessions:[],passwordResetTokens:[],
-  orders:[{id:'ORD-NONSTRIPE',status:'payée',paymentStatus:'paid',paymentProvider:'not_connected',paymentReference:'',total:25,refundedTotal:0,refundStatus:'none',createdAt:'2026-09-19T12:00:00Z',items:[]}],
+  orders:[
+    {id:'ORD-NONSTRIPE',status:'payée',paymentStatus:'paid',paymentProvider:'not_connected',paymentReference:'',total:25,refundedTotal:0,refundStatus:'none',createdAt:'2026-09-19T12:00:00Z',items:[]},
+    {id:'ORD-UNPAID',status:'en attente de paiement',paymentStatus:'pending',paymentProvider:'stripe',paymentReference:'pi_unpaid_test',total:57.49,refundedTotal:0,refundStatus:'none',createdAt:'2026-09-21T12:00:00Z',items:[]}
+  ],
   refunds:[],eventRequests:[],bookings:[],contactRequests:[],crmLeads:[],crmCustomers:{},supportRequests:[],kits:[]
 }));
 
@@ -43,6 +46,18 @@ test('refund action never marks a non-Stripe order refunded',async()=>{
   const db=server.readDB();
   assert.equal(db.orders[0].refundedTotal,0);
   assert.equal(db.orders[0].refundStatus,'none');
+  assert.equal(db.refunds.length,0);
+});
+
+test('refund action rejects an unpaid Stripe PaymentIntent before contacting Stripe',async()=>{
+  const admin=await login();
+  const result=await request('/admin/orders/ORD-UNPAID/refund',{method:'POST',token:admin.data.token,body:{amount:57.49,reason:'Should not refund',restock:false}});
+  assert.equal(result.status,409);
+  assert.match(String(result.data.error||''),/Aucun paiement Stripe confirmé/i);
+  const db=server.readDB();
+  const order=db.orders.find(item=>item.id==='ORD-UNPAID');
+  assert.equal(order.paymentStatus,'pending');
+  assert.equal(order.refundedTotal,0);
   assert.equal(db.refunds.length,0);
 });
 
