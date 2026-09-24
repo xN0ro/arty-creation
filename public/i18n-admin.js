@@ -101,7 +101,7 @@ englishAdminHook('applyProductTemplate',()=>{
     ['marketing-client.js?v=20260919-admin-fixes-2','artyMarketingReadiness'],
     ['marketing-admin-fix.js?v=20260919-admin-fixes-2','artyMarketingAdminFix'],
     ['product-admin-enhancements.js','artyProductAdminEnhancements'],
-    ['studio-admin.js?v=20260924-studio-1','artyStudioAdminEnhancements'],
+    ['studio-admin.js?v=20260924-studio-2','artyStudioAdminEnhancements'],
     ['commerce-client.js?v=20260919-staff-permissions-1','artyCommerceEnhancements'],
     ['commerce-profile-fix.js','artyCommerceProfileEnhancement'],
     ['admin-management-enhancements.js?v=20260918-admin-scale-3','artyAdminManagementEnhancements'],
