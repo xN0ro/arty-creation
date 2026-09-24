@@ -4120,6 +4120,58 @@ function buildEventTicketItem(db, raw, qty) {
     }
   };
 }
+function studioOrderProductConfig(db, productId) {
+  const fallback = [
+    {id:'canvas',active:true,nameFr:'Toile rectangulaire',nameEn:'Rectangular canvas',basePrice:69.99,extraImagePrice:0,sizes:[
+      {id:'petit',labelFr:'11 x 14',labelEn:'11 x 14',price:49.99},
+      {id:'moyen',labelFr:'16 x 20',labelEn:'16 x 20',price:69.99},
+      {id:'grand',labelFr:'18 x 24',labelEn:'18 x 24',price:89.99}
+    ],options:[]},
+    {id:'bag',active:true,nameFr:'Sac en toile',nameEn:'Canvas tote bag',basePrice:34.99,extraImagePrice:6,sizes:[{id:'standard',labelFr:'Format standard',labelEn:'Standard size',price:34.99}],options:[]}
+  ];
+  const products = Array.isArray(db.studioConfig?.products) && db.studioConfig.products.length ? db.studioConfig.products : fallback;
+  return products.find(product => String(product?.id || '') === String(productId || '') && product.active !== false) || null;
+}
+function buildStudioOrderItem(db, raw, qty) {
+  const customData = raw.customData && typeof raw.customData === 'object' ? raw.customData : {};
+  const productId = String(customData.productType || '').trim();
+  const product = studioOrderProductConfig(db, productId);
+  if (!product) return { error: I18n.t('Ce produit du Studio n’est plus disponible') };
+  const sizes = Array.isArray(product.sizes) ? product.sizes : [];
+  const sizeId = String(customData.size || '').trim();
+  const size = sizes.find(option => String(option?.id || '') === sizeId) || (sizes.length === 1 ? sizes[0] : null);
+  if (!size) return { error: I18n.t('Choisissez un format valide pour votre création') };
+  const requestedOptions = Array.isArray(customData.options) ? customData.options : [];
+  const selectedOptionIds = [...new Set(requestedOptions.map(option => String(option?.id || '').trim()).filter(Boolean))];
+  const options = Array.isArray(product.options) ? product.options : [];
+  const selectedOptions = selectedOptionIds.map(id => options.find(option => String(option?.id || '') === id && option.active !== false));
+  if (selectedOptions.some(option => !option)) return { error: I18n.t('Une option choisie pour votre création n’est plus disponible') };
+  const imageCount = Math.max(1, Math.min(6, parseInt(customData.imageCount) || 1));
+  const basePrice = Math.max(0, Number(size.price ?? product.basePrice) || 0);
+  const optionTotal = selectedOptions.reduce((sum, option) => sum + Math.max(0, Number(option.priceDelta) || 0), 0);
+  const imageTotal = Math.max(0, imageCount - 1) * Math.max(0, Number(product.extraImagePrice) || 0);
+  const unitPrice = money(basePrice + optionTotal + imageTotal);
+  if (!unitPrice) return { error: I18n.t('Prix invalide pour le produit personnalisé') };
+  const name = String(raw.name || product.nameFr || product.nameEn || I18n.t('Création personnalisée')).trim();
+  return {
+    id: String(raw.id || `custom-studio-${Date.now()}`),
+    type: 'custom-studio',
+    name,
+    unitPrice,
+    price: unitPrice,
+    image: String(raw.image || '').trim(),
+    qty,
+    customData: {
+      ...customData,
+      productType: product.id,
+      size: size.id,
+      sizeLabel: size.labelFr || size.labelEn || size.id,
+      options: selectedOptions.map(option => ({id:option.id,label:option.labelFr || option.labelEn || option.id,priceDelta:Math.max(0, Number(option.priceDelta) || 0)})),
+      imageCount,
+      serverPriced: true
+    }
+  };
+}
 function buildOrderItems(db, rawItems = []) {
   const items = [];
   for (const raw of rawItems) {
@@ -4142,6 +4194,12 @@ function buildOrderItems(db, rawItems = []) {
     }
     if (rawType === 'custom-event-package' || rawId.startsWith('event-package-')) {
       const built = calculateCustomPackageItem(db, { ...raw, qty }, 'custom-event-package');
+      if (built.error) return built;
+      items.push(built);
+      continue;
+    }
+    if (rawType === 'custom-studio' || rawId.startsWith('custom-studio-')) {
+      const built = buildStudioOrderItem(db, { ...raw, qty }, qty);
       if (built.error) return built;
       items.push(built);
       continue;
