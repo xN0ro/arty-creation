@@ -55,17 +55,36 @@ app.use('/api/orders', createRateLimiter({ windowMs: 10 * 60 * 1000, max: 30, sc
 app.use(bodyParser.json({ limit: '25mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '25mb' }));
 
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// The bundled homepage currently contains several multi-megabyte PNG files.
+// Apply the same egress protection and lazy WebP conversion to those assets,
+// otherwise a bot could repeatedly request them even if /uploads is protected.
+app.use(createUploadBandwidthGuard({
+  directory: PUBLIC_DIR,
+  requestWindowMs: 60 * 1000,
+  maxRequests: Math.max(120, parseInt(process.env.ARTY_PUBLIC_ASSET_REQUESTS_PER_MINUTE || '300', 10) || 300),
+  byteWindowMs: 60 * 60 * 1000,
+  maxBytes: Math.max(50, parseInt(process.env.ARTY_PUBLIC_ASSET_MB_PER_HOUR || '150', 10) || 150) * 1024 * 1024,
+  dailyWindowMs: 24 * 60 * 60 * 1000,
+  maxDailyBytes: Math.max(150, parseInt(process.env.ARTY_PUBLIC_ASSET_MB_PER_DAY || '400', 10) || 400) * 1024 * 1024
+}));
+app.use(createOptimizedUploadMiddleware({
+  directory: PUBLIC_DIR,
+  cacheControl: 'public, max-age=3600, stale-while-revalidate=604800'
+}));
+
 // Public assets are revalidated/cached instead of being downloaded on every
 // navigation. index.html itself remains short-lived so deploys appear quickly.
-app.use(express.static(path.join(__dirname, 'public'), {
+app.use(express.static(PUBLIC_DIR, {
   etag: true,
   lastModified: true,
-  maxAge: '10m',
+  maxAge: '1h',
   setHeaders(res, filePath) {
     if (path.basename(filePath).toLowerCase() === 'index.html') {
       res.setHeader('Cache-Control', 'no-cache');
     } else {
-      res.setHeader('Cache-Control', 'public, max-age=600, stale-while-revalidate=86400');
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=604800');
     }
   }
 }));
