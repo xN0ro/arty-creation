@@ -378,9 +378,30 @@ function installExtensionRoutes(app){
 }
 
 function wrappedExpress(...args){
-  const app=realExpress(...args),originalUse=app.use.bind(app);let useCount=0;
-  installMarketingPublicRoutes(app);
-  app.use=function(...useArgs){const result=originalUse(...useArgs);useCount+=1;if(useCount===4)installExtensionRoutes(app);return result};
+  const app=realExpress(...args),originalUse=app.use.bind(app);
+  let marketingInstalled=false,extensionsInstalled=false;
+  app.use=function(...useArgs){
+    const mount=typeof useArgs[0]==='string'?useArgs[0]:'';
+    const middleware=useArgs.find(value=>typeof value==='function');
+
+    // Install SEO/marketing pages after the global security/compression guards
+    // but immediately before the public static middleware so / and clean URLs
+    // still receive their server-rendered metadata.
+    if(!marketingInstalled&&!mount&&middleware?.name==='serveStatic'){
+      installMarketingPublicRoutes(app);
+      marketingInstalled=true;
+    }
+
+    const result=originalUse(...useArgs);
+
+    // Do not depend on a fragile middleware count. Install extension APIs
+    // specifically after ARTY's locale middleware has been registered.
+    if(!extensionsInstalled&&mount==='/api'&&middleware?.name==='middleware'){
+      installExtensionRoutes(app);
+      extensionsInstalled=true;
+    }
+    return result;
+  };
   return app;
 }
 Object.assign(wrappedExpress,{static:realExpress.static,Router:realExpress.Router,json:realExpress.json,urlencoded:realExpress.urlencoded,query:realExpress.query,raw:realExpress.raw,text:realExpress.text});
