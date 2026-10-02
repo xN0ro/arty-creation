@@ -7,11 +7,18 @@ function clientKey(req) {
   return String(req.ip || req.socket?.remoteAddress || 'unknown').replace(/^::ffff:/, '');
 }
 
+function isFrench(req) {
+  return String(req.headers?.['accept-language'] || '').toLowerCase().startsWith('fr');
+}
+
 function tooManyMessage(req) {
-  const language = String(req.headers?.['accept-language'] || '').toLowerCase();
-  return language.startsWith('fr')
+  return isFrench(req)
     ? 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
     : 'Too many requests. Please try again in a few minutes.';
+}
+
+function requestTooLargeMessage(req) {
+  return isFrench(req) ? 'Requête trop volumineuse.' : 'Request too large.';
 }
 
 function createRateLimiter({ windowMs = 60_000, max = 120, scope = 'default' } = {}) {
@@ -78,7 +85,7 @@ function createRequestSizeGuard({
     const route = String(req.path || req.url || '').split('?')[0];
     const maxBytes = large.has(route) ? largeMaxBytes : defaultMaxBytes;
     if (contentLength > maxBytes) {
-      return res.status(413).json({ error: tooManyMessage(req).replace(/Trop de requêtes[^.]*\.|Too many requests[^.]*\./, String(req.headers?.['accept-language'] || '').toLowerCase().startsWith('fr') ? 'Requête trop volumineuse.' : 'Request too large.') });
+      return res.status(413).json({ error: requestTooLargeMessage(req) });
     }
     return next();
   };
@@ -97,11 +104,14 @@ function createUploadBandwidthGuard({
   requestWindowMs = 60_000,
   maxRequests = 180,
   byteWindowMs = 60 * 60 * 1000,
-  maxBytes = 100 * 1024 * 1024
+  maxBytes = 100 * 1024 * 1024,
+  dailyWindowMs = 24 * 60 * 60 * 1000,
+  maxDailyBytes = 250 * 1024 * 1024
 } = {}) {
   const requestLimiter = createRateLimiter({ windowMs: requestWindowMs, max: maxRequests, scope: 'uploads' });
   const byteBuckets = new Map();
-  let nextSweep = Date.now() + byteWindowMs;
+  const dailyBuckets = new Map();
+  let nextSweep = Date.now() + Math.min(byteWindowMs, dailyWindowMs);
 
   return function uploadBandwidthGuard(req, res, next) {
     return requestLimiter(req, res, () => {
@@ -114,6 +124,18 @@ function createUploadBandwidthGuard({
         const fullPath = path.join(directory, file);
         stat = fs.statSync(fullPath);
         if (!stat.isFile()) return next();
+
+        // Once a smaller derivative exists, account for the bytes that will
+        // actually be sent instead of charging the visitor for the old source size.
+        const accepted = String(req.headers?.accept || '');
+        if (accepted.includes('image/webp') || accepted === '*/*') {
+          const ext = path.extname(file);
+          const optimizedName = file.slice(0, Math.max(0, file.length - ext.length)) + '.optimized.webp';
+          try {
+            const optimized = fs.statSync(path.join(directory, optimizedName));
+            if (optimized.isFile() && optimized.size < stat.size) stat = optimized;
+          } catch {}
+        }
       } catch {
         return next();
       }
@@ -126,7 +148,10 @@ function createUploadBandwidthGuard({
         for (const [key, bucket] of byteBuckets) {
           if (bucket.resetAt <= now) byteBuckets.delete(key);
         }
-        nextSweep = now + byteWindowMs;
+        for (const [key, bucket] of dailyBuckets) {
+          if (bucket.resetAt <= now) dailyBuckets.delete(key);
+        }
+        nextSweep = now + Math.min(byteWindowMs, dailyWindowMs);
       }
 
       const key = clientKey(req);
@@ -135,14 +160,21 @@ function createUploadBandwidthGuard({
         bucket = { bytes: 0, resetAt: now + byteWindowMs };
         byteBuckets.set(key, bucket);
       }
+      let daily = dailyBuckets.get(key);
+      if (!daily || daily.resetAt <= now) {
+        daily = { bytes: 0, resetAt: now + dailyWindowMs };
+        dailyBuckets.set(key, daily);
+      }
 
-      if (bucket.bytes + stat.size > maxBytes) {
-        if (typeof res.set === 'function') res.set('Retry-After', String(Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))));
+      if (bucket.bytes + stat.size > maxBytes || daily.bytes + stat.size > maxDailyBytes) {
+        const resetAt = Math.min(bucket.resetAt, daily.resetAt);
+        if (typeof res.set === 'function') res.set('Retry-After', String(Math.max(1, Math.ceil((resetAt - now) / 1000))));
         return res.status(429).send('Bandwidth limit reached. Please try again later.');
       }
 
       // Reserve the bytes before serving so concurrent requests cannot race around the quota.
       bucket.bytes += stat.size;
+      daily.bytes += stat.size;
       return next();
     });
   };
