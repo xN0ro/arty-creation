@@ -149,7 +149,9 @@ app.use('/uploads', createUploadBandwidthGuard({
   requestWindowMs: 60 * 1000,
   maxRequests: Math.max(60, parseInt(process.env.ARTY_UPLOAD_REQUESTS_PER_MINUTE || '180', 10) || 180),
   byteWindowMs: 60 * 60 * 1000,
-  maxBytes: Math.max(25, parseInt(process.env.ARTY_UPLOAD_MB_PER_HOUR || '100', 10) || 100) * 1024 * 1024
+  maxBytes: Math.max(25, parseInt(process.env.ARTY_UPLOAD_MB_PER_HOUR || '100', 10) || 100) * 1024 * 1024,
+  dailyWindowMs: 24 * 60 * 60 * 1000,
+  maxDailyBytes: Math.max(100, parseInt(process.env.ARTY_UPLOAD_MB_PER_DAY || '250', 10) || 250) * 1024 * 1024
 }));
 
 // Existing JPG/PNG/AVIF uploads are lazily converted once to a smaller WebP
