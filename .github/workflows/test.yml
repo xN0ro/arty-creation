@@ -1,0 +1,62 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - security/bandwidth-hardening
+
+jobs:
+  security-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: Syntax checks
+        run: node --check core-server.js && node --check app-server.js && node --check traffic-protection.js && node --check image-optimizer.js
+      - name: Security and image tests
+        run: node --test test/traffic-protection.test.js test/image-optimizer.test.js
+      - name: Production startup smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PORT=3210
+          export ARTY_DATA_DIR="$RUNNER_TEMP/arty-data"
+          node server.js > "$RUNNER_TEMP/arty-server.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..30}; do
+            if curl -fsS "http://127.0.0.1:3210/api/config" > "$RUNNER_TEMP/config.json"; then
+              ready=1
+              break
+            fi
+            sleep 0.5
+          done
+          cat "$RUNNER_TEMP/arty-server.log"
+          test "$ready" -eq 1
+          curl -fsS "http://127.0.0.1:3210/" > /dev/null
+          curl -fsSI "http://127.0.0.1:3210/styles.css" | grep -qi "cache-control"
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          trap - EXIT
+
+  baseline-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install --no-audit --no-fund
+      - name: Existing main-branch regression suite
+        run: npm test

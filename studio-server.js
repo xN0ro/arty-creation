@@ -175,13 +175,17 @@ function installStudioRoutes(app) {
 function wrappedExpress(...args) {
   const app = realExpress(...args);
   const originalUse = app.use.bind(app);
-  let useCount = 0;
+  let studioRoutesInstalled = false;
   app.use = function (...useArgs) {
+    const mount = typeof useArgs[0] === 'string' ? useArgs[0] : '';
+    const middleware = useArgs.find(value => typeof value === 'function');
     const result = originalUse(...useArgs);
-    useCount += 1;
-    // server.js installs JSON, urlencoded, public static, then /api locale middleware.
-    // Install our API immediately after those four middleware registrations.
-    if (useCount === 4) installStudioRoutes(app);
+    // Install Studio APIs after ARTY's locale middleware rather than relying
+    // on a fixed middleware count, which changes as security layers evolve.
+    if (!studioRoutesInstalled && mount === '/api' && middleware?.name === 'middleware') {
+      installStudioRoutes(app);
+      studioRoutesInstalled = true;
+    }
     return result;
   };
   return app;

@@ -5,6 +5,9 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const compression = require('compression');
+const { createRateLimiter, createSecurityHeaders, createRequestSizeGuard, createUploadBandwidthGuard } = require('./traffic-protection');
+const { optimizeImageBuffer, createOptimizedUploadMiddleware } = require('./image-optimizer');
 const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');
 const crmCore = require('./crm-core');
 const contactCore = require('./contact-core');
@@ -13,13 +16,78 @@ const googleCalendar = require('./google-calendar');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Render terminates TLS in front of the app. Trust exactly one proxy hop so
+// per-IP abuse controls use the visitor address instead of Render's proxy.
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use(createSecurityHeaders());
+
+// Stop a single client from generating an unbounded number of responses.
+// These limits are intentionally generous for normal browsing.
+app.use(createRateLimiter({ windowMs: 5 * 60 * 1000, max: 1200, scope: 'site' }));
+
+// Most public requests should never carry multi-megabyte bodies. The few
+// Studio / image / payment routes that legitimately can are explicitly allowed.
+app.use(createRequestSizeGuard({
+  defaultMaxBytes: 2 * 1024 * 1024,
+  largeMaxBytes: 30 * 1024 * 1024,
+  largeRoutes: ['/api/stripe/webhook', '/api/event-requests', '/api/admin/product-images', '/api/orders']
+}));
+
+// Compress HTML, CSS, JavaScript, JSON and other text responses before Render
+// sends them over the public internet.
+app.use(compression({ threshold: 1024 }));
+
 // Stripe webhooks need the raw body for signature verification. Keep this BEFORE json parsing.
 app.post('/api/stripe/webhook', bodyParser.raw({ type: 'application/json', limit: '25mb' }), handleStripeWebhook);
 
-// Custom products can include preview images, so allow larger JSON payloads.
+// API and high-risk write endpoints get tighter per-IP limits. Stripe is
+// registered above and therefore is not affected by the generic API limiter.
+app.use('/api', createRateLimiter({ windowMs: 5 * 60 * 1000, max: 500, scope: 'api' }));
+app.use(['/api/users/login', '/api/users/register', '/api/users/google', '/api/users/forgot-password', '/api/users/reset-password'],
+  createRateLimiter({ windowMs: 15 * 60 * 1000, max: 30, scope: 'auth' }));
+app.use('/api/contact', createRateLimiter({ windowMs: 10 * 60 * 1000, max: 10, scope: 'contact' }));
+app.use('/api/event-requests', createRateLimiter({ windowMs: 30 * 60 * 1000, max: 10, scope: 'event-request' }));
+app.use('/api/orders', createRateLimiter({ windowMs: 10 * 60 * 1000, max: 30, scope: 'orders' }));
+
+// Custom products can include preview images, so keep the parser ceiling while
+// the Content-Length guard above rejects oversized bodies on ordinary routes.
 app.use(bodyParser.json({ limit: '25mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '25mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// The bundled homepage currently contains several multi-megabyte PNG files.
+// Apply the same egress protection and lazy WebP conversion to those assets,
+// otherwise a bot could repeatedly request them even if /uploads is protected.
+app.use(createUploadBandwidthGuard({
+  directory: PUBLIC_DIR,
+  requestWindowMs: 60 * 1000,
+  maxRequests: Math.max(120, parseInt(process.env.ARTY_PUBLIC_ASSET_REQUESTS_PER_MINUTE || '300', 10) || 300),
+  byteWindowMs: 60 * 60 * 1000,
+  maxBytes: Math.max(50, parseInt(process.env.ARTY_PUBLIC_ASSET_MB_PER_HOUR || '150', 10) || 150) * 1024 * 1024,
+  dailyWindowMs: 24 * 60 * 60 * 1000,
+  maxDailyBytes: Math.max(150, parseInt(process.env.ARTY_PUBLIC_ASSET_MB_PER_DAY || '400', 10) || 400) * 1024 * 1024
+}));
+app.use(createOptimizedUploadMiddleware({
+  directory: PUBLIC_DIR,
+  cacheControl: 'public, max-age=3600, stale-while-revalidate=604800'
+}));
+
+// Public assets are revalidated/cached instead of being downloaded on every
+// navigation. index.html itself remains short-lived so deploys appear quickly.
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  lastModified: true,
+  maxAge: '1h',
+  setHeaders(res, filePath) {
+    if (path.basename(filePath).toLowerCase() === 'index.html') {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=604800');
+    }
+  }
+}));
 app.use('/api', localeMiddleware);
 
 // ========== DATABASE STORAGE ==========
@@ -92,7 +160,37 @@ const DB_BACKUP_PATH = `${DB_PATH}.bak`;
 const PRODUCT_UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 
 // Product images live beside the persistent JSON database so they survive deployments on Render.
-app.use('/uploads', express.static(PRODUCT_UPLOADS_DIR, { fallthrough: true, maxAge: '7d' }));
+// Protect the expensive image path before touching disk. A single IP can browse
+// normally, but cannot continuously download hundreds of megabytes to inflate
+// the Render bandwidth bill.
+app.use('/uploads', createUploadBandwidthGuard({
+  directory: PRODUCT_UPLOADS_DIR,
+  requestWindowMs: 60 * 1000,
+  maxRequests: Math.max(60, parseInt(process.env.ARTY_UPLOAD_REQUESTS_PER_MINUTE || '180', 10) || 180),
+  byteWindowMs: 60 * 60 * 1000,
+  maxBytes: Math.max(25, parseInt(process.env.ARTY_UPLOAD_MB_PER_HOUR || '100', 10) || 100) * 1024 * 1024,
+  dailyWindowMs: 24 * 60 * 60 * 1000,
+  maxDailyBytes: Math.max(100, parseInt(process.env.ARTY_UPLOAD_MB_PER_DAY || '250', 10) || 250) * 1024 * 1024
+}));
+
+// Existing JPG/PNG/AVIF uploads are lazily converted once to a smaller WebP
+// derivative. Their public URL does not change, so existing products/events
+// benefit without a database migration.
+app.use('/uploads', createOptimizedUploadMiddleware({ directory: PRODUCT_UPLOADS_DIR }));
+
+// Upload filenames are content-versioned with a random suffix, so a one-year
+// immutable cache is safe and prevents repeat egress for returning visitors/CDNs.
+app.use('/uploads', express.static(PRODUCT_UPLOADS_DIR, {
+  fallthrough: true,
+  etag: true,
+  lastModified: true,
+  maxAge: '365d',
+  immutable: true,
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.setHeader('Vary', 'Accept');
+  }
+}));
 
 function isLikelyPersistentPath() {
   return DB_DIR === RENDER_RECOMMENDED_DATA_DIR || DB_DIR.startsWith(`${RENDER_RECOMMENDED_DATA_DIR}/`);
@@ -2884,7 +2982,7 @@ function isValidUploadedImage(buffer, mime) {
   if (mime === 'image/avif') return buffer.toString('ascii', 4, 12).includes('ftyp');
   return false;
 }
-app.post('/api/admin/product-images', adminOnly, (req, res) => {
+app.post('/api/admin/product-images', adminOnly, async (req, res) => {
   try {
     const dataUrl = String(req.body.dataUrl || '');
     const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|avif));base64,([a-z0-9+/=\r\n]+)$/i);
@@ -2893,10 +2991,19 @@ app.post('/api/admin/product-images', adminOnly, (req, res) => {
     const buffer = Buffer.from(match[2], 'base64');
     if (!buffer.length || buffer.length > 10 * 1024 * 1024) return res.status(400).json({ error: I18n.t('L’image doit faire moins de 10 Mo') });
     if (!isValidUploadedImage(buffer, mime)) return res.status(400).json({ error: I18n.t('Le fichier image est invalide') });
+
+    // Normalize every new catalog image to a web-friendly WebP. This caps the
+    // dimensions and strips camera metadata before the file reaches public storage.
+    const optimized = await optimizeImageBuffer(buffer);
     fs.mkdirSync(PRODUCT_UPLOADS_DIR, { recursive: true });
-    const filename = `product-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.${PRODUCT_IMAGE_TYPES[mime]}`;
-    fs.writeFileSync(path.join(PRODUCT_UPLOADS_DIR, filename), buffer, { flag: 'wx' });
-    res.json({ success: true, url: `/uploads/${filename}` });
+    const filename = `product-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.webp`;
+    fs.writeFileSync(path.join(PRODUCT_UPLOADS_DIR, filename), optimized, { flag: 'wx' });
+    res.json({
+      success: true,
+      url: `/uploads/${filename}`,
+      originalBytes: buffer.length,
+      storedBytes: optimized.length
+    });
   } catch (err) {
     console.error('Product image upload failed:', err.message);
     res.status(500).json({ error: I18n.t('Impossible de téléverser l’image') });
