@@ -87,7 +87,10 @@ async function ensureOptimizedFile(sourcePath) {
   return task;
 }
 
-function createOptimizedUploadMiddleware({ directory } = {}) {
+function createOptimizedUploadMiddleware({
+  directory,
+  cacheControl = 'public, max-age=31536000, immutable'
+} = {}) {
   return async function optimizedUpload(req, res, next) {
     if (!['GET', 'HEAD'].includes(String(req.method || 'GET').toUpperCase())) return next();
     const accepted = String(req.headers?.accept || '');
@@ -110,7 +113,7 @@ function createOptimizedUploadMiddleware({ directory } = {}) {
 
     res.set('Vary', 'Accept');
     res.type('image/webp');
-    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+    res.set('Cache-Control', cacheControl);
     return res.sendFile(optimized, { cacheControl: false });
   };
 }
