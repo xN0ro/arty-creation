@@ -12,7 +12,7 @@ function id(store,key){try{let value=store.getItem(key);if(!value){value=unique(
 let last='',lastAt=0;
 function measure(event){
  if(!consent()||!['page_view','view_item','view_event','add_to_cart','begin_checkout','lead'].includes(event))return;
- const page=location.pathname+location.hash.split('?')[0],now=Date.now();
+ const page=location.pathname+location.hash.split('?')[0].replace(/(#\/ticket\/)[^/]+/i,'$1private').replace(/(#\/event-quote\/)[^/]+/i,'$1private'),now=Date.now();
  if(event==='page_view'&&last===page&&now-lastAt<1800)return;
  if(event==='page_view'){last=page;lastAt=now}
  const attribution=window.ARTYMarketing?.getAttribution?.()||{};
