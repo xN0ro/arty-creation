@@ -15,8 +15,7 @@ function measure(event){
  const page=location.pathname+location.hash.split('?')[0].replace(/(#\/ticket\/)[^/]+/i,'$1private').replace(/(#\/event-quote\/)[^/]+/i,'$1private'),now=Date.now();
  if(event==='page_view'&&last===page&&now-lastAt<1800)return;
  if(event==='page_view'){last=page;lastAt=now}
- const attribution=window.ARTYMarketing?.getAttribution?.()||{};
- let source=attribution.lastTouch?.utm_source||attribution.firstTouch?.utm_source||'';
+ let source=new URLSearchParams(location.search).get('utm_source')||'';
  if(!source){try{const ref=new URL(document.referrer);if(ref.hostname!==location.hostname)source=ref.hostname}catch{}}
  const payload={event,consent:true,page,source:source||'direct',visitor:id(localStorage,'arty_insights_visitor'),session:id(sessionStorage,'arty_insights_session'),device:/iPad|Tablet/i.test(navigator.userAgent)?'tablet':/Mobile|Android|iPhone/i.test(navigator.userAgent)?'mobile':'desktop'};
  fetch('/api/marketing-insights/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),keepalive:true,credentials:'same-origin'}).catch(()=>{});
