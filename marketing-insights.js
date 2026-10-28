@@ -24,7 +24,7 @@ function record(kind,raw={}){
   const entry=data[today]||{counts:{},pages:{},sources:{},devices:{},visitors:[],sessions:[]};
   inc(entry.counts,kind);
   if(kind==='page_view'){
-    const url=clean(raw.page||'/',110)||'/';
+    const url=(clean(raw.page||'/',110)||'/').replace(/(#\/ticket\/)[^/]+/i,'$1private').replace(/(#\/event-quote\/)[^/]+/i,'$1private');
     inc(entry.pages,url);
     inc(entry.sources,clean(raw.source||'direct',45)||'direct');
     inc(entry.devices,['mobile','tablet','desktop'].includes(raw.device)?raw.device:'unknown');
