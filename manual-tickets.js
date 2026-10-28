@@ -19,7 +19,7 @@ function install({app,adminOnly,readDB,writeDB,ensureBookingTickets,deliverBooki
     if(already)return res.status(409).json({error:'Cette référence de virement a déjà été utilisée.'});
     const capacity=Math.max(0,Number(event.maxSpots)||0);
     const taken=Math.max(0,Number(event.bookedSpots)||0);
-    if(capacity&&taken+guests>capacity)return res.status(409).json({error:'Places insuffisantes pour cet événement.'});
+    if(!capacity||taken+guests>capacity)return res.status(409).json({error:'Places insuffisantes pour cet événement.'});
     const now=new Date().toISOString(),booking={
       id:'BKG-'+Date.now().toString(36).toUpperCase()+'-'+crypto.randomBytes(3).toString('hex').toUpperCase(),
       locale:raw.locale==='en'?'en':'fr',userId:(db.users||[]).find(u=>String(u.email||'').toLowerCase()===email)?.id||null,
