@@ -7,6 +7,7 @@ const Module=require('module');
 const realExpress=require('express');
 const commerceCore=require('./commerce-core');
 const marketingCore=require('./marketing-core');
+const marketingInsights=require('./marketing-insights');
 const crmCore=require('./crm-core');
 const googleCalendar=require('./google-calendar');
 const crmWorkflow=require('./crm-workflow');
@@ -34,7 +35,7 @@ function extensionPermission(req){
   if(route.includes('/admin/crm/customers')||route.includes('/admin/crm/export/customers'))return'customers';
   if(route.includes('/admin/crm/leads')||route.includes('/admin/crm/team')||route.includes('/admin/crm/export/leads'))return'leads';
   if(route.includes('/admin/crm')||route.includes('/admin/crm/export'))return'crm_dashboard';
-  if(route.includes('/marketing-config'))return'marketing';
+  if(route.includes('/marketing-config')||route.includes('/marketing-insights'))return'marketing';
   if(route.includes('/commerce-config'))return'settings';
   if(route.includes('/studio-config'))return'products';
   return'';
@@ -178,6 +179,7 @@ function installMarketingPublicRoutes(app){
 
 function installExtensionRoutes(app){
   if(app.__artyExtensionsInstalled)return;app.__artyExtensionsInstalled=true;
+  marketingInsights.install(app,{adminOnly,readDb});
   app.get('/api/studio-config',(req,res)=>res.json(getStudioConfig()));
   app.get('/api/admin/studio-config',adminOnly,(req,res)=>res.json(getStudioConfig()));
   app.put('/api/admin/studio-config',adminOnly,(req,res)=>{const db=readDb(),config=normalizeStudioConfig(req.body||{});db.studioConfig=config;writeDb(db);res.json({success:true,config})});
@@ -418,6 +420,7 @@ function patchServerSource(source){
   source=replaceRequired(source,"  if (needsShipping && (!address || !String(address.line1 || '').trim())) return res.status(400).json({ error: I18n.t('Adresse de livraison requise') });","  const shippingAddressError = commerceCore.validateShippingAddress(db.commerceConfig, address, needsShipping);\n  if (shippingAddressError) return res.status(400).json({ error: I18n.t(shippingAddressError) });",'shipping address validation');
   source=replaceRequired(source,"  const pricing = priceOrder(db, built.items, req.body?.promoCode || '');","  const pricing = priceOrder(db, built.items, req.body?.promoCode || '', address);",'order pricing address');
   source=replaceRequired(source,"    subtotal: pricing.subtotal,\n    discountTotal: pricing.discountTotal,\n    discountsApplied: pricing.discountsApplied,\n    promoCode: pricing.promoCode || '',\n    promoCodeApplied: !!pricing.promoCodeApplied,\n    total: pricing.total,","    subtotal: pricing.subtotal,\n    discountTotal: pricing.discountTotal,\n    discountsApplied: pricing.discountsApplied,\n    promoCode: pricing.promoCode || '',\n    promoCodeApplied: !!pricing.promoCodeApplied,\n    merchandiseTotal: pricing.merchandiseTotal,\n    shippingTotal: pricing.shippingTotal,\n    shippingBasePrice: pricing.shippingBasePrice,\n    shippingQualifyingSubtotal: pricing.shippingQualifyingSubtotal,\n    freeShippingApplied: pricing.freeShippingApplied,\n    taxTotal: pricing.taxTotal,\n    taxLines: pricing.taxLines,\n    taxProvince: pricing.taxProvince,\n    taxRate: pricing.taxRate,\n    marketingAttribution: marketingCore.normalizeAttribution(req.body?.marketingAttribution),\n    total: pricing.total,",'order commerce and marketing fields');
+  source=replaceRequired(source,'// Events CRUD',"require('./manual-tickets').install({app,adminOnly,readDB,writeDB,ensureBookingTickets,deliverBookingTickets});\n// Events CRUD",'manual tickets route');
   const marker='// ========== ORDERS & BOOKINGS ==========';
   const quoteRoute=`// Server-authoritative checkout quote: discounts, promo codes, shipping and Canadian destination taxes.\napp.post('/api/checkout-quote', optionalAuth, (req, res) => {\n  const db = readDB();\n  const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];\n  const address = req.body?.address && typeof req.body.address === 'object' ? req.body.address : {};\n  const promoCode = String(req.body?.promoCode || '').trim().toUpperCase();\n  if (!rawItems.length) return res.status(400).json({ error: I18n.t('Aucun article') });\n  const built = buildOrderItems(db, rawItems);\n  if (built.error) return res.status(400).json({ error: built.error });\n  const needsShipping = built.items.some(item => item.type !== 'event-ticket');\n  if (needsShipping && String(address.country || 'Canada').trim() && !commerceCore.isCanada(address.country) && commerceCore.normalizeCommerceConfig(db.commerceConfig).shipping.canadaOnly) return res.status(400).json({ error: I18n.t('La livraison est actuellement disponible au Canada seulement') });\n  const pricing = priceOrder(db, built.items, promoCode, address);\n  res.json({ success:true, subtotal:pricing.subtotal, discountTotal:pricing.discountTotal, discountsApplied:pricing.discountsApplied, promoCode:pricing.promoCode, promoCodeValid:pricing.promoCodeValid, promoCodeQualified:pricing.promoCodeQualified, promoCodeApplied:pricing.promoCodeApplied, promoDiscountTotal:pricing.promoDiscountTotal, merchandiseTotal:pricing.merchandiseTotal, shippingTotal:pricing.shippingTotal, shippingBasePrice:pricing.shippingBasePrice, shippingQualifyingSubtotal:pricing.shippingQualifyingSubtotal, freeShippingApplied:pricing.freeShippingApplied, needsShipping:pricing.needsShipping, taxTotal:pricing.taxTotal, taxLines:pricing.taxLines, taxProvince:pricing.taxProvince, taxRate:pricing.taxRate, total:pricing.total });\n});\n\n${marker}`
   source=replaceRequired(source,marker,quoteRoute,'checkout quote route');
