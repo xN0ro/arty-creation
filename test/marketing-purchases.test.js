@@ -49,7 +49,7 @@ test('helper loads before marketing client and tracking requires a paid Stripe c
   const source=fs.readFileSync(path.join(__dirname,'..','public','marketing-client.js'),'utf8');
   assert.match(source,/path==='\/api\/stripe\/confirm-order'/);
   assert.match(source,/response\.clone\(\)\.json\(\)/);
-  assert.match(source,/buildPurchasePayload\(order\)/);
+  assert.match(source,/buildPurchasePayload\?\.\(order\)/);
   assert.match(source,/track\('purchase',payload\)/);
   assert.match(source,/if\(!metaReady&&!gaReady\)return false/);
 });
