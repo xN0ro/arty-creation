@@ -19,6 +19,8 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Syntax checks
         run: node --check core-server.js && node --check app-server.js && node --check traffic-protection.js && node --check image-optimizer.js
+      - name: Marketing conversion tests
+        run: node --test test/marketing.test.js test/marketing-purchases.test.js
       - name: Security and image tests
         run: node --test test/traffic-protection.test.js test/image-optimizer.test.js
       - name: Production startup smoke test

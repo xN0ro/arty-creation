@@ -14,6 +14,7 @@
   };
   const ATTRIBUTION_KEY='arty_marketing_attribution_v1';
   const CONSENT_KEY='arty_marketing_consent_v1';
+  const PURCHASES_KEY='arty_marketing_paid_order_ids_v1';
   let config=clone(FALLBACK),providersStarted=false;
   const seenViews=new Set();
 
@@ -72,7 +73,7 @@
   function orderAttribution(){const saved=readAttribution();return{firstTouch:saved.firstTouch||{},lastTouch:saved.lastTouch||{},sessionId:saved.sessionId||''}}
 
   function readConsent(){try{return JSON.parse(localStorage.getItem(CONSENT_KEY)||'null')}catch{return null}}
-  function saveConsent(next){const consent={necessary:true,analytics:!!next.analytics,marketing:!!next.marketing,updatedAt:new Date().toISOString()};try{localStorage.setItem(CONSENT_KEY,JSON.stringify(consent))}catch{};hideConsent();startProviders();return consent}
+  function saveConsent(next){const before=currentConsent(),consent={necessary:true,analytics:!!next.analytics,marketing:!!next.marketing,updatedAt:new Date().toISOString()};try{localStorage.setItem(CONSENT_KEY,JSON.stringify(consent))}catch{};hideConsent();startProviders();if((consent.analytics&&!before.analytics)||(consent.marketing&&!before.marketing))track('page_view',{page_title:document.title,page_location:`${location.origin}${location.pathname}`});return consent}
   function currentConsent(){return readConsent()||{necessary:true,analytics:!!config.consent.analyticsDefault,marketing:!!config.consent.marketingDefault}}
   function trackingConfigured(){return true} // ARTY first-party analytics also requires optional consent.
   function consentCopy(){const en=typeof I18n!=='undefined'&&I18n.language?.()==='en';return en?{title:'Your privacy choices',body:'ARTY uses optional analytics and advertising technologies only with your permission. Essential site functions always remain active.',reject:'Reject optional',accept:'Accept all',manage:'Customize',save:'Save choices',analytics:'Analytics',marketing:'Advertising / remarketing'}:{title:'Vos choix de confidentialité',body:'ARTY utilise les outils de mesure d’audience et de publicité seulement avec votre permission. Les fonctions essentielles du site restent toujours actives.',reject:'Refuser les options',accept:'Tout accepter',manage:'Personnaliser',save:'Enregistrer mes choix',analytics:'Mesure d’audience',marketing:'Publicité / remarketing'} }
@@ -101,9 +102,28 @@
   function track(name,payload={}){
     const event={event:name,...payload,arty_event_id:payload.arty_event_id||randomId()};window.dataLayer=window.dataLayer||[];window.dataLayer.push(event);window.dispatchEvent(new CustomEvent('arty:marketing-event',{detail:event}));
     const consent=currentConsent();if(consent.analytics&&config.analytics.ga4.enabled&&typeof window.gtag==='function'){const gaPayload={...payload};delete gaPayload.arty_event_id;window.gtag('event',name,gaPayload)}
-    const metaName=metaEventName(name);if(metaName&&consent.marketing&&config.analytics.meta.enabled&&typeof window.fbq==='function'){const metaPayload={content_ids:payload.content_id?[payload.content_id]:payload.content_ids||undefined,content_name:payload.item_name||payload.page_title||undefined,content_type:'product',value:payload.value,currency:payload.currency||'CAD'};Object.keys(metaPayload).forEach(key=>metaPayload[key]===undefined&&delete metaPayload[key]);window.fbq('track',metaName,metaPayload,{eventID:event.arty_event_id})}
+    const metaName=metaEventName(name);if(metaName&&consent.marketing&&config.analytics.meta.enabled&&typeof window.fbq==='function'){const metaPayload={content_ids:payload.content_id?[payload.content_id]:payload.content_ids||undefined,contents:payload.contents||undefined,content_name:payload.item_name||payload.page_title||undefined,content_type:'product',value:payload.value,currency:payload.currency||'CAD',num_items:payload.num_items,order_id:payload.order_id,arty_purchase_category:payload.arty_purchase_category,arty_has_event:payload.arty_has_event,arty_has_kit:payload.arty_has_kit};Object.keys(metaPayload).forEach(key=>metaPayload[key]===undefined&&delete metaPayload[key]);window.fbq('track',metaName,metaPayload,{eventID:event.arty_event_id})}
     return event;
   }
+  // Only send conversions for server-verified Stripe payments, with visitor consent.
+  function reportConfirmedPurchase(order){
+    const payload=window.ARTYPurchase?.buildPurchasePayload?.(order);
+    if(!payload)return false;
+    const consent=currentConsent();
+    const metaReady=!!(consent.marketing&&config.analytics.meta.enabled&&typeof window.fbq==='function');
+    const gaReady=!!(consent.analytics&&config.analytics.ga4.enabled&&typeof window.gtag==='function');
+    if(!metaReady&&!gaReady)return false;
+    let seen=[];
+    try{const saved=JSON.parse(localStorage.getItem(PURCHASES_KEY)||'[]');if(Array.isArray(saved))seen=saved.filter(item=>typeof item==='string').slice(-99)}catch{}
+    if(seen.includes(payload.transaction_id))return false;
+    try{
+      track('purchase',payload);
+      seen.push(payload.transaction_id);
+      localStorage.setItem(PURCHASES_KEY,JSON.stringify(seen.slice(-100)));
+      return true;
+    }catch(error){console.warn('ARTY marketing purchase event:',error?.message||error);return false}
+  }
+
   function cartValue(){try{return (cart||[]).reduce((sum,item)=>sum+(Number(item.price)||0)*(Number(item.qty)||1),0)}catch{return 0}}
   function itemPayload(kind,entity,qty=1){return{content_id:contentId(kind,entity.id),item_id:contentId(kind,entity.id),item_name:entityName(kind,entity),item_category:kind,value:(Number(entity.price)||0)*qty,currency:'CAD',quantity:qty}}
 
@@ -143,6 +163,9 @@
       if(attributedPost&&options.body){try{const body=JSON.parse(options.body);body.marketingAttribution=orderAttribution();options={...options,body:JSON.stringify(body)}}catch{}}
       const response=await original.call(this,input,options);
       if(response?.ok&&method==='POST'&&(path==='/api/event-requests'||path==='/api/contact'))track('lead',{lead_type:path==='/api/event-requests'?'event':'contact',currency:'CAD'});
+      if(response?.ok&&method==='POST'&&path==='/api/stripe/confirm-order'){
+        try{const confirmed=await response.clone().json();if(confirmed?.success===true)reportConfirmedPurchase(confirmed.order)}catch(error){console.warn('ARTY purchase receipt:',error?.message||error)}
+      }
       return response;
     };wrapped.__marketingWrapped=true;window.artyFetch=wrapped;
   }
@@ -151,7 +174,7 @@
   function marketingRow(kind,entity){const override=overrideFor(kind,entity.id),url=publicUrl(kind,entity),id=String(entity.id),name=entityName(kind,entity);return `<details class="marketing-page-row" data-marketing-page data-kind="${kind}" data-id="${safe(id)}"><summary><span><strong>${safe(name)}</strong><small>${safe(contentId(kind,id))}</small></span><button type="button" class="btn btn-ghost btn-sm" onclick="event.preventDefault();event.stopPropagation();ARTYMarketing.copy('${safe(url)}')">Copier le lien</button></summary><div class="marketing-page-fields"><div class="marketing-public-url"><code>${safe(url)}</code></div><div class="form-row"><div class="form-group"><label>URL / slug personnalisé</label><input data-page-field="slug" value="${safe(override.slug||'')}" placeholder="${safe(entitySlug(kind,entity))}"></div><div class="form-group"><label>Image sociale (URL)</label><input data-page-field="image" value="${safe(override.image||'')}" placeholder="${safe(entity.image||config.defaultSocialImage)}"></div></div><div class="form-group"><label>Titre Facebook / Google</label><input data-page-field="title" value="${safe(override.title||'')}" placeholder="${safe(`${name} | ${config.brandName}`)}"></div><div class="form-group"><label>Description sociale / SEO</label><textarea data-page-field="description" rows="2" placeholder="Description du produit, de l’événement ou de la catégorie">${safe(override.description||'')}</textarea></div></div></details>`}
   function campaignDestinations(){const out=[];pageEntities().forEach(group=>group.items.forEach(entity=>out.push({label:`${group.title} — ${entityName(group.kind,entity)}`,url:publicUrl(group.kind,entity)})));return out}
   function attributionSummary(){
-    const rows=new Map();(Array.isArray(adminOrders)?adminOrders:[]).filter(order=>!order.isTest).forEach(order=>{const touch=order.marketingAttribution?.lastTouch||order.marketingAttribution?.firstTouch;if(!touch)return;const source=touch.source||'direct',campaign=touch.campaign||'—',key=`${source}|${campaign}`,current=rows.get(key)||{source,campaign,orders:0,revenue:0};current.orders+=1;current.revenue+=Number(order.total)||0;rows.set(key,current)});
+    const rows=new Map();(Array.isArray(adminOrders)?adminOrders:[]).filter(order=>!order.isTest&&order.paymentStatus==='paid'&&order.refundStatus!=='refunded').forEach(order=>{const touch=order.marketingAttribution?.lastTouch||order.marketingAttribution?.firstTouch;if(!touch)return;const source=touch.source||'direct',campaign=touch.campaign||'—',key=`${source}|${campaign}`,current=rows.get(key)||{source,campaign,orders:0,revenue:0};current.orders+=1;current.revenue+=Number(order.total)||0;rows.set(key,current)});
     const list=[...rows.values()].sort((a,b)=>b.revenue-a.revenue);if(!list.length)return '<div class="marketing-empty">Les nouvelles commandes commenceront à enregistrer leur source/campagne automatiquement.</div>';
     return `<div class="marketing-attribution-table"><div class="head"><span>Source</span><span>Campagne</span><span>Commandes</span><span>Ventes</span></div>${list.slice(0,20).map(row=>`<div><span>${safe(row.source)}</span><span>${safe(row.campaign)}</span><span>${row.orders}</span><strong>${I18n.currency(row.revenue.toFixed(2))}</strong></div>`).join('')}</div>`;
   }
