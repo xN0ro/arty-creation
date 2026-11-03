@@ -53,3 +53,35 @@ test('helper loads before marketing client and tracking requires a paid Stripe c
   assert.match(source,/track\('purchase',payload\)/);
   assert.match(source,/if\(!metaReady&&!gaReady\)return false/);
 });
+
+test('cart quantity handles configured kit IDs, normal IDs, and ticket IDs without collisions',()=>{
+  const {cartQuantityForKit,cartQuantityForEvent}=require('../public/marketing-purchase-core');
+  const cart=[
+    {id:'kit-4-xl-easel',type:'kit',customData:{kitId:4,sizeId:'xl'},qty:2},
+    {id:'kit-40-large',type:'kit',customData:{kitId:40},qty:5},
+    {id:'4',type:'kit',qty:1},
+    {id:'event-ticket-4',type:'event-ticket',customData:{eventId:4},qty:3},
+    {id:'event-ticket-40',type:'event-ticket',customData:{eventId:40},qty:1}
+  ];
+  assert.equal(cartQuantityForKit(cart,4),3);
+  assert.equal(cartQuantityForKit(cart,40),5);
+  assert.equal(cartQuantityForEvent(cart,4),3);
+  assert.equal(cartQuantityForEvent(cart,40),1);
+  assert.equal(cartQuantityForKit([],4),0);
+});
+test('configured kit purchase uses catalog content ID for reporting',()=>{
+  const p=buildPurchasePayload(order({items:[{id:'kit-4-xl-easel',kitId:4,type:'kit',qty:1,price:24.98}]}));
+  assert.deepEqual(p.content_ids,['ARTY-PRODUCT-4']);
+  assert.equal(p.content_category,'kit');
+});
+test('only one marketing client is included and admin fix runs after it',()=>{
+  const html=fs.readFileSync(path.join(__dirname,'..','public','index.html'),'utf8');
+  const loader=fs.readFileSync(path.join(__dirname,'..','public','i18n-admin.js'),'utf8');
+  assert.equal((html.match(/src="marketing-client\.js/g)||[]).length,1);
+  assert.doesNotMatch(loader,/marketing-client\.js/);
+  assert.doesNotMatch(loader,/marketing-admin-fix\.js/);
+  assert.ok(html.indexOf('marketing-client.js')<html.indexOf('marketing-admin-fix.js'));
+  const client=fs.readFileSync(path.join(__dirname,'..','public','marketing-client.js'),'utf8');
+  assert.match(client,/cartQuantityForKit\?\.\(cart,id\)/);
+  assert.match(client,/cartQuantityForEvent\?\.\(cart,eid\)/);
+});
