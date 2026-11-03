@@ -77,11 +77,11 @@ test('configured kit purchase uses catalog content ID for reporting',()=>{
 test('only one marketing client is included and admin fix runs after it',()=>{
   const html=fs.readFileSync(path.join(__dirname,'..','public','index.html'),'utf8');
   const loader=fs.readFileSync(path.join(__dirname,'..','public','i18n-admin.js'),'utf8');
-  assert.equal((html.match(/src="marketing-client\\.js/g)||[]).length,1);
-  assert.doesNotMatch(loader,/marketing-client\\.js/);
-  assert.doesNotMatch(loader,/marketing-admin-fix\\.js/);
+  assert.equal((html.match(/src="marketing-client\.js/g)||[]).length,1);
+  assert.doesNotMatch(loader,/marketing-client\.js/);
+  assert.doesNotMatch(loader,/marketing-admin-fix\.js/);
   assert.ok(html.indexOf('marketing-client.js')<html.indexOf('marketing-admin-fix.js'));
   const client=fs.readFileSync(path.join(__dirname,'..','public','marketing-client.js'),'utf8');
-  assert.match(client,/cartQuantityForKit\\?\\.\\(cart,id\\)/);
-  assert.match(client,/cartQuantityForEvent\\?\\.\\(cart,eid\\)/);
+  assert.match(client,/cartQuantityForKit\?\.\(cart,id\)/);
+  assert.match(client,/cartQuantityForEvent\?\.\(cart,eid\)/);
 });
