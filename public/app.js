@@ -1181,6 +1181,9 @@ async function saveEv(){
   const eid=document.getElementById('editEvId').value;
   const p={title:document.getElementById('aEvTitle').value,date:document.getElementById('aEvDate').value,description:document.getElementById('aEvDesc').value,time:document.getElementById('aEvTime').value,duration:document.getElementById('aEvDur').value,price:document.getElementById('aEvPrice').value,maxSpots:document.getElementById('aEvSpots').value,location:document.getElementById('aEvLoc').value,image:document.getElementById('aEvImg').value,eventType:document.getElementById('aEvType').value,status:document.getElementById('aEvStatus').value,includes:document.getElementById('aEvIncludes').value,hostNote:document.getElementById('aEvHostNote').value,showMaxCapacity:false,featured:document.getElementById('aEvFeatured').checked};
   if(!p.title||!p.date)return showToast(I18n.t('Titre et date requis'),'error');
+  const types=window.ARTYTicketPricingUI?.collectAdminOptions?.() ?? [];
+  if(types === null)return;
+  p.ticketOptions=types;
   const r=await artyFetch(eid?`/api/admin/events/${eid}`:'/api/admin/events',{method:eid?'PUT':'POST',headers:authH(),body:JSON.stringify(p)});
   const d=await r.json().catch(()=>({}));
   if(!r.ok)return showToast(d.error||I18n.t('Erreur'),'error');
