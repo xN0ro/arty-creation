@@ -196,7 +196,8 @@
     return result;
   };
   const style=document.createElement('style');
-  style.textContent='.arty-ticket-pricing-editor{border:1px solid rgba(0,120,130,.22);border-radius:14px;padding:16px;margin:16px 0;background:rgba(0,150,160,.04)}'+
+  style.textContent='#bookingModal .form-group[hidden],#bookingModal .booking-ticket-price[hidden],#artyBookingTicketTypes[hidden]{display:none!important}'+
+    '.arty-ticket-pricing-editor{border:1px solid rgba(0,120,130,.22);border-radius:14px;padding:16px;margin:16px 0;background:rgba(0,150,160,.04)}'+
     '.arty-ticket-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.arty-ticket-header p{margin:5px 0;color:var(--text-light,#777);font-size:.85rem}'+
     '.arty-ticket-price-rows{display:grid;gap:10px;margin-top:14px}.arty-ticket-option-row{display:grid;grid-template-columns:1fr 1fr minmax(100px,.65fr) auto;gap:9px;align-items:end}'+
     '.arty-ticket-option-row label{font-size:.8rem;display:grid;gap:4px}.arty-ticket-option-row input{width:100%;min-width:0;border:1px solid #ddd;border-radius:8px;padding:10px;background:var(--surface,#fff);color:inherit}'+
