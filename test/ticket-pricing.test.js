@@ -47,3 +47,22 @@ test('limits event tier count to eight and allows valid decimal prices',()=>{
   assert.equal(pricing.normalizeOptions([{id:'child',labelFr:'Enfant',labelEn:'Child',price:'25.50'}])[0].price,25.5);
   assert.throws(()=>pricing.normalizeOptions(Array.from({length:9},(_,i)=>({id:'tier'+i,labelFr:'T'+i,labelEn:'T'+i,price:10}))),/Maximum 8/);
 });
+
+
+test('event detail and event listing use built-in ticket option price display',()=>{
+  const fs=require('node:fs');
+  const app=fs.readFileSync(require('node:path').join(__dirname,'../public/app.js'),'utf8');
+  assert.match(app,/function eventTicketTierPricesHTML\(/);
+  assert.match(app,/eventTicketTierPricesHTML\(ev\)/);
+  assert.match(app,/eventTicketTierPricesHTML\(ev,'card'\)/);
+  assert.match(app,/ARTYTicketPricingUI\?\.showBookingOptions\?\.\(ev\)/);
+});
+
+test('updated page invalidates cached app.js after ticket-admin price save changes',()=>{
+  const fs=require('node:fs');
+  const html=fs.readFileSync(require('node:path').join(__dirname,'../public/index.html'),'utf8');
+  assert.match(html,/app\.js\?v=20261106-ticket-pricing-fix-2/);
+  assert.match(html,/ticket-pricing-ui\.js\?v=20261106-types-2/);
+  const app=fs.readFileSync(require('node:path').join(__dirname,'../public/app.js'),'utf8');
+  assert.match(app,/p\.ticketOptions=types/);
+});
