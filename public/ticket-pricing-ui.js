@@ -178,7 +178,7 @@
   };
   function renderTierPrices(event,target){
     const options=priceOptions(event);
-    if(!options.length||!target)return;
+    if(!options.length||!target||target.querySelector('.arty-tier-native'))return;
     target.textContent=options.map(option=>optionName(option)+' '+money(option.price)).join(' · ');
     target.classList.add('arty-tier-price');
   }
@@ -203,7 +203,7 @@
     '.arty-ticket-option-row label{font-size:.8rem;display:grid;gap:4px}.arty-ticket-option-row input{width:100%;min-width:0;border:1px solid #ddd;border-radius:8px;padding:10px;background:var(--surface,#fff);color:inherit}'+
     '.arty-ticket-booking{padding:12px 0}.arty-ticket-booking-rows{display:grid;gap:10px;margin:12px 0}.arty-ticket-booking-row{display:grid;grid-template-columns:1fr auto 66px;gap:12px;align-items:center;padding:12px;border:1px solid #e8e0d4;border-radius:12px}'+
     '.arty-ticket-booking-row input{width:66px;padding:8px;border:1px solid #ddd;border-radius:8px}.arty-ticket-booking-footer{display:grid;gap:4px;padding:8px 0}.arty-ticket-booking-footer small{color:#b74b2d}'+
-    '.arty-tier-price{font-size:.94em;line-height:1.45}@media(max-width:650px){.arty-ticket-option-row{grid-template-columns:1fr 1fr}.arty-ticket-option-row .ticket-remove{justify-self:start}}';
+    '.arty-tier-price{font-size:.94em;line-height:1.45}.arty-tier-native{display:inline-flex;flex-wrap:wrap;gap:8px 16px;vertical-align:middle}.arty-native-ticket-tier{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.arty-native-ticket-tier span{font-size:.72em;font-weight:600;opacity:.8}.arty-native-ticket-tier strong{font-size:.96em;font-weight:800}.arty-tier-native-card{gap:3px 10px}.arty-tier-native-card .arty-native-ticket-tier{font-size:.92em}@media(max-width:650px){.arty-ticket-option-row{grid-template-columns:1fr 1fr}.arty-ticket-option-row .ticket-remove{justify-self:start}}';
   document.head.appendChild(style);
-  window.ARTYTicketPricingUI={collectAdminOptions};
+  window.ARTYTicketPricingUI={collectAdminOptions,showBookingOptions:showOptions,injectEditor};
 })();
