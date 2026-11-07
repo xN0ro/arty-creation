@@ -489,6 +489,16 @@ async function shareEvent(id){
 function eventShareIcon(){
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"></circle><circle cx="6" cy="12" r="2.5"></circle><circle cx="18" cy="19" r="2.5"></circle><path d="m8.2 10.8 7.5-4.4M8.2 13.2l7.5 4.4"></path></svg>';
 }
+function eventTicketTierPricesHTML(ev,context='detail'){
+  const options=window.ARTYTicketPricingCore?.eventOptions?.(ev)||[];
+  if(!options.length)return I18n.currency(toMoney(ev.price));
+  const english=I18n.language?.()==='en';
+  const rows=options.map(option=>{
+    const label=english?option.labelEn:option.labelFr;
+    return '<span class="arty-native-ticket-tier"><span>'+safeText(label)+'</span><strong>'+I18n.currency(toMoney(option.price))+'</strong></span>';
+  }).join('');
+  return '<span class="arty-tier-native '+(context==='card'?'arty-tier-native-card':'arty-tier-native-detail')+'">'+rows+'</span>';
+}
 function renderEventPage(id){
   const ev=allEvents.find(k=>k.id===id);
   const c=document.getElementById('eventPageContent');
@@ -508,7 +518,7 @@ function renderEventPage(id){
         <div class="event-type-badge">${safeText(I18n.t(ev.eventType)||I18n.t('Atelier peinture'))}</div>
         <div class="event-detail-date">${formatEventDate(ev,true)} · ${safeText(ev.time||'18:00')}</div>
         <h1>${safeText(I18n.field(ev,'title'))}</h1>
-        <div class="product-price">${I18n.currency(toMoney(ev.price))} <span>/personne</span></div>
+        <div class="product-price">${eventTicketTierPricesHTML(ev)}${!(window.ARTYTicketPricingCore?.eventOptions?.(ev)||[]).length?' <span>/personne</span>':''}</div>
         <p class="product-desc">${safeText(ev.description||I18n.t('Une activité créative Arty avec tout le matériel inclus.'))}</p>
         <div class="event-detail-meta">
           <span class="event-meta-tag">⏱ ${safeText(ev.duration||I18n.t('2 heures'))}</span>
@@ -653,7 +663,7 @@ function renderPartyEvents(){
         <p class="event-card-desc">${safeText(ev.description||I18n.t('Réservez votre place pour une activité peinture Arty.'))}</p>
         <div class="event-card-mini-meta"><span>${safeText(ev.duration||I18n.t('2 heures'))}</span><span>${safeText(ev.location||I18n.t('Lieu à confirmer'))}</span></div>
         <div class="event-card-footer">
-          <span class="event-card-price">${I18n.currency(toMoney(ev.price))}</span>
+          <span class="event-card-price">${eventTicketTierPricesHTML(ev,'card')}</span>
           ${scarcity.show?`<span class="event-card-spots ${scarcity.className}">${safeText(scarcity.label)}</span>`:''}
         </div>
         <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver des billets</button>
@@ -1031,6 +1041,7 @@ function openBooking(eventId){
   document.getElementById('bookingModal').classList.add('active');
   document.getElementById('bookingModal').dataset.eid=eventId;
   updateBookingTotal();
+  window.ARTYTicketPricingUI?.showBookingOptions?.(ev);
   document.body.style.overflow='hidden';
 }
 function updateBookingTotal(){const modal=document.getElementById('bookingModal'),eventId=parseInt(modal?.dataset.eid),event=allEvents.find(item=>item.id===eventId),guests=Math.max(1,parseInt(document.getElementById('bookingGuests')?.value)||1),total=document.getElementById('bookingTotal');if(total)total.textContent=toMoney((Number(event?.price)||0)*guests)}
@@ -1190,6 +1201,12 @@ async function saveEv(){
   showToast(eid?I18n.t('Événement modifié!'):I18n.t('Événement publié!'),'success');
   await loadEvents();
   await loadAdminData();
+  if(p.ticketOptions?.length){
+    const saved=(adminEvents||[]).find(item=>String(item.id)===String(d.event?.id||eid));
+    if(saved && (!Array.isArray(saved.ticketOptions)||saved.ticketOptions.length!==p.ticketOptions.length)){
+      showToast('Les tarifs des billets ne semblent pas avoir été enregistrés. Rechargez la page et réessayez.','error');
+    }
+  }
 }
 function editEv(id){
   const e=adminEvents.find(x=>String(x.id)===String(id));if(!e)return;
