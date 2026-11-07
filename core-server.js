@@ -12,6 +12,7 @@ const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView:
 const crmCore = require('./crm-core');
 const contactCore = require('./contact-core');
 const googleCalendar = require('./google-calendar');
+const ticketPricing = require('./public/ticket-pricing-core');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1678,6 +1679,7 @@ function reserveEventSeatsForItems(db, items) {
     const event = (db.events || []).find(item => Number(item.id) === group.eventId);
     if (!event || (event.status || 'published') !== 'published') return { error:I18n.t('Un événement du panier n’est plus disponible') };
     const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
+    if (group.qty > 10) return { error:'Maximum 10 tickets per event per order' };
     if (group.qty > available) return { error:I18n.msg`Il reste seulement ${available} billet${available > 1 ? 's' : ''} pour ${event.title}` };
   }
   for (const group of groups) {
@@ -1729,6 +1731,7 @@ function ensurePaidOrderBookings(db, order) {
       email:String(order.customer?.email || order.guestEmail || '').trim().toLowerCase(),
       phone:String(order.customer?.phone || '').trim(),
       guests:group.qty,
+      ticketTypes:eventTicketItems(order).filter(item => Number(item.eventId || item.customData?.eventId) === group.eventId).map(item => ({ id:item.ticketOptionId || item.customData?.ticketOptionId || '', labelFr:item.customData?.ticketOptionLabelFr || '', labelEn:item.customData?.ticketOptionLabelEn || '', price:Number(item.price) || 0, qty:Number(item.qty) || 1 })),
       ticketMode:'group',
       guestNames:[String(order.customer?.name || '').replace(/\s+/g,' ').trim().slice(0,120)],
       notes:'',
@@ -2638,6 +2641,7 @@ function normalizeEventPayload(body, existing = {}) {
   payload.time = body.time || existing.time || '18:00';
   payload.duration = body.duration || existing.duration || I18n.t('2 heures');
   payload.price = parseFloat(body.price) || 0;
+  payload.ticketOptions = body.ticketOptions === undefined ? ticketPricing.normalizeOptions(existing.ticketOptions || []) : ticketPricing.normalizeOptions(body.ticketOptions);
   payload.maxSpots = parseInt(body.maxSpots) || existing.maxSpots || 20;
   payload.showMaxCapacity = body.showMaxCapacity === undefined
     ? !!existing.showMaxCapacity
@@ -3070,7 +3074,10 @@ app.post('/api/admin/events', adminOnly, (req, res) => {
   const db = readDB();
   const { title, date } = req.body;
   if (!title || !date) return res.status(400).json({ error: I18n.t('Titre et date requis') });
-  const ev = { id: nextEventId(db), uid: newEventUid(), ...normalizeEventPayload(req.body), createdAt: new Date().toISOString() };
+  let eventFields;
+  try { eventFields = normalizeEventPayload(req.body); }
+  catch (error) { return res.status(400).json({ error:error.message }); }
+  const ev = { id: nextEventId(db), uid: newEventUid(), ...eventFields, createdAt: new Date().toISOString() };
   if (!db.events) db.events = [];
   db.events.push(ev);
   writeDB(db);
@@ -3080,7 +3087,10 @@ app.put('/api/admin/events/:id', adminOnly, (req, res) => {
   const db = readDB();
   const i = (db.events || []).findIndex(e => e.id === parseInt(req.params.id));
   if (i === -1) return res.status(404).json({ error: I18n.t('Non trouvé') });
-  db.events[i] = { ...db.events[i], ...normalizeEventPayload(req.body, db.events[i]), id: db.events[i].id };
+  let eventFields;
+  try { eventFields = normalizeEventPayload(req.body, db.events[i]); }
+  catch (error) { return res.status(400).json({ error:error.message }); }
+  db.events[i] = { ...db.events[i], ...eventFields, id: db.events[i].id };
   writeDB(db);
   res.json({ success: true, event: db.events[i] });
 });
@@ -4201,26 +4211,37 @@ function resolveProductConfiguration(kit, raw) {
 }
 function buildEventTicketItem(db, raw, qty) {
   const input = raw.customData && typeof raw.customData === 'object' ? raw.customData : {};
-  const eventId = Number(input.eventId || /^event-ticket-(\d+)/.exec(String(raw.id || ''))?.[1]);
-  const event = (db.events || []).find(item => Number(item.id) === eventId);
+  const parsed = ticketPricing.parseItemId(raw.id);
+  if (!parsed || (input.eventId != null && Number(input.eventId) !== parsed.eventId)) return { error:'Invalid event ticket selection' };
+  const event = (db.events || []).find(item => Number(item.id) === parsed.eventId);
   if (!event || (event.status || 'published') !== 'published') return { error:I18n.t('Cet événement n’est plus disponible') };
-  const cleanQty = Math.max(1, Math.min(10, parseInt(qty) || 1));
+  const parsedQty = Number(qty);
+  if (!Number.isInteger(parsedQty) || parsedQty < 1 || parsedQty > 10) return { error:'Select between 1 and 10 tickets' };
   const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
-  if (cleanQty > available) return { error:I18n.msg`Il reste seulement ${available} billet${available > 1 ? 's' : ''} pour ${event.title}` };
-  const unitPrice = money(Math.max(0, Number(event.price) || 0));
+  if (parsedQty > available) return { error:'Not enough seats remaining for this event' };
+  const options = ticketPricing.eventOptions(event);
+  const option = options.length ? ticketPricing.optionById(event,parsed.optionId) : null;
+  if ((options.length && !option) || (!options.length && parsed.optionId)) return { error:'This ticket type is no longer available. Remove it from your cart and select a current ticket.' };
+  if (input.ticketOptionId && String(input.ticketOptionId) !== String(option?.id || '')) return { error:'Ticket type mismatch' };
+  const unitPrice = money(option ? option.price : Math.max(0, Number(event.price) || 0));
+  const labelFr = option ? option.labelFr + ' — ' : '';
+  const labelEn = option ? option.labelEn + ' — ' : '';
   return {
-    id:`event-ticket-${event.id}`,
+    id:ticketPricing.itemId(event.id,option?.id),
     eventId:event.id,
     type:'event-ticket',
-    name:`Billet — ${event.title}`,
-    translations:{en:{name:I18n.t('Billet — {0}',[localizeCatalog(event,'en').title],'en')}},
+    ticketOptionId:option?.id || '',
+    name:'Billet ' + labelFr + event.title,
+    translations:{en:{name:'Ticket ' + labelEn + localizeCatalog(event,'en').title}},
     unitPrice,
     price:unitPrice,
     image:String(event.image || '').trim(),
-    qty:cleanQty,
+    qty:parsedQty,
     customData:{
-      kind:'event-ticket',
-      eventId:event.id,
+      kind:'event-ticket',eventId:event.id,
+      ticketOptionId:option?.id || '',
+      ticketOptionLabelFr:option?.labelFr || '',
+      ticketOptionLabelEn:option?.labelEn || '',
       eventDate:event.date || '',
       eventTime:event.time || '',
       eventLocation:event.location || ''
