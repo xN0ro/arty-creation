@@ -2263,3 +2263,8 @@ body.product-lightbox-open{overflow:hidden}
 .event-scarcity-only{justify-content:center;text-align:center;padding:12px 14px}
 .event-scarcity-only strong{font-size:.86rem}
 .event-card-spots.is-low{color:var(--orange);font-weight:800}
+
+/* Finished-event calendar: keep past days visible for orientation, never selectable. */
+.party-calendar-day.is-past:disabled{opacity:.32;cursor:not-allowed;background:var(--bg2);border-color:transparent;box-shadow:none}
+.party-calendar-day.is-past:disabled:hover{transform:none;background:var(--bg2);border-color:transparent;box-shadow:none}
+.party-calendar-controls button:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
