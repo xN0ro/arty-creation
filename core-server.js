@@ -13,6 +13,7 @@ const crmCore = require('./crm-core');
 const contactCore = require('./contact-core');
 const googleCalendar = require('./google-calendar');
 const ticketPricing = require('./public/ticket-pricing-core');
+const seatHolds = require('./ticket-seat-holds');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -644,9 +645,10 @@ app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
 function publicEventView(event) {
   const max=Math.max(0,parseInt(event.maxSpots)||0),booked=Math.max(0,parseInt(event.bookedSpots)||0),remaining=Math.max(0,max-booked);
   const {maxSpots,bookedSpots,showMaxCapacity,...publicEvent}=event;
-  return {...publicEvent,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
+  return {...publicEvent,remainingSpots:remaining,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
 }
-app.get('/api/events', (req, res) => {
+app.get('/api/events', async (req, res) => {
+  await reconcileExpiredEventSeatHolds();
   const now = new Date();
   const db = readDB();
   const events = (db.events || [])
@@ -1016,6 +1018,7 @@ function buildOrderItems(db, rawItems = []) {
 
 // ========== ORDERS & BOOKINGS ==========
 app.post('/api/orders', optionalAuth, async (req, res) => {
+  await reconcileExpiredEventSeatHolds();
   const db = readDB();
   const { items: rawItems, customer = {}, address = {}, checkoutMode } = req.body;
   if (!Array.isArray(rawItems) || !rawItems.length) return res.status(400).json({ error: I18n.t('Aucun article') });
@@ -1085,6 +1088,7 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     inventoryRestocked: false,
     eventSeatsReserved: !isTestOrder && eventSeatResult.reserved > 0,
     eventSeatsReleased: false,
+    eventHoldExpiresAt: hasEventTickets && !isTestOrder ? new Date(Date.now() + seatHolds.HOLD_DURATION_MS).toISOString() : '',
     ticketBookingIds: [],
     refundStatus: 'none',
     refundedTotal: 0,
@@ -2793,6 +2797,7 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
   if (!allowed.includes(status)) return res.status(400).json({ error: I18n.t('Statut invalide') });
 
   const order = db.orders[i];
+  if (status === 'payée' && order.eventSeatsReleased && eventTicketItems(order).length) return res.status(409).json({ error:'Cette réservation de billets a expiré. Créez une nouvelle commande selon la capacité disponible.' });
   const oldStatus = order.status;
   order.status = status;
   const trackingInput = req.body.tracking && typeof req.body.tracking === 'object' ? req.body.tracking : {};
@@ -3066,7 +3071,8 @@ app.put('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); con
 app.delete('/api/admin/kits/:id', adminOnly, (req, res) => { const db=readDB(); db.kits=db.kits.filter(k=>k.id!==parseInt(req.params.id)); writeDB(db); res.json({success:true}); });
 
 // Events CRUD
-app.get('/api/admin/events', adminOnly, (req, res) => {
+app.get('/api/admin/events', adminOnly, async (req, res) => {
+  await reconcileExpiredEventSeatHolds();
   const db = readDB();
   res.json((db.events || []).sort((a,b) => new Date((b.date || '') + 'T' + (b.time || '00:00')) - new Date((a.date || '') + 'T' + (a.time || '00:00'))));
 });
@@ -3738,6 +3744,79 @@ async function createStripePaymentIntentForOrder(order) {
 async function retrieveStripePaymentIntent(paymentIntentId) {
   return stripeRequest('GET', `/v1/payment_intents/${encodeURIComponent(paymentIntentId)}`);
 }
+
+/**
+ * Reconcile expired ten-minute checkout holds against Stripe before releasing
+ * any seats. A successful/processing payment is never discarded. Old unpaid
+ * orders from before this feature use their original creation timestamp.
+ */
+let eventHoldSweepPromise = null;
+let lastEventHoldSweepAt = 0;
+async function reconcileExpiredEventSeatHolds({ force = false } = {}) {
+  if (eventHoldSweepPromise) return eventHoldSweepPromise;
+  if (!force && Date.now() - lastEventHoldSweepAt < 15000) return;
+  lastEventHoldSweepAt = Date.now();
+  eventHoldSweepPromise = (async () => {
+    const expired = (readDB().orders || []).filter(order => seatHolds.isExpiredEventSeatHold(order)).slice(0, 30);
+    let recovered = 0, released = 0;
+    for (const candidate of expired) {
+      // No Stripe reference means there is no provably safe cancellation.
+      // Keep the hold rather than risking a confirmed ticket being resold.
+      if (candidate.paymentProvider !== 'stripe' || !candidate.paymentReference) continue;
+      let intent, outcome = '';
+      try {
+        intent = await retrieveStripePaymentIntent(candidate.paymentReference);
+        if (intent.status === 'succeeded') {
+          outcome = 'paid';
+        } else if (intent.status === 'canceled') {
+          outcome = 'cancelled';
+        } else if (['requires_payment_method', 'requires_confirmation', 'requires_action'].includes(intent.status)) {
+          // Cancel first: if payment succeeds concurrently, Stripe refuses the
+          // cancellation and we must NOT release the reserved seats.
+          intent = await stripeRequest('POST', `/v1/payment_intents/${encodeURIComponent(candidate.paymentReference)}/cancel`, { cancellation_reason:'abandoned' });
+          if (intent.status === 'canceled') outcome = 'cancelled';
+          else if (intent.status === 'succeeded') outcome = 'paid';
+        }
+        // "processing" and "requires_capture" remain reserved until settled.
+      } catch (error) {
+        console.warn('[ticket-hold] Stripe check/cancel failed for order', candidate.id, error.message);
+        continue;
+      }
+      if (!outcome) continue;
+      // Reload after async Stripe requests; payment webhooks or admin actions
+      // may have updated this order while we were waiting.
+      const db = readDB();
+      const current = (db.orders || []).find(item => String(item.id) === String(candidate.id));
+      if (!seatHolds.isExpiredEventSeatHold(current)) continue;
+      if (outcome === 'paid') {
+        const paid = syncOrderFromStripePaymentIntent(db, intent, 'ticket-hold-recovery');
+        if (!paid || paid.paymentStatus !== 'paid') continue;
+        ensurePaidOrderBookings(db, paid);
+        writeDB(db);
+        recovered++;
+        try { await deliverPaidOrderCommunications(paid.id, 'ticket-hold-recovery'); }
+        catch (error) { console.warn('[ticket-hold] Paid order notification error', paid.id, error.message); }
+      } else {
+        syncOrderFromStripePaymentIntent(db, intent, 'ticket-hold-expiry');
+        releaseEventSeatsForOrder(db, current);
+        cancelOrderTicketBookings(db, current);
+        writeDB(db);
+        released++;
+      }
+    }
+    if (released || recovered) console.info(`[ticket-hold] Released ${released} unpaid order(s); recovered ${recovered} successful payment(s)`);
+  })();
+  try { await eventHoldSweepPromise; }
+  finally { eventHoldSweepPromise = null; }
+}
+// Run continuously even without visitors; public/admin reads also trigger it.
+const eventHoldSweepTimer = setInterval(() => {
+  reconcileExpiredEventSeatHolds().catch(error => console.error('[ticket-hold] Sweep error', error));
+}, 30000);
+eventHoldSweepTimer.unref?.();
+setTimeout(() => {
+  reconcileExpiredEventSeatHolds({ force:true }).catch(error => console.error('[ticket-hold] Startup recovery error', error));
+}, 1500).unref?.();
 function stripeRefundAmountCents(amount){return Math.max(1,Math.round((Number(amount)||0)*100))}
 function stripeRefundReason(value){
   const text=String(value||'').toLowerCase();
