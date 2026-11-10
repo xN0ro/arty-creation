@@ -150,7 +150,7 @@ function renderHomeCats(){
 function renderHomeEvents(){
   const grid = document.getElementById('homeEventsGrid');
   if(!grid) return;
-  const upcoming = [...allEvents].sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,3);
+  const upcoming = [...allEvents].filter(event=>!eventHasFinished(event)).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(0,3);
   grid.innerHTML = upcoming.map(ev=>{
     const d = new Date(ev.date+'T00:00:00');
     const dateStr = d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long'});
@@ -239,8 +239,10 @@ function formatEventDate(ev,withYear=false){
   const d=new Date(ev.date+'T00:00:00');
   return d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long',year:withYear?'numeric':undefined});
 }
-function spotsLeft(ev){if(Number.isFinite(Number(ev?.remainingSpots)))return Math.max(0,parseInt(ev.remainingSpots)||0);if(Number.isFinite(Number(ev?.bookingLimit)))return Math.max(0,parseInt(ev.bookingLimit)||0);return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
+function eventHasFinished(ev){const end=Date.parse(String(ev?.endsAt||''));return Number.isFinite(end)&&Date.now()>=end}
+function spotsLeft(ev){if(eventHasFinished(ev))return 0;if(Number.isFinite(Number(ev?.remainingSpots)))return Math.max(0,parseInt(ev.remainingSpots)||0);if(Number.isFinite(Number(ev?.bookingLimit)))return Math.max(0,parseInt(ev.bookingLimit)||0);return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
 function publicEventScarcity(ev){
+  if(eventHasFinished(ev))return {show:true,left:0,label:I18n.language?.()==='en'?'Finished':'Terminé',className:'is-full'};
   const left=spotsLeft(ev);
   if(left<=0)return {show:true,left:0,label:I18n.t('Complet'),className:'is-full'};
   if(left>5)return {show:false,left,label:'',className:''};
@@ -553,40 +555,44 @@ function calendarDateKey(date){
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
 function calendarMonthKey(date){return calendarDateKey(date).slice(0,7)}
+function partyCalendarTodayKey(){
+  const parts = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Toronto',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+  const values=Object.fromEntries(parts.filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+  return values.year+'-'+values.month+'-'+values.day;
+}
 function getDatedPartyEvents(){
-  return allEvents.filter(event=>parseCalendarDate(event.date)).sort((a,b)=>{
+  return allEvents.filter(event=>parseCalendarDate(event.date)&&!eventHasFinished(event)).sort((a,b)=>{
     const dateCompare=String(a.date).localeCompare(String(b.date));
     return dateCompare||String(a.time||'00:00').localeCompare(String(b.time||'00:00'));
   });
 }
 function ensurePartyCalendarState(){
-  const events=getDatedPartyEvents();
-  const todayKey=calendarDateKey(new Date());
-  const firstUpcoming=events.find(event=>event.date>=todayKey);
-  const startingEvent=firstUpcoming||events[events.length-1];
-  const initialDate=startingEvent?parseCalendarDate(startingEvent.date):new Date();
-  if(!/^\d{4}-\d{2}$/.test(partyCalendarMonth))partyCalendarMonth=calendarMonthKey(initialDate);
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(partyCalendarSelectedDate)){
-    partyCalendarSelectedDate=startingEvent?.date||todayKey;
+  const todayKey=partyCalendarTodayKey(),currentMonth=todayKey.slice(0,7);
+  if(!/^\\d{4}-\\d{2}$/.test(partyCalendarMonth)||partyCalendarMonth<currentMonth)partyCalendarMonth=currentMonth;
+  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(partyCalendarSelectedDate)||partyCalendarSelectedDate<todayKey||!partyCalendarSelectedDate.startsWith(partyCalendarMonth)){
+    const upcoming=getDatedPartyEvents().find(event=>event.date>=todayKey&&event.date.startsWith(partyCalendarMonth));
+    partyCalendarSelectedDate=upcoming?.date||(partyCalendarMonth===currentMonth?todayKey:partyCalendarMonth+'-01');
   }
 }
 function changePartyCalendarMonth(offset){
   ensurePartyCalendarState();
   const [year,month]=partyCalendarMonth.split('-').map(Number);
   const next=new Date(year,month-1+Number(offset||0),1);
-  partyCalendarMonth=calendarMonthKey(next);
-  const firstEvent=getDatedPartyEvents().find(event=>String(event.date).startsWith(partyCalendarMonth));
-  partyCalendarSelectedDate=firstEvent?.date||`${partyCalendarMonth}-01`;
+  const nextMonth=calendarMonthKey(next),todayKey=partyCalendarTodayKey();
+  if(nextMonth<todayKey.slice(0,7))return;
+  partyCalendarMonth=nextMonth;
+  const firstEvent=getDatedPartyEvents().find(event=>String(event.date).startsWith(partyCalendarMonth)&&event.date>=todayKey);
+  partyCalendarSelectedDate=firstEvent?.date||(nextMonth===todayKey.slice(0,7)?todayKey:nextMonth+'-01');
   renderPartyCalendar();
 }
 function showCurrentPartyCalendarMonth(){
-  const today=new Date();
-  partyCalendarMonth=calendarMonthKey(today);
-  partyCalendarSelectedDate=calendarDateKey(today);
+  const todayKey=partyCalendarTodayKey();
+  partyCalendarMonth=todayKey.slice(0,7);
+  partyCalendarSelectedDate=todayKey;
   renderPartyCalendar();
 }
 function selectPartyCalendarDate(dateKey){
-  const date=parseCalendarDate(dateKey);if(!date)return;
+  const date=parseCalendarDate(dateKey);if(!date||dateKey<partyCalendarTodayKey())return;
   partyCalendarMonth=calendarMonthKey(date);
   partyCalendarSelectedDate=dateKey;
   renderPartyCalendar();
@@ -632,16 +638,19 @@ function renderPartyCalendar(){
   });
   const mondayOffset=(monthStart.getDay()+6)%7;
   const firstCell=new Date(year,month-1,1-mondayOffset);
-  const todayKey=calendarDateKey(new Date());
+  const todayKey=partyCalendarTodayKey();
+  const prevMonthButton=document.getElementById('partyCalendarPrevious');
+  if(prevMonthButton)prevMonthButton.disabled=partyCalendarMonth<=todayKey.slice(0,7);
   const cells=[];
   for(let index=0;index<42;index++){
     const date=new Date(firstCell.getFullYear(),firstCell.getMonth(),firstCell.getDate()+index);
     const key=calendarDateKey(date);
     const events=eventsByDate.get(key)||[];
     const outside=date.getMonth()!==month-1;
-    const classes=['party-calendar-day',outside?'is-outside':'',events.length?'has-events':'',key===todayKey?'is-today':'',key===partyCalendarSelectedDate?'is-selected':''].filter(Boolean).join(' ');
+    const isPast=key<todayKey;
+    const classes=['party-calendar-day',outside?'is-outside':'',isPast?'is-past':'',events.length?'has-events':'',key===todayKey?'is-today':'',key===partyCalendarSelectedDate?'is-selected':''].filter(Boolean).join(' ');
     const eventLabel=events.length?I18n.msg`${events.length} événement${events.length>1?'s':''}`:I18n.t('Aucun événement');
-    cells.push(`<button type="button" class="${classes}" onclick="selectPartyCalendarDate('${key}')" aria-pressed="${key===partyCalendarSelectedDate?'true':'false'}" aria-label="${safeAttr(date.toLocaleDateString(I18n.locale(),{day:'numeric',month:'long',year:'numeric'}))}, ${eventLabel}"><span class="party-calendar-day-number">${date.getDate()}</span>${events.length?`<span class="party-calendar-day-event"><i></i><small>${events.length>1?events.length+I18n.t(' événements'):I18n.t('Événement')}</small></span>`:''}</button>`);
+    cells.push(`<button type="button" class="${classes}" ${isPast?'disabled':''} onclick="selectPartyCalendarDate('${key}')" aria-pressed="${key===partyCalendarSelectedDate?'true':'false'}" aria-label="${safeAttr(date.toLocaleDateString(I18n.locale(),{day:'numeric',month:'long',year:'numeric'}))}, ${eventLabel}"><span class="party-calendar-day-number">${date.getDate()}</span>${events.length?`<span class="party-calendar-day-event"><i></i><small>${events.length>1?events.length+I18n.t(' événements'):I18n.t('Événement')}</small></span>`:''}</button>`);
   }
   grid.innerHTML=cells.join('');
   renderPartyCalendarAgenda(eventsByDate);
@@ -650,7 +659,7 @@ function renderPartyEvents(){
   const partyGrid=document.getElementById('partyEventsGrid');
   const count=document.getElementById('eventPublishedCount');
   if(!partyGrid)return;
-  const sorted=[...allEvents].sort((a,b)=>new Date((a.date||'')+'T'+(a.time||'00:00'))-new Date((b.date||'')+'T'+(b.time||'00:00')));
+  const sorted=[...allEvents].filter(event=>!eventHasFinished(event)).sort((a,b)=>new Date((a.date||'')+'T'+(a.time||'00:00'))-new Date((b.date||'')+'T'+(b.time||'00:00')));
   if(count)count.textContent=String(sorted.length);
   renderPartyCalendar();
   partyGrid.innerHTML=sorted.map(ev=>{
@@ -1071,6 +1080,7 @@ async function handleGoogle(r){try{const res=await artyFetch('/api/users/google'
 function openBooking(eventId){
   const ev=allEvents.find(e=>e.id===eventId);
   if(!ev)return;
+  if(eventHasFinished(ev))return showToast(I18n.language?.()==='en'?'This event has finished.':'Cet événement est terminé.','error');
   const left=spotsLeft(ev);
   if(left<=0)return showToast(I18n.t('Cet événement est complet'),'error');
   document.getElementById('bookingEventTitle').textContent=ev.title;
@@ -1092,6 +1102,7 @@ function confirmBooking(){
   const g=document.getElementById('bookingGuests').value;
   const button=document.getElementById('bookingSubmitButton');
   const event=allEvents.find(item=>String(item.id)===String(eid));if(!event)return showToast(I18n.t('Événement introuvable'),'error');
+  if(eventHasFinished(event))return showToast(I18n.language?.()==='en'?'This event has finished.':'Cet événement est terminé.','error');
   const qty=Math.max(1,parseInt(g)||1),id=`event-ticket-${event.id}`,existing=cart.find(item=>String(item.id)===id),combined=(Number(existing?.qty)||0)+qty;
   if(combined>spotsLeft(event)){const remaining=spotsLeft(event);return showToast(remaining<=5?(I18n.language?.()==='en'?`Only ${remaining} ticket${remaining===1?'':'s'} left`:`Il reste seulement ${remaining} billet${remaining===1?'':'s'}`):I18n.t('Cette quantité de billets n’est pas disponible'),'error')}
   if(button){button.disabled=true;button.textContent=I18n.t('Ajout au panier...')}
