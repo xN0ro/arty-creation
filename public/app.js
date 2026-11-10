@@ -1,6 +1,7 @@
 /* Arty! — Application v3 */
 let currentUser=null,authToken=null,allKits=[],allEvents=[],allCategories=[],allBundles=[],cart=[],currentFilter='all',googleClientId='',adminEvents=[],adminBookings=[],eventRequests=[],adminOrders=[];
 let paymentProvider='not_connected',stripeMode='test',stripePublishableKey='',stripeConfigured=false,ticketPaymentsConfigured=false,stripeInstance=null,stripeElements=null,currentStripeOrder=null,currentStripePayment=null;
+let ticketSeatHoldTimer=null,stripePaymentInProgress=false;
 let bundleDealRules=[],bundleBuilderState={people:10,customText:'',selected:{},purpose:'group'},eventBuilderState={step:1,eventName:'',guests:10,date:'',eventTime:'',address:{line1:'',city:'',province:'QC',postal:'',country:'Canada'},hostName:'',email:'',phone:'',notes:'',contactPreference:'email',servicePath:'inventory',selected:{},customKit:{size:'moyen',quantity:10,notes:''},expertBrief:''};
 let catalogFilters={category:'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
 let siteAnnouncement={enabled:false,message:''},transactionalEmailConfigured=false,ticketEmailConfigured=false,lastTicketEmailStatus='',adminGuestEventId='';
@@ -153,7 +154,7 @@ function renderHomeEvents(){
   grid.innerHTML = upcoming.map(ev=>{
     const d = new Date(ev.date+'T00:00:00');
     const dateStr = d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long'});
-    const spotsLeft = ev.maxSpots - ev.bookedSpots;
+    const spotsLeft = Math.max(0,Number(ev.remainingSpots ?? ev.bookingLimit ?? 0));
     return I18n.html`<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
       <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
       <div class="event-card-body">
@@ -238,7 +239,7 @@ function formatEventDate(ev,withYear=false){
   const d=new Date(ev.date+'T00:00:00');
   return d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long',year:withYear?'numeric':undefined});
 }
-function spotsLeft(ev){if(Number.isFinite(Number(ev?.bookingLimit)))return Math.max(0,parseInt(ev.bookingLimit)||0);return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
+function spotsLeft(ev){if(Number.isFinite(Number(ev?.remainingSpots)))return Math.max(0,parseInt(ev.remainingSpots)||0);if(Number.isFinite(Number(ev?.bookingLimit)))return Math.max(0,parseInt(ev.bookingLimit)||0);return Math.max(0,(parseInt(ev?.maxSpots)||0)-(parseInt(ev?.bookedSpots)||0))}
 function publicEventScarcity(ev){
   const left=spotsLeft(ev);
   if(left<=0)return {show:true,left:0,label:I18n.t('Complet'),className:'is-full'};
@@ -808,6 +809,7 @@ function renderCheckoutPage(){
         <div class="payment-provider-box ${stripeConfigured&&!paymentUnavailable?'stripe-ready':''} ${paymentUnavailable?'payment-required':''}"><strong>${paymentUnavailable?I18n.t('Paiement des billets indisponible'):stripeConfigured?I18n.t('Paiement sécurisé par Stripe'):I18n.t('Paiement en ligne indisponible')}</strong><p>${paymentUnavailable?I18n.t('La commande ne peut pas être passée et aucun billet ne sera créé tant que la confirmation sécurisée du paiement n’est pas active.'):stripeConfigured?I18n.t('Cliquez sur Continuer au paiement pour afficher le formulaire sécurisé.'):I18n.t('La commande sera enregistrée en attente de paiement.')}</p></div>
         <div class="stripe-payment-panel" id="stripePaymentPanel" style="display:none">
           <div class="stripe-payment-head"><strong>Paiement par carte</strong><span id="stripeOrderLabel"></span></div>
+          <div id="ticketSeatHoldCountdown" class="stripe-payment-message" role="status" aria-live="polite" hidden></div>
           <div id="payment-element"></div>
           <div id="stripePaymentMessage" class="stripe-payment-message"></div>
           <button class="btn btn-orange checkout-submit" id="stripePayBtn" onclick="confirmStripePayment()">Payer maintenant →</button>
@@ -868,10 +870,42 @@ function showOrderSuccess(order,paymentNote){
   document.getElementById('successModal').classList.add('active');
   document.body.style.overflow='hidden';
 }
+function stopTicketSeatHoldTimer(){
+  if(ticketSeatHoldTimer)clearInterval(ticketSeatHoldTimer);
+  ticketSeatHoldTimer=null;
+}
+function renderTicketSeatHoldCountdown(){
+  const timer=document.getElementById('ticketSeatHoldCountdown');
+  const order=currentStripeOrder,expiresAt=Date.parse(String(order?.eventHoldExpiresAt||''));
+  if(!timer||!Number.isFinite(expiresAt))return;
+  timer.hidden=false;
+  const seconds=Math.max(0,Math.ceil((expiresAt-Date.now())/1000));
+  const english=I18n.language?.()==='en';
+  if(seconds>0){
+    const clock=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+    timer.textContent=english?'Your tickets are reserved for '+clock+' while you pay.':'Vos places sont réservées pendant '+clock+' pour terminer le paiement.';
+    return;
+  }
+  if(stripePaymentInProgress){
+    timer.textContent=english?'Payment is being processed.':'Paiement en cours de traitement.';
+    return;
+  }
+  timer.innerHTML=english?'Your 10-minute ticket reservation expired. <button type="button" class="btn btn-ghost btn-sm" onclick="restartExpiredTicketCheckout()">Start again</button>':'Votre réservation de 10 minutes a expiré. <button type="button" class="btn btn-ghost btn-sm" onclick="restartExpiredTicketCheckout()">Recommencer</button>';
+  const payBtn=document.getElementById('stripePayBtn');
+  if(payBtn)payBtn.disabled=true;
+  stopTicketSeatHoldTimer();
+}
+function restartExpiredTicketCheckout(){
+  stopTicketSeatHoldTimer();
+  stripeInstance=null;stripeElements=null;currentStripeOrder=null;currentStripePayment=null;
+  renderCheckoutPage();
+  showToast(I18n.language?.()==='en'?'Reservation expired. Please start a new checkout.':'Réservation expirée. Veuillez recommencer le paiement.','error');
+}
 async function mountStripePayment(order,payment){
   if(!window.Stripe)return showToast(I18n.t('Stripe ne s’est pas chargé. Rechargez la page.'),'error');
   if(!payment.publishableKey)return showToast(I18n.t('Clé publishable Stripe manquante'),'error');
   stripeInstance=Stripe(payment.publishableKey);
+  stopTicketSeatHoldTimer();
   currentStripeOrder=order;
   currentStripePayment=payment;
   const appearance={theme:'flat',variables:{colorPrimary:'#1B9AAA',colorText:'#2C2418',colorDanger:'#D44',borderRadius:'14px',fontFamily:'Outfit, sans-serif'}};
@@ -884,11 +918,14 @@ async function mountStripePayment(order,payment){
   if(message)message.textContent='';
   if(panel)panel.style.display='block';
   paymentElement.mount('#payment-element');
+  if(order.eventHoldExpiresAt){renderTicketSeatHoldCountdown();ticketSeatHoldTimer=setInterval(renderTicketSeatHoldCountdown,1000)}
   panel?.scrollIntoView({behavior:'smooth',block:'center'});
   showToast(I18n.t('Commande créée. Entrez la carte pour payer.'),'success');
 }
 async function confirmStripePayment(){
   if(!stripeInstance||!stripeElements||!currentStripeOrder||!currentStripePayment)return showToast(I18n.t('Paiement Stripe non prêt'),'error');
+  if(currentStripeOrder.eventHoldExpiresAt && Date.now()>=Date.parse(currentStripeOrder.eventHoldExpiresAt))return restartExpiredTicketCheckout();
+  stripePaymentInProgress=true;
   const btn=document.getElementById('stripePayBtn');
   const msg=document.getElementById('stripePaymentMessage');
   if(btn){btn.disabled=true;btn.textContent=I18n.t('Paiement en cours...')}
@@ -908,6 +945,7 @@ async function confirmStripePayment(){
     const r=await artyFetch('/api/stripe/confirm-order',{method:'POST',headers:authH(),body:JSON.stringify({orderId:currentStripeOrder.id,paymentIntentId:pi?.id||currentStripePayment.paymentIntentId})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok)throw new Error(d.error||I18n.t('Paiement traité, mais confirmation serveur impossible'));
+    stopTicketSeatHoldTimer();
     cart=[];saveCart();updateCartUI();
     const issuedTicket=Array.isArray(d.tickets)?d.tickets[0]:null;
     if(issuedTicket?.code){
@@ -928,6 +966,9 @@ async function confirmStripePayment(){
     console.error(err);
     if(msg){msg.textContent=err.message||I18n.t('Erreur de paiement');msg.className='stripe-payment-message error'}
     if(btn){btn.disabled=false;btn.textContent=I18n.t('Réessayer le paiement →')}
+  } finally {
+    stripePaymentInProgress=false;
+    renderTicketSeatHoldCountdown();
   }
 }
 function renderPaymentCompletePage(){
@@ -2855,7 +2896,7 @@ function openProfileTickets(bookingId){
 function closeProfileTickets(){const modal=document.getElementById('profileTicketModal');if(!modal)return;modal.remove();document.body.style.overflow=''}
 
 function adminEventBookings(eventId){return (adminBookings||[]).filter(booking=>String(booking.eventId)===String(eventId))}
-function adminEventTicketCounts(eventId){const tickets=adminEventBookings(eventId).flatMap(booking=>booking.tickets||[]);return{total:tickets.reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0),checked:tickets.filter(ticket=>ticket.status==='checked_in').reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0)}}
+function adminEventTicketCounts(eventId){const tickets=adminEventBookings(eventId).filter(booking=>booking.status!=='annulée').flatMap(booking=>booking.tickets||[]).filter(ticket=>ticket.status!=='cancelled');return{total:tickets.reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0),checked:tickets.filter(ticket=>ticket.status==='checked_in').reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0)}}
 function openAdminEventEditor(id){const editor=document.getElementById('adminEventEditor');if(editor)editor.open=true;setTimeout(()=>editEv(id),20)}
 function selectAdminGuestEvent(id){adminGuestEventId=String(id||'');renderAdminEvents();setTimeout(()=>document.getElementById('adminGuestManager')?.scrollIntoView({behavior:'smooth',block:'start'}),30)}
 function filterAdminGuestList(value){const needle=String(value||'').trim().toLowerCase();document.querySelectorAll('[data-guest-search]').forEach(row=>{row.hidden=needle&&!row.dataset.guestSearch.includes(needle)})}
@@ -2876,7 +2917,7 @@ function renderAdminEvents(){
   const panel=document.getElementById('adminEventsPanel');if(!panel)return;
   if(!adminGuestEventId||!adminEvents.some(event=>String(event.id)===String(adminGuestEventId)))adminGuestEventId=adminEvents.length?String(adminEvents[0].id):'';
   const selectedEvent=adminEvents.find(event=>String(event.id)===String(adminGuestEventId)),selectedBookings=selectedEvent?adminEventBookings(selectedEvent.id):[];
-  const totalTickets=(adminBookings||[]).flatMap(booking=>booking.tickets||[]),soldAdmissions=totalTickets.reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0),checkedAdmissions=totalTickets.filter(ticket=>ticket.status==='checked_in').reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0);
+  const totalTickets=(adminBookings||[]).filter(booking=>booking.status!=='annulée').flatMap(booking=>booking.tickets||[]).filter(ticket=>ticket.status!=='cancelled'),soldAdmissions=totalTickets.reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0),checkedAdmissions=totalTickets.filter(ticket=>ticket.status==='checked_in').reduce((sum,ticket)=>sum+Math.max(1,Number(ticket.admissions)||1),0);
   const eventCards=(adminEvents||[]).map(event=>{const counts=adminEventTicketCounts(event.id),capacity=Number(event.maxSpots)||0,pct=capacity?Math.min(100,Math.round((counts.total/capacity)*100)):0;return I18n.html`<article class="admin-managed-event ${String(event.id)===String(adminGuestEventId)?'selected':''}"><img src="${safeAttr(event.image||'photoacceuil.jpg')}" alt=""><div><span>${safeText(event.date?formatEventDate(event,true):I18n.t('Date à confirmer'))} · ${safeText(event.time||'')}</span><h4>${safeText(I18n.field(event,'title'))}</h4><p>${safeText(event.location||I18n.t('Lieu à confirmer'))}</p><div class="admin-event-capacity"><span style="width:${pct}%"></span></div><small>${counts.total} personne${counts.total>1?'s':''} · ${counts.checked} présence${counts.checked>1?'s':''} · ${safeText(I18n.status(event.status||'published'))}</small></div><div class="admin-managed-actions"><button type="button" onclick="selectAdminGuestEvent('${safeAttr(event.id)}')">Liste d’invités</button><button type="button" onclick="openAdminEventEditor(${Number(event.id)})">Modifier</button><button type="button" class="danger" onclick="deleteEv(${Number(event.id)})">Supprimer</button></div></article>`}).join('');
   const guestRows=selectedBookings.flatMap(booking=>(booking.tickets||[]).map(ticket=>{const checked=ticket.status==='checked_in',cancelled=ticket.status==='cancelled',admissions=Math.max(1,Number(ticket.admissions)||1),search=[ticket.holderName,booking.name,booking.email,booking.phone,ticket.code].join(' ').toLowerCase();return I18n.html`<tr data-guest-search="${safeAttr(search)}"><td><strong>${safeText(ticket.holderName)}</strong><span>${safeText(ticket.code)}</span><small>Accès pour ${admissions} personne${admissions>1?'s':''}</small></td><td><strong>${safeText(booking.name)}</strong><span>${safeText(booking.email)}${booking.phone?` · ${safeText(booking.phone)}`:''}</span></td><td><span class="admin-ticket-state ${cancelled?'cancelled':checked?'checked':'valid'}">${cancelled?I18n.t('Annulé'):checked?I18n.t('Présent'):I18n.t('À venir')}</span>${checked&&ticket.checkedInAt?`<small>${profileDate(ticket.checkedInAt,true)}</small>`:''}</td><td>${cancelled?I18n.html('<span class="admin-ticket-unavailable">Aucune entrée</span>'):`<button class="admin-checkin-button ${checked?'undo':''}" type="button" onclick="checkInAdminTicket('${safeAttr(ticket.id)}',${checked?'false':'true'})">${checked?I18n.msg`Annuler (${admissions})`:I18n.msg`Confirmer ${admissions} entrée${admissions>1?'s':''}`}</button>`}</td></tr>`})).join('');
   const selectedCounts=selectedEvent?adminEventTicketCounts(selectedEvent.id):{total:0,checked:0};
