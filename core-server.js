@@ -1096,6 +1096,12 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     updatedAt: createdAt
   };
 
+  // Commit the seat reservation synchronously before awaiting Stripe. Otherwise
+  // concurrent checkouts can both read the same remaining capacity and oversell.
+  if (!db.orders) db.orders = [];
+  db.orders.push(order);
+  writeDB(db);
+
   let payment = {
     status: 'provider_not_connected',
     provider: order.paymentProvider,
@@ -1113,6 +1119,15 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
         status: pi.status || '',
         clientSecretCreatedAt: new Date().toISOString()
       };
+      // Persist the Stripe reference onto the latest database, preserving any
+      // other orders that may have arrived while the API call was in flight.
+      const latestDB = readDB();
+      const persisted = (latestDB.orders || []).find(item => String(item.id) === String(order.id));
+      if (!persisted) throw new Error('Checkout reservation no longer exists');
+      persisted.paymentProvider = order.paymentProvider;
+      persisted.paymentReference = order.paymentReference;
+      persisted.stripe = order.stripe;
+      writeDB(latestDB);
       payment = {
         status: 'requires_payment',
         provider: 'stripe',
@@ -1123,18 +1138,22 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
       };
     } catch (err) {
       console.error('Stripe PaymentIntent error:', err.message);
-      if (order.inventoryReserved && !order.inventoryRestocked) {
-        releaseInventoryForItems(db, order.items || [], order.id, I18n.t('Paiement Stripe non créé'));
-        order.inventoryRestocked = true;
+      const latestDB = readDB();
+      const persisted = (latestDB.orders || []).find(item => String(item.id) === String(order.id));
+      if (persisted && persisted.paymentStatus !== 'paid') {
+        if (persisted.inventoryReserved && !persisted.inventoryRestocked) {
+          releaseInventoryForItems(latestDB, persisted.items || [], persisted.id, I18n.t('Paiement Stripe non créé'));
+          persisted.inventoryRestocked = true;
+        }
+        releaseEventSeatsForOrder(latestDB, persisted);
+        persisted.paymentStatus = 'cancelled';
+        persisted.status = 'annulée';
+        persisted.updatedAt = new Date().toISOString();
+        writeDB(latestDB);
       }
-      releaseEventSeatsForOrder(db, order);
       return res.status(500).json({ error: I18n.t('Paiement Stripe non disponible: ') + err.message });
     }
   }
-
-  if (!db.orders) db.orders = [];
-  db.orders.push(order);
-  writeDB(db);
 
   res.json({ success: true, order, payment });
 });
@@ -3752,17 +3771,37 @@ async function retrieveStripePaymentIntent(paymentIntentId) {
  */
 let eventHoldSweepPromise = null;
 let lastEventHoldSweepAt = 0;
+let eventHoldSweepOffset = 0;
 async function reconcileExpiredEventSeatHolds({ force = false } = {}) {
   if (eventHoldSweepPromise) return eventHoldSweepPromise;
   if (!force && Date.now() - lastEventHoldSweepAt < 15000) return;
   lastEventHoldSweepAt = Date.now();
   eventHoldSweepPromise = (async () => {
-    const expired = (readDB().orders || []).filter(order => seatHolds.isExpiredEventSeatHold(order)).slice(0, 30);
+    const outstanding = (readDB().orders || []).filter(order => seatHolds.isExpiredEventSeatHold(order));
+    const start = outstanding.length ? eventHoldSweepOffset % outstanding.length : 0;
+    const expired = outstanding.slice(start).concat(outstanding.slice(0, start)).slice(0, 30);
+    eventHoldSweepOffset = outstanding.length ? (start + expired.length) % outstanding.length : 0;
     let recovered = 0, released = 0;
     for (const candidate of expired) {
-      // No Stripe reference means there is no provably safe cancellation.
-      // Keep the hold rather than risking a confirmed ticket being resold.
-      if (candidate.paymentProvider !== 'stripe' || !candidate.paymentReference) continue;
+      // A persisted order without a Stripe reference never returned a client
+      // secret to the buyer, so it cannot be paid from this checkout.
+      if (candidate.paymentProvider === 'stripe' && !candidate.paymentReference) {
+        const db = readDB();
+        const current = (db.orders || []).find(item => String(item.id) === String(candidate.id));
+        if (!seatHolds.isExpiredEventSeatHold(current)) continue;
+        if (current.inventoryReserved && !current.inventoryRestocked) {
+          releaseInventoryForItems(db, current.items || [], current.id, 'Checkout expired before payment initialization');
+          current.inventoryRestocked = true;
+        }
+        releaseEventSeatsForOrder(db, current);
+        current.paymentStatus = 'cancelled';
+        current.status = 'annulée';
+        current.updatedAt = new Date().toISOString();
+        writeDB(db);
+        released++;
+        continue;
+      }
+      if (candidate.paymentProvider !== 'stripe') continue;
       let intent, outcome = '';
       try {
         intent = await retrieveStripePaymentIntent(candidate.paymentReference);
