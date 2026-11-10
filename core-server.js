@@ -14,6 +14,7 @@ const contactCore = require('./contact-core');
 const googleCalendar = require('./google-calendar');
 const ticketPricing = require('./public/ticket-pricing-core');
 const seatHolds = require('./ticket-seat-holds');
+const eventLifecycle = require('./event-lifecycle');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -645,14 +646,15 @@ app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
 function publicEventView(event) {
   const max=Math.max(0,parseInt(event.maxSpots)||0),booked=Math.max(0,parseInt(event.bookedSpots)||0),remaining=Math.max(0,max-booked);
   const {maxSpots,bookedSpots,showMaxCapacity,...publicEvent}=event;
-  return {...publicEvent,remainingSpots:remaining,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
+  const end=eventLifecycle.eventEndMs(event);
+  return {...publicEvent,endsAt:Number.isFinite(end)?new Date(end).toISOString():'',remainingSpots:remaining,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
 }
 app.get('/api/events', async (req, res) => {
   await reconcileExpiredEventSeatHolds();
   const now = new Date();
   const db = readDB();
   const events = (db.events || [])
-    .filter(e => (e.status || 'published') === 'published')
+    .filter(e => eventLifecycle.eventCanAcceptBookings(e))
     .sort((a,b) => new Date((a.date || '') + 'T' + (a.time || '00:00')) - new Date((b.date || '') + 'T' + (b.time || '00:00')));
   res.json(events.map(publicEventView));
 });
@@ -1088,7 +1090,7 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
     inventoryRestocked: false,
     eventSeatsReserved: !isTestOrder && eventSeatResult.reserved > 0,
     eventSeatsReleased: false,
-    eventHoldExpiresAt: hasEventTickets && !isTestOrder ? new Date(Date.now() + seatHolds.HOLD_DURATION_MS).toISOString() : '',
+    eventHoldExpiresAt: hasEventTickets && !isTestOrder ? new Date(Math.min(Date.now() + seatHolds.HOLD_DURATION_MS, ...groupEventTicketItems(pricing.items).map(group=>eventLifecycle.eventEndMs((db.events||[]).find(item=>Number(item.id)===group.eventId))))).toISOString() : '',
     ticketBookingIds: [],
     refundStatus: 'none',
     refundedTotal: 0,
@@ -1700,7 +1702,7 @@ function reserveEventSeatsForItems(db, items) {
   const groups = groupEventTicketItems(items);
   for (const group of groups) {
     const event = (db.events || []).find(item => Number(item.id) === group.eventId);
-    if (!event || (event.status || 'published') !== 'published') return { error:I18n.t('Un événement du panier n’est plus disponible') };
+    if (!eventLifecycle.eventCanAcceptBookings(event)) return { error:I18n.t('Cet événement est terminé ou n’est plus disponible à la réservation') };
     const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
     if (group.qty > 10) return { error:'Maximum 10 tickets per event per order' };
     if (group.qty > available) return { error:I18n.msg`Il reste seulement ${available} billet${available > 1 ? 's' : ''} pour ${event.title}` };
@@ -2046,7 +2048,7 @@ app.post('/api/bookings', optionalAuth, async (req, res) => {
   if (!validEmail(email)) return res.status(400).json({ error: I18n.t('Courriel invalide') });
   const ev = (db.events || []).find(e => e.id === parseInt(eventId));
   if (!ev) return res.status(404).json({ error: I18n.t('Événement non trouvé') });
-  if ((ev.status || 'published') !== 'published') return res.status(400).json({ error: I18n.t('Cet événement n’est pas disponible à la réservation') });
+  if (!eventLifecycle.eventCanAcceptBookings(ev)) return res.status(400).json({ error: I18n.t('Cet événement est terminé ou n’est plus disponible à la réservation') });
   if (Number(ev.price) > 0) return res.status(402).json({ error: I18n.t('Ajoutez les billets au panier et complétez le paiement pour les recevoir') });
   const booked = parseInt(ev.bookedSpots) || 0;
   const max = parseInt(ev.maxSpots) || 0;
@@ -4332,7 +4334,7 @@ function buildEventTicketItem(db, raw, qty) {
   const parsed = ticketPricing.parseItemId(raw.id);
   if (!parsed || (input.eventId != null && Number(input.eventId) !== parsed.eventId)) return { error:'Invalid event ticket selection' };
   const event = (db.events || []).find(item => Number(item.id) === parsed.eventId);
-  if (!event || (event.status || 'published') !== 'published') return { error:I18n.t('Cet événement n’est plus disponible') };
+  if (!eventLifecycle.eventCanAcceptBookings(event)) return { error:I18n.t('Cet événement est terminé ou n’est plus disponible à la réservation') };
   const parsedQty = Number(qty);
   if (!Number.isInteger(parsedQty) || parsedQty < 1 || parsedQty > 10) return { error:'Select between 1 and 10 tickets' };
   const available = Math.max(0, (parseInt(event.maxSpots) || 0) - (parseInt(event.bookedSpots) || 0));
