@@ -568,8 +568,8 @@ function getDatedPartyEvents(){
 }
 function ensurePartyCalendarState(){
   const todayKey=partyCalendarTodayKey(),currentMonth=todayKey.slice(0,7);
-  if(!/^\\d{4}-\\d{2}$/.test(partyCalendarMonth)||partyCalendarMonth<currentMonth)partyCalendarMonth=currentMonth;
-  if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(partyCalendarSelectedDate)||partyCalendarSelectedDate<todayKey||!partyCalendarSelectedDate.startsWith(partyCalendarMonth)){
+  if(!/^[0-9]{4}-[0-9]{2}$/.test(partyCalendarMonth)||partyCalendarMonth<currentMonth)partyCalendarMonth=currentMonth;
+  if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(partyCalendarSelectedDate)||partyCalendarSelectedDate<todayKey||!partyCalendarSelectedDate.startsWith(partyCalendarMonth)){
     const upcoming=getDatedPartyEvents().find(event=>event.date>=todayKey&&event.date.startsWith(partyCalendarMonth));
     partyCalendarSelectedDate=upcoming?.date||(partyCalendarMonth===currentMonth?todayKey:partyCalendarMonth+'-01');
   }
