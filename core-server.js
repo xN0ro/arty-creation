@@ -15,6 +15,7 @@ const googleCalendar = require('./google-calendar');
 const ticketPricing = require('./public/ticket-pricing-core');
 const seatHolds = require('./ticket-seat-holds');
 const eventLifecycle = require('./event-lifecycle');
+const salesReporting = require('./sales-reporting');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -4084,18 +4085,27 @@ function computeAdminAnalytics(db) {
   const monthKey = now.toISOString().slice(0,7);
   const realOrders = orders.filter(order => order.status !== 'annulée');
   const paidOrders = realOrders.filter(order => order.paymentStatus === 'paid' && order.status !== 'remboursée');
-  const revenue = money(paidOrders.reduce((sum,order)=>sum+Number(order.total||0),0));
+  const onlineRevenue = money(paidOrders.reduce((sum,order)=>sum+Number(order.total||0),0));
+  const manual = salesReporting.manualSalesSummary(db);
+  const manualSales = manual.sales;
+  const manualRevenue = manual.revenue;
+  const revenue = money(onlineRevenue + manualRevenue);
   const paidRevenue = revenue;
+  // A two-person Interac booking is one financial transaction and two seats.
+  const salesCount = paidOrders.length + manual.transactions;
+  const monthManualSales = manualSales.filter(sale => sale.paidAt.slice(0,7) === monthKey);
   const monthOrders = paidOrders.filter(order => String(order.paidAt || order.createdAt || '').slice(0,7) === monthKey);
   const todayKey = now.toISOString().slice(0,10);
   const todayOrders = paidOrders.filter(order => String(order.paidAt || order.createdAt || '').slice(0,10) === todayKey);
+  const todayManualSales = manualSales.filter(sale => sale.paidAt.slice(0,10) === todayKey);
   const statusCounts = orders.reduce((acc,order)=>{const key=order.status||'nouvelle';acc[key]=(acc[key]||0)+1;return acc;},{});
   const daily = [];
   for (let i=13;i>=0;i--) {
     const day = new Date(now); day.setDate(now.getDate()-i);
     const key = day.toISOString().slice(0,10);
     const dayOrders = paidOrders.filter(order => String(order.paidAt || order.createdAt || '').slice(0,10) === key);
-    daily.push({ date:key.slice(5), revenue:money(dayOrders.reduce((sum,order)=>sum+Number(order.total||0),0)), orders:dayOrders.length });
+    const dayManual = manualSales.filter(sale => sale.paidAt.slice(0,10) === key);
+    daily.push({ date:key.slice(5), revenue:money(dayOrders.reduce((sum,order)=>sum+Number(order.total||0),0)+dayManual.reduce((sum,sale)=>sum+sale.amount,0)), orders:dayOrders.length+dayManual.length });
   }
   const productMap = {};
   for (const order of paidOrders) for (const item of (order.items||[])) {
@@ -4104,21 +4114,34 @@ function computeAdminAnalytics(db) {
     productMap[name].qty += Number(item.qty)||0;
     productMap[name].revenue += Number(item.lineTotal ?? (Number(item.price||0)*Number(item.qty||0))) || 0;
   }
+  for (const sale of manualSales) {
+    const name = sale.eventTitle + ' (Interac)';
+    if (!productMap[name]) productMap[name] = { name, qty:0, revenue:0 };
+    productMap[name].qty += sale.admissions;
+    productMap[name].revenue += sale.amount;
+  }
   const topProducts = Object.values(productMap).sort((a,b)=>b.revenue-a.revenue).slice(0,8).map(item=>({ ...item, revenue:money(item.revenue) }));
   const lowInventory = (db.kits||[]).map(kit=>enrichPublicKit(kit,db)).filter(kit=>kit.isLowStock || !kit.inStock).sort((a,b)=>Number(a.stockQty??999)-Number(b.stockQty??999)).slice(0,20);
   const refundTotal = money(refunds.reduce((sum,refund)=>sum+Number(refund.amount||0),0));
   return {
     revenue,
     paidRevenue,
+    onlineRevenue,
+    manualRevenue,
+    manualTransactions:manual.transactions,
+    manualAdmissions:manual.admissions,
+    salesCount,
     pendingRevenue:money(orders.filter(order=>order.paymentStatus==='pending').reduce((sum,order)=>sum+Number(order.total||0),0)),
-    monthRevenue:money(monthOrders.reduce((sum,order)=>sum+Number(order.total||0),0)),
-    todayRevenue:money(todayOrders.reduce((sum,order)=>sum+Number(order.total||0),0)),
+    monthRevenue:money(monthOrders.reduce((sum,order)=>sum+Number(order.total||0),0)+monthManualSales.reduce((sum,sale)=>sum+sale.amount,0)),
+    todayRevenue:money(todayOrders.reduce((sum,order)=>sum+Number(order.total||0),0)+todayManualSales.reduce((sum,sale)=>sum+sale.amount,0)),
     ordersCount:orders.length,
     testOrdersCount:testOrders.length,
     paidOrdersCount:paidOrders.length,
     monthOrdersCount:monthOrders.length,
     todayOrdersCount:todayOrders.length,
-    averageOrder:paidOrders.length ? money(revenue / paidOrders.length) : 0,
+    monthSalesCount:monthOrders.length+monthManualSales.length,
+    todaySalesCount:todayOrders.length+todayManualSales.length,
+    averageOrder:salesCount ? money(revenue / salesCount) : 0,
     discountTotal:money(paidOrders.reduce((sum,order)=>sum+Number(order.discountTotal||0),0)),
     refundTotal,
     statusCounts,
