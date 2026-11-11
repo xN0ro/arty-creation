@@ -4,6 +4,7 @@
 const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
+const salesReporting=require('./sales-reporting');
 const ALLOWED=new Set(['page_view','view_item','view_event','add_to_cart','begin_checkout','lead']);
 function filePath(){
   const dir=process.env.ARTY_DB_PATH?path.dirname(path.resolve(process.env.ARTY_DB_PATH)):(process.env.ARTY_DATA_DIR||process.env.DATA_DIR||process.env.RENDER_DISK_PATH||(process.env.RENDER&&fs.existsSync('/var/data')?'/var/data':path.join(__dirname,'data')));
@@ -59,10 +60,12 @@ function summary(db,days){
   const rangeStart=Date.parse(first+'T00:00:00Z');
   const signups=(db.users||[]).filter(u=>since(u.createdAt,rangeStart)).length;
   const paidOrders=(db.orders||[]).filter(o=>!o.isTest&&o.paymentStatus==='paid'&&since(o.paidAt||o.updatedAt||o.createdAt,rangeStart));
-  const revenue=paidOrders.reduce((sum,o)=>sum+(Number(o.total)||0),0);
-  const manualTickets=(db.bookings||[]).filter(b=>b.paymentMethod==='e_transfer'&&since(b.bookedAt,rangeStart));
+  const onlineRevenue=paidOrders.reduce((sum,o)=>sum+(Number(o.total)||0),0);
+  const manualSales=salesReporting.confirmedManualSales(db).filter(sale=>since(sale.paidAt,rangeStart));
+  const manualRevenue=manualSales.reduce((sum,sale)=>sum+sale.amount,0);
+  const totalRevenue=salesReporting.money(onlineRevenue+manualRevenue);
   const rank=obj=>Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,count])=>({name,count}));
-  return {days:span,from:first,to:dayNow(),counts,visitorsDailySum:visitors,sessions,pageViews:counts.page_view||0,signups,logins:counts.login||0,orders:paidOrders.length,revenue:Math.round(revenue*100)/100,manualBookings:manualTickets.length,manualAdmissions:manualTickets.reduce((sum,b)=>sum+(Number(b.guests)||0),0),topPages:rank(pages),sources:rank(sources),devices:rank(devices),timeline,collectionNotice:'Page views, sessions and visitor estimates only include opted-in browser analytics since installation. Visitors are unique per day and summed across the period; not deduplicated across days.'};
+  return {days:span,from:first,to:dayNow(),counts,visitorsDailySum:visitors,sessions,pageViews:counts.page_view||0,signups,logins:counts.login||0,orders:paidOrders.length,revenue:salesReporting.money(onlineRevenue),onlineRevenue:salesReporting.money(onlineRevenue),manualRevenue:salesReporting.money(manualRevenue),totalRevenue,salesCount:paidOrders.length+manualSales.length,manualBookings:manualSales.length,manualAdmissions:manualSales.reduce((sum,sale)=>sum+sale.admissions,0),topPages:rank(pages),sources:rank(sources),devices:rank(devices),timeline,collectionNotice:'Page views, sessions and visitor estimates only include opted-in browser analytics since installation. Visitors are unique per day and summed across the period; not deduplicated across days.'};
 }
 function install(app,{adminOnly,readDb}){
   // Instrument successful authentication server-side; do not record names,
