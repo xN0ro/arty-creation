@@ -59,7 +59,7 @@ function summary(db,days){
   }
   const rangeStart=Date.parse(first+'T00:00:00Z');
   const signups=(db.users||[]).filter(u=>since(u.createdAt,rangeStart)).length;
-  const paidOrders=(db.orders||[]).filter(o=>!o.isTest&&o.paymentStatus==='paid'&&since(o.paidAt||o.updatedAt||o.createdAt,rangeStart));
+  const paidOrders=(db.orders||[]).filter(o=>!o.isTest&&o.paymentStatus==='paid'&&!['annulée','remboursée'].includes(String(o.status||''))&&since(o.paidAt||o.updatedAt||o.createdAt,rangeStart));
   const onlineRevenue=paidOrders.reduce((sum,o)=>sum+(Number(o.total)||0),0);
   const manualSales=salesReporting.confirmedManualSales(db).filter(sale=>since(sale.paidAt,rangeStart));
   const manualRevenue=manualSales.reduce((sum,sale)=>sum+sale.amount,0);
