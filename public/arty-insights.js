@@ -45,13 +45,15 @@ async function loadReport(){
  card(t('Visiteurs uniques quotidiens (cumul)','Daily unique visitors (sum)'),num(d.visitorsDailySum))+card(t('Comptes créés','Accounts created'),num(d.signups))+
  card(t('Connexions','Logins'),num(d.logins))+card(t('Pages événements consultées','Event views'),num(c.view_event))+
  card(t('Ajouts au panier','Adds to cart'),num(c.add_to_cart))+card(t('Débuts de paiement','Checkout starts'),num(c.begin_checkout))+
- card(t('Commandes payées','Paid orders'),num(d.orders))+card(t('Revenus en ligne','Online revenue'),money(d.revenue))+
+ card(t('Ventes confirmées','Confirmed sales'),num(d.salesCount))+card(t('Revenus totaux','Total revenue'),money(d.totalRevenue))+
+ card(t('Commandes en ligne','Online orders'),num(d.orders))+card(t('Revenus en ligne','Online revenue'),money(d.onlineRevenue??d.revenue))+
+ card(t('Revenus Interac','Interac revenue'),money(d.manualRevenue))+
  card(t('Réservations manuelles','Manual bookings'),num(d.manualBookings))+card(t('Places manuelles','Manual admissions'),num(d.manualAdmissions))+'</div>'+
  '<div class="arty-stat-grid"><section class="arty-stat-panel"><h4>'+t('Visites quotidiennes','Daily traffic')+'</h4><div class="arty-spark">'+spark+'</div><p class="arty-stat-note">'+safe(d.from)+' — '+safe(d.to)+'</p></section>'+
  '<section class="arty-stat-panel"><h4>'+t('Sources de trafic','Traffic sources')+'</h4>'+rows(d.sources)+'</section>'+
  '<section class="arty-stat-panel"><h4>'+t('Pages populaires','Popular pages')+'</h4>'+rows(d.topPages)+'</section>'+
  '<section class="arty-stat-panel"><h4>'+t('Appareils','Devices')+'</h4>'+rows(d.devices)+'</section></div>'+
- '<p class="arty-stat-note">'+t('Statistiques de visites disponibles seulement depuis l’installation et pour les visiteurs ayant accepté la mesure. Les visiteurs uniques sont cumulés par jour et peuvent se répéter entre jours. Les comptes et commandes proviennent des données existantes du site; les billets Interac sont distincts des revenus Stripe.','Visit analytics starts after installation and only includes visitors who consent. Daily uniques are summed and may repeat across days. Accounts and orders come from existing site records; Interac tickets are separate from Stripe revenue.')+'</p>';
+ '<p class="arty-stat-note">'+t('Statistiques de visites disponibles seulement depuis l’installation et pour les visiteurs ayant accepté la mesure. Les visiteurs uniques sont cumulés par jour et peuvent se répéter entre jours. Les ventes confirmées comprennent les commandes payées en ligne et les virements Interac vérifiés. Les revenus Interac sont affichés séparément pour la réconciliation.','Visit analytics starts after installation and only includes visitors who consent. Daily uniques are summed and may repeat across days. Confirmed sales combine paid online orders with verified Interac transfers. Interac revenue is also shown separately for reconciliation.')+'</p>';
  }catch(err){out.textContent=err.message}finally{loading=false}
 }
 window.artyLoadReport=loadReport;
@@ -74,18 +76,33 @@ function addTickets(){
  '<label>'+t('Courriel','Email')+'<input name="email" type="email" required autocomplete="email"></label>'+
  '<label>'+t('Téléphone','Phone')+'<input name="phone" type="tel"></label>'+
  '<label>'+t('Places','Admissions')+'<input name="guests" type="number" required min="1" max="50" value="1"></label>'+
- '<label>'+t('Montant reçu (CAD)','Amount received (CAD)')+'<input name="amount" type="number" required min="0" max="100000" step=".01" value="'+safe(Number(ev.price||0).toFixed(2))+'"></label>'+
+ '<label>'+t('Montant total reçu pour tous les billets (CAD)','Total received for all tickets (CAD)')+'<input name="amount" type="number" required min="0" max="100000" step=".01" value="'+safe(Number(ev.price||0).toFixed(2))+'"></label>'+
  '<label>'+t('Référence de virement','Transfer reference')+'<input name="paymentReference" required maxlength="100"></label></div>'+
  '<div class="arty-manual-bottom"><label><input name="paymentConfirmed" type="checkbox" required>'+t('Je confirme avoir vérifié la réception du paiement.','I confirm the payment has been received.')+'</label>'+
  '<button type="submit" class="btn btn-orange">'+t('Créer et envoyer par courriel','Create and send email')+'</button></div></form>';
  manager.querySelector('.admin-guest-head')?.insertAdjacentElement('afterend',box);
- const form=box.querySelector('form');form.addEventListener('submit',async e=>{
+ const form=box.querySelector('form');
+ const seatsInput=form.querySelector('[name="guests"]'),amountInput=form.querySelector('[name="amount"]');
+ let enteredActualAmount=false;
+ amountInput?.addEventListener('input',()=>{enteredActualAmount=true});
+ seatsInput?.addEventListener('input',()=>{
+   // Suggest a whole-booking amount. Final value must match the bank deposit.
+   if(enteredActualAmount||!amountInput)return;
+   const seats=Math.max(1,Number(seatsInput.value)||1),price=Math.max(0,Number(ev.price)||0);
+   amountInput.value=(Math.round(seats*price*100)/100).toFixed(2);
+ });
+ form.addEventListener('submit',async e=>{
   e.preventDefault();const button=form.querySelector('button');button.disabled=true;
   const f=new FormData(form),body={eventId:Number(selected),guests:Number(f.get('guests')),amount:Number(f.get('amount')),name:f.get('name'),email:f.get('email'),phone:f.get('phone'),paymentReference:f.get('paymentReference'),paymentConfirmed:f.has('paymentConfirmed'),locale:en()?'en':'fr'};
   try{
    const res=await artyFetch('/api/admin/bookings/manual',{method:'POST',headers:authH(),body:JSON.stringify(body)}),data=await res.json();
    if(!res.ok)throw Error(data.error||'Ticket error');
-   await loadAdminBookings();renderAdminEvents();
+   await Promise.all([loadAdminBookings(),loadAdminEvents(),loadAdminAnalytics()]);
+   renderAdminEvents();renderAdminDashboard();
+   const salesTotal=document.getElementById('statRevenue'),salesCount=document.getElementById('statOrders');
+   if(salesTotal)salesTotal.textContent=I18n.currency(toMoney(adminAnalyticsPro?.revenue||0));
+   if(salesCount)salesCount.textContent=adminAnalyticsPro?.salesCount??0;
+   window.artyLoadReport?.();
    showToast(data.emailStatus==='sent'?t('Billet créé et envoyé.','Ticket issued and emailed.'):t('Billet créé, mais le courriel a échoué. Renvoyez-le depuis la liste des invités.','Ticket issued, but email failed. Resend from the guest list.'),data.emailStatus==='sent'?'success':'error');
   }catch(err){showToast(err.message,'error');button.disabled=false}
  });
