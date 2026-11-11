@@ -45,13 +45,15 @@ async function loadReport(){
  card(t('Visiteurs uniques quotidiens (cumul)','Daily unique visitors (sum)'),num(d.visitorsDailySum))+card(t('Comptes créés','Accounts created'),num(d.signups))+
  card(t('Connexions','Logins'),num(d.logins))+card(t('Pages événements consultées','Event views'),num(c.view_event))+
  card(t('Ajouts au panier','Adds to cart'),num(c.add_to_cart))+card(t('Débuts de paiement','Checkout starts'),num(c.begin_checkout))+
- card(t('Commandes payées','Paid orders'),num(d.orders))+card(t('Revenus en ligne','Online revenue'),money(d.revenue))+
+ card(t('Ventes confirmées','Confirmed sales'),num(d.salesCount))+card(t('Revenus totaux','Total revenue'),money(d.totalRevenue))+
+ card(t('Commandes en ligne','Online orders'),num(d.orders))+card(t('Revenus en ligne','Online revenue'),money(d.onlineRevenue??d.revenue))+
+ card(t('Revenus Interac','Interac revenue'),money(d.manualRevenue))+
  card(t('Réservations manuelles','Manual bookings'),num(d.manualBookings))+card(t('Places manuelles','Manual admissions'),num(d.manualAdmissions))+'</div>'+
  '<div class="arty-stat-grid"><section class="arty-stat-panel"><h4>'+t('Visites quotidiennes','Daily traffic')+'</h4><div class="arty-spark">'+spark+'</div><p class="arty-stat-note">'+safe(d.from)+' — '+safe(d.to)+'</p></section>'+
  '<section class="arty-stat-panel"><h4>'+t('Sources de trafic','Traffic sources')+'</h4>'+rows(d.sources)+'</section>'+
  '<section class="arty-stat-panel"><h4>'+t('Pages populaires','Popular pages')+'</h4>'+rows(d.topPages)+'</section>'+
  '<section class="arty-stat-panel"><h4>'+t('Appareils','Devices')+'</h4>'+rows(d.devices)+'</section></div>'+
- '<p class="arty-stat-note">'+t('Statistiques de visites disponibles seulement depuis l’installation et pour les visiteurs ayant accepté la mesure. Les visiteurs uniques sont cumulés par jour et peuvent se répéter entre jours. Les comptes et commandes proviennent des données existantes du site; les billets Interac sont distincts des revenus Stripe.','Visit analytics starts after installation and only includes visitors who consent. Daily uniques are summed and may repeat across days. Accounts and orders come from existing site records; Interac tickets are separate from Stripe revenue.')+'</p>';
+ '<p class="arty-stat-note">'+t('Statistiques de visites disponibles seulement depuis l’installation et pour les visiteurs ayant accepté la mesure. Les visiteurs uniques sont cumulés par jour et peuvent se répéter entre jours. Les ventes confirmées comprennent les commandes payées en ligne et les virements Interac vérifiés. Les revenus Interac sont affichés séparément pour la réconciliation.','Visit analytics starts after installation and only includes visitors who consent. Daily uniques are summed and may repeat across days. Confirmed sales combine paid online orders with verified Interac transfers. Interac revenue is also shown separately for reconciliation.')+'</p>';
  }catch(err){out.textContent=err.message}finally{loading=false}
 }
 window.artyLoadReport=loadReport;
@@ -85,7 +87,12 @@ function addTickets(){
   try{
    const res=await artyFetch('/api/admin/bookings/manual',{method:'POST',headers:authH(),body:JSON.stringify(body)}),data=await res.json();
    if(!res.ok)throw Error(data.error||'Ticket error');
-   await loadAdminBookings();renderAdminEvents();
+   await Promise.all([loadAdminBookings(),loadAdminEvents(),loadAdminAnalytics()]);
+   renderAdminEvents();renderAdminDashboard();
+   const salesTotal=document.getElementById('statRevenue'),salesCount=document.getElementById('statOrders');
+   if(salesTotal)salesTotal.textContent=I18n.currency(toMoney(adminAnalyticsPro?.revenue||0));
+   if(salesCount)salesCount.textContent=adminAnalyticsPro?.salesCount??0;
+   window.artyLoadReport?.();
    showToast(data.emailStatus==='sent'?t('Billet créé et envoyé.','Ticket issued and emailed.'):t('Billet créé, mais le courriel a échoué. Renvoyez-le depuis la liste des invités.','Ticket issued, but email failed. Resend from the guest list.'),data.emailStatus==='sent'?'success':'error');
   }catch(err){showToast(err.message,'error');button.disabled=false}
  });
