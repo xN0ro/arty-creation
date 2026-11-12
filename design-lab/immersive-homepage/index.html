@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#092e31">
+  <meta name="description" content="An immersive art-filled homepage concept for Arty Creation. Standalone design prototype, no backend required.">
+  <title>ARTY Creation | The Living Canvas (Design Lab)</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="pointer-glow" aria-hidden="true"></div>
+  <div class="scroll-progress" aria-hidden="true"><span id="progressBar"></span></div>
+  <div class="concept-pill"><span class="concept-pulse"></span><span data-en="CONCEPT PREVIEW · NO LIVE STORE" data-fr="APERÇU CONCEPT · BOUTIQUE NON ACTIVE">CONCEPT PREVIEW · NO LIVE STORE</span></div>
+
+  <header class="site-header" id="siteHeader">
+    <a class="brand" href="#top" aria-label="Arty Creation, back to top">
+      <span class="brand-symbol" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M24 3c3 12 5 14 21 21-15 5-18 8-21 21C20 31 17 28 3 24 18 18 21 15 24 3Z" fill="currentColor"/><circle cx="24" cy="24" r="5" fill="#f5ebd9"/></svg></span>
+      <span class="brand-lockup"><strong>ARTY</strong><small>CREATION</small></span>
+    </a>
+    <nav class="nav-links" aria-label="Explore sections">
+      <a href="#chapter-kits" data-en="Art kits" data-fr="Kits créatifs">Art kits</a>
+      <a href="#chapter-studio" data-en="Studio" data-fr="Studio">Studio</a>
+      <a href="#chapter-events" data-en="Experiences" data-fr="Expériences">Experiences</a>
+    </nav>
+    <div class="header-actions">
+      <button class="language-toggle" id="languageToggle" type="button" aria-label="Switch language to French">FR</button>
+      <button class="motion-toggle" id="motionToggle" type="button" aria-label="Turn off animation" title="Reduce animation"><span class="motion-glyph" aria-hidden="true">✳</span><span data-en="Motion on" data-fr="Animations">Motion on</span></button>
+      <a class="header-cta" href="#finale" data-en="Let's create ↗" data-fr="Créons ensemble ↗">Let's create ↗</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- CHAPTER ONE: THE LIVING CANVAS -->
+    <section id="top" class="hero" aria-labelledby="heroTitle">
+      <div class="hero-light hero-light-a" aria-hidden="true"></div>
+      <div class="hero-light hero-light-b" aria-hidden="true"></div>
+      <div class="hero-ring ring-one" aria-hidden="true"></div>
+      <div class="hero-ring ring-two" aria-hidden="true"></div>
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow eyebrow-light"><span class="eyebrow-line"></span><span data-en="A LITTLE ART. A LOT OF JOY." data-fr="UN PEU D'ART. BEAUCOUP DE JOIE.">A LITTLE ART. A LOT OF JOY.</span></p>
+          <h1 id="heroTitle"><span data-en="Make room" data-fr="Faites place">Make room</span><br><em data-en="for wonder." data-fr="à la magie.">for wonder.</em></h1>
+          <p class="hero-description" data-en="A world of colour, curiosity and happy little surprises. Your next favourite memory starts with a brushstroke." data-fr="Un univers de couleurs, de curiosité et de belles surprises. Votre prochain souvenir commence d'un coup de pinceau.">A world of colour, curiosity and happy little surprises. Your next favourite memory starts with a brushstroke.</p>
+          <a href="#chapter-kits" class="button button-orange"><span data-en="Step into Arty" data-fr="Entrez dans Arty">Step into Arty</span><span class="button-circle" aria-hidden="true">↗</span></a>
+          <div class="hero-footnote"><span class="handstar" aria-hidden="true">✳</span><span data-en="Made for the curious. No experience needed." data-fr="Pour les curieux. Aucune expérience requise.">Made for the curious. No experience needed.</span></div>
+        </div>
+        <div class="hero-visual" id="heroVisual" aria-label="A virtual art studio with a floating canvas and art supplies">
+          <div class="scene-aura" aria-hidden="true"></div>
+          <div class="orbit orbit-orange" aria-hidden="true"></div>
+          <div class="orbit orbit-mint" aria-hidden="true"></div>
+          <div class="visual-scene" id="visualScene" aria-hidden="true">
+            <div class="scene-easel">
+              <div class="easel-top"></div><div class="easel-leg easel-leg-left"></div><div class="easel-leg easel-leg-right"></div><div class="easel-leg easel-leg-middle"></div><div class="easel-shelf"></div>
+            </div>
+            <div class="masterpiece">
+              <div class="canvas-side"></div>
+              <div class="masterpiece-face">
+                <svg viewBox="0 0 520 620" role="img" aria-label="Abstract painterly artwork">
+                  <defs>
+                    <linearGradient id="canvasPaper" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f8edd9"/><stop offset="1" stop-color="#ecdbba"/></linearGradient>
+                    <linearGradient id="sunBrush" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fa9b54"/><stop offset="1" stop-color="#dd543b"/></linearGradient>
+                    <linearGradient id="seaBrush" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#60d1be"/><stop offset="1" stop-color="#0b6b70"/></linearGradient>
+                    <filter id="paperTexture"><feTurbulence type="fractalNoise" baseFrequency=".22" numOctaves="2" seed="4" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="linear" slope=".075"/></feComponentTransfer></filter>
+                  </defs>
+                  <rect width="520" height="620" fill="url(#canvasPaper)"/>
+                  <path d="M-42 381C55 310 96 306 154 346c66 46 98 15 140-19 62-49 140-14 256-50v368H-42Z" fill="#17474a"/>
+                  <path d="M-50 462c142-81 188-20 290 7 72 20 167-42 305-104v270H-50Z" fill="url(#seaBrush)"/>
+                  <path d="M-20 526c114-48 153-11 228 11 106 31 171-27 333-69v173H-20Z" fill="#dfbf8b"/>
+                  <circle cx="349" cy="217" r="135" fill="url(#sunBrush)"/>
+                  <path d="M345 70c88 7 146 100 138 159-12 84-62 122-138 128" stroke="#fcbe7e" stroke-width="14" fill="none" stroke-linecap="round" opacity=".7"/>
+                  <path d="M-26 207c56-89 152-100 220-53 52 36 70 90 56 152-20 89-127 124-191 74" stroke="#177d7a" stroke-width="44" fill="none" stroke-linecap="round"/>
+                  <path d="M43 269c51-44 104-46 142-9" stroke="#94ddbb" stroke-width="15" fill="none" stroke-linecap="round"/>
+                  <path d="M50 29c56 25 84 45 96 90" stroke="#db7953" stroke-width="10" stroke-linecap="round" fill="none"/>
+                  <path d="M223 56c-25 40-37 95-18 128" stroke="#d6a369" stroke-width="9" stroke-linecap="round" fill="none"/>
+                  <g fill="#fff2d1" opacity=".85"><circle cx="78" cy="480" r="5"/><circle cx="119" cy="451" r="8"/><circle cx="456" cy="478" r="4"/><circle cx="287" cy="558" r="6"/><circle cx="195" cy="88" r="5"/></g>
+                  <path d="M94 559c50-35 94-38 135-21" stroke="#d86646" stroke-width="11" fill="none" stroke-linecap="round"/>
+                  <rect width="520" height="620" filter="url(#paperTexture)" opacity=".35"/>
+                </svg>
+              </div>
+            </div>
+            <div class="paint-tube paint-tube-orange"><div class="tube-cap"></div><div class="tube-body"><div class="tube-label"><span>ARTY</span><small>colour / 01</small></div><div class="tube-colour"></div></div></div>
+            <div class="paint-tube paint-tube-mint"><div class="tube-cap"></div><div class="tube-body"><div class="tube-label"><span>ARTY</span><small>colour / 02</small></div><div class="tube-colour"></div></div></div>
+            <div class="paint-brush hero-brush"><span class="brush-hair"></span><span class="brush-metal"></span><span class="brush-handle"></span></div>
+            <div class="paint-blob blob-yellow"></div><div class="paint-blob blob-pink"></div><div class="paint-blob blob-teal"></div>
+            <span class="spark spark-a">✳</span><span class="spark spark-b">✦</span><span class="spark spark-c">✳</span>
+          </div>
+          <div class="hero-art-label"><span class="label-dash"></span><span>THE LIVING CANVAS <b>·</b> 01</span></div>
+        </div>
+      </div>
+      <div class="scroll-hint" aria-hidden="true"><span data-en="SCROLL TO EXPLORE" data-fr="DÉFILEZ POUR EXPLORER">SCROLL TO EXPLORE</span><span class="scroll-line"></span></div>
+      <div class="hero-vertical-text" aria-hidden="true">COLOUR • CREATE • CONNECT •</div>
+    </section>
+
+    <div class="ticker" aria-hidden="true"><div class="ticker-track"><span>THE ART OF TRYING <b>✳</b> MAKE A LITTLE MAGIC <b>✳</b> GOOD VIBES &amp; PAINT SPLATTERS <b>✳</b> CREATE YOUR OWN STORY <b>✳</b> THE ART OF TRYING <b>✳</b> MAKE A LITTLE MAGIC <b>✳</b> GOOD VIBES &amp; PAINT SPLATTERS <b>✳</b> CREATE YOUR OWN STORY <b>✳</b></span></div></div>
+
+    <!-- CHAPTER TWO: KIT UNBOXING -->
+    <section id="chapter-kits" class="kits-chapter" aria-labelledby="kitsTitle">
+      <div class="kits-sticky">
+        <div class="chapter-backdrop-text" aria-hidden="true">IMAGINE</div>
+        <div class="chapter-info">
+          <span class="chapter-index">01 <i></i> 03</span>
+          <div class="story-panels" id="storyPanels" aria-live="off">
+            <div class="story-panel is-active" data-story="0">
+              <p class="eyebrow eyebrow-dark" data-en="YOUR CREATIVE ADVENTURE" data-fr="VOTRE AVENTURE CRÉATIVE">YOUR CREATIVE ADVENTURE</p>
+              <h2 id="kitsTitle" data-en="Everything starts with a little colour." data-fr="Tout commence avec un peu de couleur.">Everything starts with a little colour.</h2>
+              <p data-en="Meet the art kit that makes it easy to make something entirely your own." data-fr="Découvrez le kit qui rend la création accessible à tous, à votre façon.">Meet the art kit that makes it easy to make something entirely your own.</p>
+            </div>
+            <div class="story-panel" data-story="1" aria-hidden="true">
+              <p class="eyebrow eyebrow-dark" data-en="UNBOX YOUR IMAGINATION" data-fr="LIBÉREZ VOTRE IMAGINATION">UNBOX YOUR IMAGINATION</p>
+              <h2 data-en="Open the box. Let the ideas out." data-fr="Ouvrez la boîte. Laissez parler vos idées.">Open the box. Let the ideas out.</h2>
+              <p data-en="Canvas, colours, brushes and all the little things. The fun is already inside." data-fr="Toile, couleurs, pinceaux et tout le nécessaire. Le plaisir est déjà dans la boîte.">Canvas, colours, brushes and all the little things. The fun is already inside.</p>
+            </div>
+            <div class="story-panel" data-story="2" aria-hidden="true">
+              <p class="eyebrow eyebrow-dark" data-en="MAKE IT YOURS" data-fr="CRÉEZ À VOTRE IMAGE">MAKE IT YOURS</p>
+              <h2 data-en="Not perfect. Just beautifully yours." data-fr="Pas besoin d'être parfait. Juste unique.">Not perfect. Just beautifully yours.</h2>
+              <p data-en="A relaxing afternoon, a new skill, a piece you'll be proud to say you made." data-fr="Un moment de détente, une nouvelle découverte et une création dont vous serez fier.">A relaxing afternoon, a new skill, a piece you'll be proud to say you made.</p>
+            </div>
+          </div>
+          <div class="story-navigation"><div class="story-dots"><span class="is-current"></span><span></span><span></span></div><span data-en="KEEP SCROLLING TO UNBOX" data-fr="DÉFILEZ POUR DÉCOUVRIR">KEEP SCROLLING TO UNBOX</span></div>
+        </div>
+        <div class="kit-showcase" id="kitShowcase" aria-hidden="true">
+          <div class="kit-circle kit-circle-one"></div><div class="kit-circle kit-circle-two"></div>
+          <div class="kit-packing">
+            <div class="kit-box-side"></div><div class="kit-box-front"><span class="kit-box-star">✳</span><strong>ARTY</strong><small>YOUR ART KIT</small><span class="kit-box-bottom">A little colour. A lot of joy.</span></div>
+          </div>
+          <div class="kit-mini-canvas">
+            <svg viewBox="0 0 300 340"><rect width="300" height="340" fill="#f4dfbe"/><circle cx="194" cy="115" r="73" fill="#e9845b"/><path d="M-10 180Q60 120 108 177T300 171V350H-10Z" fill="#14515b"/><path d="M-10 259Q110 201 173 252T315 228V350H-10Z" fill="#77beb0"/><path d="M12 292Q110 260 201 307T320 282" stroke="#e8bf82" stroke-width="20" fill="none" stroke-linecap="round"/></svg>
+          </div>
+          <div class="kit-palette"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="kit-brush"><span></span><i></i><b></b></div>
+          <div class="kit-pencil"><span></span></div>
+          <div class="kit-paint-swatch swatch-orange"></div><div class="kit-paint-swatch swatch-blue"></div>
+          <div class="kit-tag tag-canvas" data-en="YOUR CANVAS" data-fr="VOTRE TOILE">YOUR CANVAS</div><div class="kit-tag tag-colours" data-en="THE COLOURS" data-fr="LES COULEURS">THE COLOURS</div><div class="kit-tag tag-brushes" data-en="THE TOOLS" data-fr="LES OUTILS">THE TOOLS</div>
+          <span class="showcase-handwritten">all in one box <span>↗</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAPTER THREE: PHOTO TO PAINTING -->
+    <section id="chapter-studio" class="studio-chapter" aria-labelledby="studioTitle">
+      <div class="studio-intro reveal">
+        <p class="eyebrow eyebrow-dark" data-en="02 / STUDIO ARTY" data-fr="02 / STUDIO ARTY">02 / STUDIO ARTY</p>
+        <h2 id="studioTitle"><span data-en="Your memories," data-fr="Vos souvenirs,">Your memories,</span><br><em data-en="your masterpiece." data-fr="votre chef-d'œuvre.">your masterpiece.</em></h2>
+        <p data-en="What if your favourite moment became your next favourite painting? Slide to discover the possibilities." data-fr="Et si votre plus beau souvenir devenait votre prochaine toile? Faites glisser pour découvrir.">What if your favourite moment became your next favourite painting? Slide to discover the possibilities.</p>
+      </div>
+      <div class="studio-compare-wrap reveal">
+        <div class="compare-frame" id="compareFrame" style="--reveal: 53%;">
+          <div class="compare-half compare-photo" aria-hidden="true">
+            <svg viewBox="0 0 900 600" preserveAspectRatio="xMidYMid slice">
+              <defs><linearGradient id="photoSky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#81b8bb"/><stop offset=".8" stop-color="#d5ded0"/><stop offset="1" stop-color="#fff0cb"/></linearGradient><linearGradient id="photoWater" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#328993"/><stop offset="1" stop-color="#104d5d"/></linearGradient></defs>
+              <rect width="900" height="600" fill="url(#photoSky)"/><circle cx="683" cy="173" r="92" fill="#fbebba" opacity=".85"/>
+              <path d="M0 360Q140 260 285 300T550 320T900 245V600H0Z" fill="#829b80"/><path d="M0 370Q205 319 362 352T656 333T900 300V600H0Z" fill="#436e6d"/>
+              <path d="M0 390Q220 367 370 404T900 349V600H0Z" fill="url(#photoWater)"/><path d="M0 530Q160 469 313 505T647 476T900 461V600H0Z" fill="#e1bf8d"/>
+              <g fill="#2f5b57" opacity=".8"><path d="M80 380l45-200 45 200Z"/><path d="M119 355l35-136 36 136Z"/><path d="M740 351l55-200 60 200Z"/><path d="M794 350l28-125 37 125Z"/></g>
+              <path d="M-5 536c135-17 218 4 322-9s196-38 322-21 170 22 264 5" fill="none" stroke="#fff4d5" stroke-width="6" opacity=".6"/>
+            </svg>
+            <div class="compare-badge badge-before" data-en="THE MOMENT" data-fr="LE SOUVENIR">THE MOMENT</div>
+          </div>
+          <div class="compare-half compare-painting" aria-hidden="true">
+            <svg viewBox="0 0 900 600" preserveAspectRatio="xMidYMid slice">
+              <rect width="900" height="600" fill="#f5e4c7"/>
+              <path d="M0 50Q300-10 900 95V0H0Z" fill="#f4bc92" opacity=".3"/>
+              <circle cx="683" cy="173" r="105" fill="#f39d65"/><circle cx="684" cy="173" r="86" fill="#f5bb7e"/>
+              <path d="M0 353Q135 253 294 313T569 314T900 249V600H0Z" fill="#b4ad77"/>
+              <path d="M0 379Q208 303 365 353T663 327T900 302V600H0Z" fill="#286d6b"/>
+              <path d="M-18 388Q215 363 377 400T923 348V630H-18Z" fill="#62b6ad"/>
+              <path d="M-30 516Q152 450 315 497T649 465T930 456V630H-30Z" fill="#e6b585"/>
+              <path d="M84 387l45-204 47 204m-51-39 29-126 38 126m548 6 56-196 61 196m-62-1 30-122 38 122" fill="#1d6461" stroke="#1d6461" stroke-width="7" stroke-linejoin="round"/>
+              <path d="M14 521q140-22 303-7t316-12 269 5" fill="none" stroke="#fff3ce" stroke-width="16" stroke-linecap="round" opacity=".7"/>
+              <path d="M79 470q80-16 146-6m132 21q52-17 123-3m113-30q73-22 151-10" stroke="#e8d7ac" stroke-width="9" stroke-linecap="round" fill="none" opacity=".7"/>
+              <path d="M101 83q40-15 88 0m-30 41q61-17 94 4m-59 22q17 1 40 14" fill="none" stroke="#d77452" stroke-width="9" stroke-linecap="round"/>
+              <g fill="#fff0ce"><circle cx="335" cy="212" r="5"/><circle cx="357" cy="193" r="4"/><circle cx="580" cy="374" r="6"/><circle cx="560" cy="382" r="3"/></g>
+            </svg>
+            <div class="compare-badge badge-after" data-en="THE CREATION" data-fr="LA CRÉATION">THE CREATION</div>
+          </div>
+          <div class="compare-divider" aria-hidden="true"><span>◀ ▶</span></div>
+          <input id="compareRange" class="compare-range" type="range" min="0" max="100" value="53" aria-label="Reveal painting transformation">
+        </div>
+        <div class="compare-bottom"><span data-en="A favourite moment, reimagined in colour." data-fr="Un souvenir réinventé en couleurs.">A favourite moment, reimagined in colour.</span><span class="compare-instruction">← <span data-en="DRAG TO TRANSFORM" data-fr="GLISSEZ POUR TRANSFORMER">DRAG TO TRANSFORM</span> →</span></div>
+      </div>
+      <p class="studio-decoration" aria-hidden="true">one-of-a-kind.</p>
+    </section>
+
+    <!-- CHAPTER FOUR: EXPERIENCES -->
+    <section id="chapter-events" class="events-chapter" aria-labelledby="eventsTitle">
+      <div class="event-title-block reveal">
+        <p class="eyebrow eyebrow-dark" data-en="03 / SHARED MOMENTS" data-fr="03 / MOMENTS PARTAGÉS">03 / SHARED MOMENTS</p>
+        <div class="events-heading-row"><h2 id="eventsTitle"><span data-en="Better" data-fr="Encore">Better</span><br><em data-en="together." data-fr="mieux ensemble.">together.</em></h2><p data-en="Art is even more fun when shared. Get messy, laugh often, and leave with something you made." data-fr="L'art est encore plus beau quand on le partage. Créez, riez et repartez avec votre œuvre.">Art is even more fun when shared. Get messy, laugh often, and leave with something you made.</p></div>
+      </div>
+      <div class="gallery-cards" id="galleryCards">
+        <article class="gallery-card gallery-one tilt-card reveal">
+          <div class="gallery-art">
+            <svg viewBox="0 0 580 710" preserveAspectRatio="xMidYMid slice">
+              <rect width="580" height="710" fill="#d8e5d7"/><circle cx="435" cy="148" r="174" fill="#fad9a8"/>
+              <path d="M-30 500Q112 390 243 499T600 410V740H-30Z" fill="#a4b6a1"/>
+              <ellipse cx="288" cy="560" rx="299" ry="112" fill="#316566"/>
+              <ellipse cx="288" cy="521" rx="305" ry="104" fill="#f7e6cd"/>
+              <rect x="51" y="408" width="132" height="111" rx="8" fill="#f9f1de" transform="rotate(-11 51 408)"/>
+              <path d="M72 465q35-52 74-22t0 43" fill="none" stroke="#dc895e" stroke-width="15" stroke-linecap="round"/>
+              <rect x="365" y="392" width="137" height="111" rx="8" fill="#f8f0de" transform="rotate(12 365 392)"/>
+              <path d="M405 425q53-29 63 28t-45 29" fill="none" stroke="#4baba3" stroke-width="17" stroke-linecap="round"/>
+              <ellipse cx="268" cy="500" rx="60" ry="17" fill="#dfc29d"/><ellipse cx="268" cy="488" rx="58" ry="16" fill="#f8f0dc"/>
+              <circle cx="247" cy="484" r="11" fill="#e27f53"/><circle cx="276" cy="489" r="11" fill="#66b4ab"/><circle cx="306" cy="483" r="10" fill="#dcb167"/>
+              <rect x="190" y="430" width="8" height="76" rx="4" fill="#b17448" transform="rotate(25 190 430)"/><rect x="331" y="416" width="8" height="100" rx="4" fill="#b17448" transform="rotate(-22 331 416)"/>
+              <circle cx="100" cy="257" r="54" fill="#e09b73"/><path d="M50 262c-9-65 91-88 111-29 3 7 3 18 2 27-34-15-64-27-113 2Z" fill="#284f4f"/><path d="M26 399c8-86 153-91 164 3v44H26Z" fill="#edb472"/>
+              <circle cx="456" cy="267" r="54" fill="#bb8065"/><path d="M401 269c-14-73 101-100 115-24l-8 31c-34-26-68-28-107-7Z" fill="#313d3a"/><path d="M386 408c17-83 144-81 162 0v31H386Z" fill="#e38c72"/>
+              <path d="M0 633q280-56 580 1v100H0Z" fill="#d99969"/>
+            </svg>
+          </div>
+          <div class="gallery-label"><span class="gallery-no">01 / CREATE</span><h3 data-en="Art brunch" data-fr="Brunch créatif">Art brunch</h3><span class="gallery-arrow">↗</span></div>
+        </article>
+        <article class="gallery-card gallery-two tilt-card reveal">
+          <div class="gallery-art">
+            <svg viewBox="0 0 580 710" preserveAspectRatio="xMidYMid slice">
+              <rect width="580" height="710" fill="#f5b68a"/><path d="M0 85q120-95 259 9t321 0v-120H0Z" fill="#ffd8a9"/><circle cx="420" cy="207" r="155" fill="#eb8565"/>
+              <path d="M0 533Q190 423 580 503v250H0Z" fill="#a2c9b5"/>
+              <path d="M80 265l197-70 71 280-201 63Z" fill="#e2c7a1"/><path d="M104 253l205-29 36 263-212 37Z" fill="#fff2dc"/><path d="M140 377c33-90 100-90 130-31s24 96-26 115" fill="none" stroke="#f4a35f" stroke-width="34" stroke-linecap="round"/><path d="M171 329q70-27 89 28" stroke="#176e74" stroke-width="15" stroke-linecap="round" fill="none"/>
+              <rect x="342" y="316" width="121" height="156" rx="11" fill="#f7e8d0" transform="rotate(15 342 316)"/><circle cx="410" cy="378" r="36" fill="#68b9a4"/><path d="M355 434q72-34 117 6" stroke="#e99b62" stroke-width="11" stroke-linecap="round" fill="none"/>
+              <path d="M72 610q208-85 434-19" stroke="#e7e3b0" stroke-width="45" stroke-linecap="round" fill="none"/>
+              <g fill="#fff1d9"><circle cx="80" cy="140" r="9"/><circle cx="104" cy="172" r="5"/><circle cx="336" cy="120" r="9"/><circle cx="465" cy="531" r="7"/></g>
+            </svg>
+          </div>
+          <div class="gallery-label"><span class="gallery-no">02 / CONNECT</span><h3 data-en="Private moments" data-fr="Événements privés">Private moments</h3><span class="gallery-arrow">↗</span></div>
+        </article>
+        <article class="gallery-card gallery-three tilt-card reveal">
+          <div class="gallery-art">
+            <svg viewBox="0 0 580 710" preserveAspectRatio="xMidYMid slice">
+              <rect width="580" height="710" fill="#c6dbca"/><circle cx="441" cy="159" r="164" fill="#84bcb0" opacity=".7"/>
+              <path d="M-45 601Q180 413 615 540v190H-45Z" fill="#e5a27b"/>
+              <g transform="translate(115 190) rotate(-7 165 200)"><rect x="0" y="0" width="350" height="420" fill="#c79a6c"/><rect x="14" y="14" width="322" height="392" fill="#f4ebd7"/><rect x="40" y="43" width="270" height="337" fill="#e6d5b9"/><circle cx="209" cy="141" r="81" fill="#e8956b"/><path d="M34 235q94-102 150-26t147-15V383H34Z" fill="#186e74"/><path d="M34 305q132-80 225 9t79-5v81H34Z" fill="#66b8a8"/><path d="M87 70q-12 43-48 51" stroke="#d48758" stroke-width="11" fill="none" stroke-linecap="round"/><path d="M156 356q57-21 98 2" stroke="#f8e4b8" stroke-width="11" fill="none" stroke-linecap="round"/></g>
+              <path d="M48 650q79-37 157-18" fill="none" stroke="#fbefd4" stroke-width="25" stroke-linecap="round"/>
+              <path d="M432 640q55-37 127-21" fill="none" stroke="#f8ebd0" stroke-width="28" stroke-linecap="round"/>
+              <g fill="#fbf1dc"><circle cx="77" cy="98" r="6"/><circle cx="101" cy="130" r="4"/><circle cx="503" cy="79" r="8"/></g>
+            </svg>
+          </div>
+          <div class="gallery-label"><span class="gallery-no">03 / REMEMBER</span><h3 data-en="Take it home" data-fr="Votre souvenir">Take it home</h3><span class="gallery-arrow">↗</span></div>
+        </article>
+      </div>
+      <p class="events-aside" data-en="Less scrolling. More living. More making." data-fr="Plus de moments à vivre. Plus de créations à partager.">Less scrolling. More living. More making.</p>
+    </section>
+
+    <!-- FINAL CHAPTER -->
+    <section id="finale" class="finale" aria-labelledby="finaleTitle">
+      <div class="finale-ring finale-ring-one" aria-hidden="true"></div><div class="finale-ring finale-ring-two" aria-hidden="true"></div>
+      <div class="finale-sun" aria-hidden="true"><svg viewBox="0 0 360 360"><path d="M181 15c24 65 42 77 115 38-35 73-28 94 49 128-78 24-89 42-48 114-75-37-94-28-116 49-29-75-48-86-118-47 36-76 29-95-48-116 77-30 85-47 46-119 73 37 93 31 120-47Z" fill="#f5a66b"/><circle cx="181" cy="181" r="82" fill="#fbe4b8"/><path d="M139 173q43 53 85-1" stroke="#d06d57" stroke-width="10" fill="none" stroke-linecap="round"/><circle cx="147" cy="149" r="10" fill="#d06d57"/><circle cx="220" cy="149" r="10" fill="#d06d57"/></svg></div>
+      <div class="finale-content reveal">
+        <p class="eyebrow eyebrow-light" data-en="AND THAT'S WHERE IT ALL BEGINS" data-fr="ET C'EST LÀ QUE TOUT COMMENCE">AND THAT'S WHERE IT ALL BEGINS</p>
+        <h2 id="finaleTitle"><span data-en="Let's make" data-fr="Créons">Let's make</span><br><em data-en="something beautiful." data-fr="quelque chose de beau.">something beautiful.</em></h2>
+        <p data-en="There is no right way to make art. Just your way." data-fr="Il n'y a pas qu'une seule façon de créer. Il y a la vôtre.">There is no right way to make art. Just your way.</p>
+        <a class="button button-light" href="#top"><span data-en="Experience it again" data-fr="Revivre l'expérience">Experience it again</span><span class="button-circle" aria-hidden="true">↗</span></a>
+      </div>
+      <div class="finale-footer"><a class="footer-logo" href="#top">ARTY <span>CREATION</span></a><span data-en="DESIGN PROTOTYPE · ALL ACTIONS ARE DEMO ONLY" data-fr="PROTOTYPE VISUEL · AUCUN ACHAT POSSIBLE">DESIGN PROTOTYPE · ALL ACTIONS ARE DEMO ONLY</span><span>© 2026 ARTY CREATION</span></div>
+    </section>
+  </main>
+  <div id="demoToast" class="demo-toast" role="status" aria-live="polite"></div>
+</body>
+</html>
