@@ -18,6 +18,7 @@ function setup(){
     else if(suffix==='/action-center')result=crm.crmActionCenter(db);
     else if(suffix==='/google-calendar/status')result={oauthConfigured:true,connected:false};
     else if(suffix==='/leads')result=crm.buildLeads(db);
+    else if(suffix==='/hidden-leads')result=[];
     else if(suffix==='/team')result=[{email:'owner@example.test',name:'Owner'}];
     else if(suffix==='/customers')result=crm.buildCustomerIndex(db);
     else if(suffix.startsWith('/customers/'))result=crm.customerDetail(db,decodeURIComponent(suffix.split('/')[2]));
