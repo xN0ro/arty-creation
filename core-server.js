@@ -17,6 +17,7 @@ const seatHolds = require('./ticket-seat-holds');
 const eventLifecycle = require('./event-lifecycle');
 const salesReporting = require('./sales-reporting');
 const adminAlerts = require('./admin-alerts-core');
+const orderCancellation = require('./order-cancellation');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1152,6 +1153,11 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
         }
         releaseEventSeatsForOrder(latestDB, persisted);
         persisted.paymentStatus = 'cancelled';
+        orderCancellation.recordCancellation(persisted,'payment_setup_failed',{by:'system:stripe-setup'});
+        if(persisted.status!=='annulée'){
+          persisted.statusHistory=persisted.statusHistory||[];
+          persisted.statusHistory.push({from:persisted.status||'',to:'annulée',at:persisted.cancellation.at,by:'system:stripe-setup',cancellationReason:'payment_setup_failed'});
+        }
         persisted.status = 'annulée';
         persisted.updatedAt = new Date().toISOString();
         writeDB(latestDB);
@@ -1163,9 +1169,10 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
   res.json({ success: true, order, payment });
 });
 function customerOrderView(order) {
-  const { paymentReference, stripe, inventoryReserved, inventoryRestocked, userId, ...safeOrder } = order;
+  const { paymentReference, stripe, inventoryReserved, inventoryRestocked, userId, cancellation, ...safeOrder } = order;
   return {
     ...safeOrder,
+    cancellation:cancellation?{reason:cancellation.reason,at:cancellation.at}:undefined,
     statusHistory: (order.statusHistory || []).map(entry => ({ from: entry.from || '', to: entry.to || '', at: entry.at || '' }))
   };
 }
@@ -2737,7 +2744,7 @@ app.put('/api/admin/home-favorite-kits', adminOnly, (req, res) => {
 
 app.get('/api/admin/orders', adminOnly, (req, res) => {
   const db = readDB();
-  res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(order=>({...order,cancellationInfo:orderCancellation.cancellationDetails(order)})));
 });
 app.patch('/api/admin/orders/:id/test', adminOnly, (req, res) => {
   const db = readDB();
@@ -2865,6 +2872,11 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
     ensurePaidOrderBookings(db, order);
   }
   if (status === 'annulée') {
+    if (oldStatus !== 'annulée') orderCancellation.recordCancellation(order,'admin_cancelled',{
+      by:req.session.email||'admin',note:req.body.cancelNote
+    });
+    else if (Object.prototype.hasOwnProperty.call(req.body||{},'cancelNote') && order.cancellation?.reason==='admin_cancelled')
+      order.cancellation.note=String(req.body.cancelNote||'').trim().slice(0,500);
     order.paymentStatus = order.paymentStatus === 'paid' ? 'refund_needed' : 'cancelled';
     if (order.inventoryReserved && !order.inventoryRestocked) {
       releaseInventoryForItems(db, order.items || [], order.id, I18n.t('Commande annulée'));
@@ -2873,9 +2885,10 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
     releaseEventSeatsForOrder(db, order);
     cancelOrderTicketBookings(db, order);
   }
+  if (oldStatus === 'annulée' && ['en attente de paiement','payée','préparation','expédiée','livrée'].includes(status)) orderCancellation.clearCancellation(order);
   if (status === 'remboursée') order.refundStatus = 'refunded';
   order.statusHistory = order.statusHistory || [];
-  if (oldStatus !== status) order.statusHistory.push({ from: oldStatus || '', to: status, at: new Date().toISOString(), by: req.session.email || 'admin' });
+  if (oldStatus !== status) order.statusHistory.push({ from: oldStatus || '', to: status, at: new Date().toISOString(), by: req.session.email || 'admin', ...(status==='annulée'?{cancellationReason:order.cancellation?.reason||'admin_cancelled'}:{}) });
   if (status === 'expédiée' && !order.shippedAt) order.shippedAt = new Date().toISOString();
   if (status === 'livrée' && !order.deliveredAt) order.deliveredAt = new Date().toISOString();
   order.updatedAt = new Date().toISOString();
@@ -3822,6 +3835,11 @@ async function reconcileExpiredEventSeatHolds({ force = false } = {}) {
         }
         releaseEventSeatsForOrder(db, current);
         current.paymentStatus = 'cancelled';
+        orderCancellation.recordCancellation(current,'reservation_expired',{by:'system:ticket-hold'});
+        if(current.status!=='annulée'){
+          current.statusHistory=current.statusHistory||[];
+          current.statusHistory.push({from:current.status||'',to:'annulée',at:current.cancellation.at,by:'system:ticket-hold',cancellationReason:'reservation_expired'});
+        }
         current.status = 'annulée';
         current.updatedAt = new Date().toISOString();
         writeDB(db);
@@ -3864,6 +3882,14 @@ async function reconcileExpiredEventSeatHolds({ force = false } = {}) {
         catch (error) { console.warn('[ticket-hold] Paid order notification error', paid.id, error.message); }
       } else {
         syncOrderFromStripePaymentIntent(db, intent, 'ticket-hold-expiry');
+        // This cancellation was explicitly processed during an expired hold.
+        // A concurrent Stripe webhook may already have written a less specific
+        // cancellation reason, so prefer the proven local expiry.
+        current.cancellation={
+          reason:'reservation_expired',
+          at:current.cancellation?.at||new Date().toISOString(),
+          by:'system:ticket-hold',note:''
+        };
         releaseEventSeatsForOrder(db, current);
         cancelOrderTicketBookings(db, current);
         writeDB(db);
@@ -4013,6 +4039,7 @@ async function syncPendingEventRefunds(request){
 }
 function markOrderPaid(order, pi, source) {
   order.status = 'payée';
+  orderCancellation.clearCancellation(order);
   order.paymentStatus = 'paid';
   order.paymentProvider = 'stripe';
   order.paymentReference = pi.id || order.paymentReference || '';
@@ -4042,8 +4069,14 @@ function syncOrderFromStripePaymentIntent(db, pi, source = 'stripe') {
     order.paymentStatus = 'pending';
     order.updatedAt = new Date().toISOString();
   } else if (['canceled'].includes(pi.status)) {
+    const previousStatus=order.status;
     order.paymentStatus = 'cancelled';
+    orderCancellation.recordCancellation(order,source==='ticket-hold-expiry'?'reservation_expired':'stripe_cancelled',{by:'stripe:'+source});
     order.status = 'annulée';
+    if(previousStatus!=='annulée'){
+      order.statusHistory=order.statusHistory||[];
+      order.statusHistory.push({from:previousStatus||'',to:'annulée',at:order.cancellation?.at||new Date().toISOString(),by:'stripe:'+source,cancellationReason:order.cancellation?.reason||'stripe_cancelled'});
+    }
     if (order.inventoryReserved && !order.inventoryRestocked) {
       releaseInventoryForItems(db, order.items || [], order.id, I18n.t('Paiement Stripe annulé'));
       order.inventoryRestocked = true;
