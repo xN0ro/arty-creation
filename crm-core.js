@@ -88,13 +88,23 @@ function paidOrder(order){
 function netOrder(order){return paidOrder(order)?money(Math.max(0,Number(order.total||0)-Number(order.refundedTotal||0))):0}
 function paidEvent(request){return !request.isTest&&(request.quotePaymentStatus==='paid'||Number(request.paymentAmountReceived)>0||request.status==='payée')}
 function netEvent(request){return paidEvent(request)?money(Math.max(0,Number(request.quoteNetPaid??(Number(request.paymentAmountReceived||request.quoteAmount||request.crm?.finalValue||0)-Number(request.quoteRefundedTotal||0))))):0}
+function hiddenCrmLeadKeys(db={}){
+  return new Set((db.crmHiddenLeads||[]).map(item=>typeof item==='string'?item:String(item?.key||'')).filter(Boolean));
+}
+function visibleSalesLeads(db={}){
+  const hidden=hiddenCrmLeadKeys(db);
+  return {
+    events:(db.eventRequests||[]).filter(item=>!hidden.has('event:'+item.id)),
+    manuals:(db.crmLeads||[]).filter(item=>!item.convertedEventRequestId&&!hidden.has('manual:'+item.id))
+  };
+}
 function buildCustomerIndex(db={}){
   const users=Array.isArray(db.users)?db.users:[];
   const orders=Array.isArray(db.orders)?db.orders:[];
-  const eventRequests=Array.isArray(db.eventRequests)?db.eventRequests:[];
+  const sales=visibleSalesLeads(db);
+  const eventRequests=sales.events;
   const bookings=Array.isArray(db.bookings)?db.bookings:[];
-  const contacts=Array.isArray(db.contactRequests)?db.contactRequests:[];
-  const manualLeads=Array.isArray(db.crmLeads)?db.crmLeads:[];
+  const manualLeads=sales.manuals;
   const usersById=new Map(users.map(u=>[String(u.id),u]));
   const map=new Map();
 
@@ -111,11 +121,10 @@ function buildCustomerIndex(db={}){
   for(const order of orders){const c=ensure(orderEmail(order,usersById),orderName(order,usersById),order?.customer?.phone);if(c)c.orders.push(order)}
   for(const request of eventRequests){const c=ensure(request.email,request.name,request.phone);if(c)c.eventRequests.push(request)}
   for(const booking of bookings){const c=ensure(booking.email||booking.customer?.email,booking.name||booking.customer?.name,booking.phone||booking.customer?.phone);if(c)c.bookings.push(booking)}
-  for(const contact of contacts){if(contact.convertedEventRequestId)continue;const c=ensure(contact.email,contact.name,contact.phone);if(c)c.contacts.push(contact)}
   for(const lead of manualLeads){if(lead.convertedEventRequestId)continue;const c=ensure(lead.email,lead.name,lead.phone);if(c)c.manualLeads.push(lead)}
-  for(const ticket of db.supportRequests||[])ensure(ticket.customer?.email,ticket.customer?.name);
-
-  return Array.from(map.values()).map(c=>{
+  // Customer support and contact requests are managed only in the support inbox.
+  // A bare account without a sale or commercial opportunity is not a sales record.
+  return Array.from(map.values()).filter(c=>c.orders.length||c.bookings.length||c.eventRequests.length||c.manualLeads.length).map(c=>{
     const paid=c.orders.filter(paidOrder),orderSpend=money(c.orders.reduce((sum,o)=>sum+netOrder(o),0)),eventSpend=money(c.eventRequests.reduce((sum,r)=>sum+netEvent(r),0)),lifetimeSpend=money(orderSpend+eventSpend);
     const dates=[
       c.account?.createdAt,c.account?.lastLoginAt,c.meta.updatedAt,
@@ -147,12 +156,12 @@ function customerDetail(db={},key='',options={}){
   const email=emailKey(key),summary=buildCustomerIndex(db).find(c=>c.key===email);if(!summary)return null;
   const users=Array.isArray(db.users)?db.users:[],user=users.find(u=>emailKey(u.email)===email)||null,usersById=new Map(users.map(u=>[String(u.id),u]));
   const orders=(db.orders||[]).filter(o=>orderEmail(o,usersById)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
-  const eventRequests=(db.eventRequests||[]).filter(r=>emailKey(r.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const eventRequests=visibleSalesLeads(db).events.filter(r=>emailKey(r.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const bookings=(db.bookings||[]).filter(b=>emailKey(b.email||b.customer?.email)===email).sort((a,b)=>String(b.bookedAt||b.createdAt||'').localeCompare(String(a.bookedAt||a.createdAt||'')));
-  const contacts=(db.contactRequests||[]).filter(c=>!c.convertedEventRequestId&&emailKey(c.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
-  const manualLeads=(db.crmLeads||[]).filter(l=>!l.convertedEventRequestId&&emailKey(l.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const contacts=[]; // Contact and technical-support messages belong to Service à la clientèle.
+  const manualLeads=visibleSalesLeads(db).manuals.filter(l=>emailKey(l.email)===email).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const meta=customerMeta(db,email),timeline=[];
-  const support=options.includeSupport===false?[]:(db.supportRequests||[]).filter(t=>emailKey(t.customer?.email)===email);
+  const support=[]; // CRM customer timelines never expose support conversations.
   for(const ticket of support){
     for(const message of ticket.messages||[])timeline.push({type:'support',at:message.at||ticket.createdAt,label:'support',id:String(ticket.id),status:ticket.status,detail:message.body||'',author:message.by||'',subject:ticket.subject||''});
   }
@@ -198,10 +207,10 @@ function leadFromManual(lead){
   return {...base,reference:lead.reference||'',value:money(base.finalValue||lead.value),expectedValue:money(lead.value),operationalStatus:'',quotePaymentStatus:'',source:text(lead.source,80),campaign:text(lead.campaign,140),medium:text(lead.medium,80),eventType:text(lead.eventType,180),preferredDate:text(lead.preferredDate,30),message:text(lead.message,3000)};
 }
 function buildLeads(db={}){
-  const eventLeads=(db.eventRequests||[]).map(leadFromEvent);
-  const contactLeads=(db.contactRequests||[]).filter(c=>!c.convertedEventRequestId&&['contact','events'].includes(String(c.channel||'contact'))).map(leadFromContact);
-  const manualLeads=(db.crmLeads||[]).filter(l=>!l.convertedEventRequestId).map(leadFromManual);
-  return [...eventLeads,...contactLeads,...manualLeads].sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
+  const sales=visibleSalesLeads(db);
+  const eventLeads=sales.events.map(leadFromEvent);
+  const manualLeads=sales.manuals.map(leadFromManual);
+  return [...eventLeads,...manualLeads].sort((a,b)=>String(b.updatedAt||b.createdAt||'').localeCompare(String(a.updatedAt||a.createdAt||'')));
 }
 function crmLeadRevenueValue(lead){return lead.status==='won'?money(lead.finalValue||0):money(lead.value||lead.expectedValue||0)}
 function crmSummary(db={}){
@@ -365,6 +374,6 @@ function crmReporting(db={}){
 }
 
 module.exports={
-  CRM_LEAD_STATUSES,CRM_LOST_REASONS,emailKey,crmMeta,cleanAttribution,buildCustomerIndex,customerDetail,buildLeads,crmSummary,
+  CRM_LEAD_STATUSES,CRM_LOST_REASONS,emailKey,crmMeta,cleanAttribution,hiddenCrmLeadKeys,visibleSalesLeads,buildCustomerIndex,customerDetail,buildLeads,crmSummary,
   createManualLead,updateLead,syncEventWorkflow,updateCustomerTags,addCustomerNote,updateCustomerPreferences,crmActionCenter,crmReporting,netOrder,netEvent
 };
