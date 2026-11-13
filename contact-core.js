@@ -60,8 +60,7 @@ function create(normalized, db, session, locale, attribution) {
     ...data, id: ticket.contactRequestId, reference: ticket.id, supportRequestId: ticket.id,
     locale, requestKey: normalized.requestKey, fingerprint: normalized.fingerprint,
     marketingAttribution: marketing.normalizeAttribution(attribution),
-    createdAt: now, updatedAt: now, emailDelivery: { customer: 'pending', admin: 'pending' },
-    crm: { status: 'new', nextFollowUp: '', owner: '', tags: [], adminNote: '', updatedAt: now }
+    createdAt: now, updatedAt: now, emailDelivery: { customer: 'pending', admin: 'pending' }
   };
   return { contact, ticket };
 }
