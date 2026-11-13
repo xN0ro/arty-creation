@@ -16,6 +16,7 @@ const ticketPricing = require('./public/ticket-pricing-core');
 const seatHolds = require('./ticket-seat-holds');
 const eventLifecycle = require('./event-lifecycle');
 const salesReporting = require('./sales-reporting');
+const adminAlerts = require('./admin-alerts-core');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -473,6 +474,7 @@ function adminPermissionRequirement(req) {
   if (path.startsWith('crm')) return 'crm_dashboard';
   if (/^event-requests\/[^/]+\/(payment-link|quote-preview)$/.test(path)) return ['events','leads'];
   if (/^event-requests\/[^/]+\/refund$/.test(path)) return 'events';
+  if (path === 'notifications' || path === 'notifications/seen') return ['dashboard','orders','support','leads','events'];
   if (path === 'stats' || path === 'analytics') return 'dashboard';
   if (path === 'storage') return 'settings';
   if (path.startsWith('kits/') && path.endsWith('/inventory')) return 'inventory';
@@ -2684,6 +2686,27 @@ function normalizeEventPayload(body, existing = {}) {
 }
 
 // ========== ADMIN ==========
+function initializeAdminAlertBaseline(db){
+  if(!db.adminNotificationsBaselineAt){
+    // Existing support and sales history is not a backlog of 'new' alerts.
+    // Store the baseline in the persistent DB so server restarts do not reset it.
+    db.adminNotificationsBaselineAt=new Date().toISOString();
+    writeDB(db);
+  }
+}
+app.get('/api/admin/notifications',adminOnly,(req,res)=>{
+  const db=readDB();initializeAdminAlertBaseline(db);
+  res.set('Cache-Control','private, no-store');
+  res.json(adminAlerts.getAlertSnapshot(db,req.session));
+});
+app.post('/api/admin/notifications/seen',adminOnly,(req,res)=>{
+  const db=readDB();initializeAdminAlertBaseline(db);
+  const seen=adminAlerts.markCategorySeen(db,req.session,String(req.body?.kind||''),req.body?.through);
+  if(!seen)return res.status(400).json({error:'Invalid notification category or timestamp'});
+  writeDB(db);
+  res.set('Cache-Control','private, no-store');
+  res.json({success:true,seen,notification:adminAlerts.getAlertSnapshot(db,req.session)});
+});
 app.get('/api/admin/stats', adminOnly, (req, res) => { const db=readDB(); const a=computeAdminAnalytics(db); res.json({totalKits:db.kits.length,totalEvents:db.events.length,totalUsers:db.users.length,totalOrders:a.ordersCount,totalTestOrders:a.testOrdersCount,totalCategories:(db.categories||[]).length,totalDiscounts:(db.discounts||[]).length,totalRefunds:(db.refunds||[]).length,revenue:a.revenue,totalSales:a.revenue,lowInventoryCount:a.lowInventory.length}); });
 app.get('/api/admin/storage', adminOnly, (req, res) => { res.json({ ...getStorageHealth(), collectionCounts: getCollectionCountsSafe() }); });
 app.get('/api/admin/kits', adminOnly, (req, res) => {
