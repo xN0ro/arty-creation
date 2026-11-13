@@ -83,8 +83,11 @@ function crmCanAccessCustomer(db,email,req){
   return crmCustomerRows(db,req).some(customer=>String(customer.email||'').trim().toLowerCase()===key);
 }
 function crmCanAccessLead(db,kind,id,req){
+  // Admin privileges do not turn an unrelated support ticket into a sales lead.
+  const lead=crmCore.buildLeads(db).find(item=>item.kind===kind&&String(item.id)===String(id));
+  if(!lead)return false;
   if(!crmStaffScoped(req))return true;
-  return crmLeadRows(db,req).some(lead=>String(lead.kind)===String(kind)&&String(lead.id)===String(id));
+  return crmLeadRows(db,req).some(item=>item.key===lead.key);
 }
 function crmRawLeadItem(db,kind,id){
   const collection=kind==='event'?(db.eventRequests||[]):kind==='contact'?(db.contactRequests||[]):kind==='manual'?(db.crmLeads||[]):[];
@@ -262,6 +265,30 @@ function installExtensionRoutes(app){
     const preferences=crmCore.updateCustomerPreferences(db,req.params.email,req.body||{},crmSessionEmail(req)||'admin');if(!preferences)return res.status(400).json({error:crmError(req,'Client invalide','Invalid customer')});writeDb(db);res.json({success:true,preferences});
   });
   app.get('/api/admin/crm/leads',adminOnly,(req,res)=>res.json(crmLeadRows(readDb(),req)));
+  app.get('/api/admin/crm/hidden-leads',adminOnly,(req,res)=>{
+    const db=readDb(),hidden=(db.crmHiddenLeads||[]),rows=[];
+    for(const item of hidden){
+      const key=String(item?.key||''),match=/^(event|manual):(.+)$/.exec(key);if(!match)continue;
+      const [kind,id]=match.slice(1),raw=crmRawLeadItem(db,kind,id);
+      if(!raw)continue;
+      if(crmStaffScoped(req)&&String(raw.crm?.owner||'').toLowerCase()!==crmSessionEmail(req))continue;
+      rows.push({kind,id,key,name:raw.name||'',title:raw.eventType||raw.title||'',email:raw.email||'',hiddenAt:item.hiddenAt||'',hiddenBy:item.hiddenBy||''});
+    }
+    res.json(rows.sort((a,b)=>String(b.hiddenAt).localeCompare(String(a.hiddenAt))));
+  });
+  app.patch('/api/admin/crm/leads/:kind/:id/visibility',adminOnly,(req,res)=>{
+    const db=readDb(),kind=String(req.params.kind||''),id=String(req.params.id||''),key=kind+':'+id,hidden=req.body?.hidden;
+    if(!['event','manual'].includes(kind)||typeof hidden!=='boolean')return res.status(400).json({error:crmError(req,'Demande invalide','Invalid request')});
+    const item=crmRawLeadItem(db,kind,id);if(!item)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
+    if(crmStaffScoped(req)&&String(item.crm?.owner||'').toLowerCase()!==crmSessionEmail(req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
+    // Hiding affects only the CRM display, never customer messages, quote
+    // payments, event requests, tickets or their audit history.
+    db.crmHiddenLeads=Array.isArray(db.crmHiddenLeads)?db.crmHiddenLeads:[];
+    db.crmHiddenLeads=db.crmHiddenLeads.filter(entry=>String(entry?.key||'')!==key);
+    if(hidden)db.crmHiddenLeads.push({key,hiddenAt:new Date().toISOString(),hiddenBy:crmSessionEmail(req)||'admin'});
+    writeDb(db);
+    res.json({success:true,key,hidden});
+  });
   app.post('/api/admin/crm/leads',adminOnly,async(req,res)=>{
     try{const db=readDb(),body={...(req.body||{})};if(crmStaffScoped(req))body.owner=crmSessionEmail(req);
     const lead=crmCore.createManualLead(db,body,crmSessionEmail(req)||'admin');if(!lead)return res.status(400).json({error:crmError(req,'Nom et courriel requis','Name and email are required')});
@@ -269,7 +296,7 @@ function installExtensionRoutes(app){
   });
   app.post('/api/admin/crm/leads/:kind/:id/convert-event',adminOnly,(req,res)=>{
     const db=readDb(),kind=String(req.params.kind||''),id=String(req.params.id||'');
-    if(!['manual','contact','event'].includes(kind))return res.status(400).json({error:crmError(req,'Type de prospect invalide','Invalid lead type')});
+    if(!['manual','event'].includes(kind))return res.status(400).json({error:crmError(req,'Type de prospect invalide','Invalid lead type')});
     if(!crmCanAccessLead(db,kind,id,req))return res.status(403).json({error:crmError(req,'Ce prospect ne vous est pas assigné','This lead is not assigned to you')});
     const currentLead=crmCore.buildLeads(db).find(lead=>lead.kind===kind&&String(lead.id)===id);
     if(!currentLead)return res.status(404).json({error:crmError(req,'Prospect introuvable','Lead not found')});
