@@ -158,3 +158,40 @@ test('owner always has all CRM permissions including account security',async()=>
   assert.equal(owner.status,200);
   for(const permission of ['crm_dashboard','customers','leads','crm_manager','account_management'])assert.ok(owner.data.user.permissions.includes(permission));
 });
+
+test('support and contact records never appear as sales opportunities',async()=>{
+  const db=server.readDB();
+  db.contactRequests.push({id:'C-SUPPORT',name:'Help Only',email:'help-only@example.test',subject:'Technical support',channel:'contact',createdAt:new Date().toISOString()});
+  db.supportRequests=[...(db.supportRequests||[]),{id:'S-SUPPORT',subject:'Technical support',customer:{email:'help-only@example.test'},createdAt:new Date().toISOString()}];
+  server.writeDB(db);
+  const owner=await login('owner@example.test');
+  const leads=await request('/admin/crm/leads',{token:owner.data.token});
+  const customers=await request('/admin/crm/customers',{token:owner.data.token});
+  assert.equal(leads.status,200);
+  assert(!leads.data.some(item=>item.id==='C-SUPPORT'));
+  assert(!customers.data.some(item=>item.email==='help-only@example.test'));
+  assert(server.readDB().supportRequests.some(item=>item.id==='S-SUPPORT'));
+});
+
+test('sales leads are removable from CRM and restorable without deleting event requests',async()=>{
+  const owner=await login('owner@example.test');
+  const before=await request('/admin/crm/leads',{token:owner.data.token});
+  assert(before.data.some(item=>item.kind==='event'&&item.id==='101'));
+  const archived=await request('/admin/crm/leads/event/101/visibility',{method:'PATCH',token:owner.data.token,body:{hidden:true}});
+  assert.equal(archived.status,200);
+  const hidden=await request('/admin/crm/hidden-leads',{token:owner.data.token});
+  assert.equal(hidden.status,200);
+  assert(hidden.data.some(item=>item.key==='event:101'));
+  assert(!(await request('/admin/crm/leads',{token:owner.data.token})).data.some(item=>item.id==='101'));
+  assert(server.readDB().eventRequests.some(item=>String(item.id)==='101'));
+  const restored=await request('/admin/crm/leads/event/101/visibility',{method:'PATCH',token:owner.data.token,body:{hidden:false}});
+  assert.equal(restored.status,200);
+  assert((await request('/admin/crm/leads',{token:owner.data.token})).data.some(item=>item.id==='101'));
+});
+
+test('sales staff cannot remove another salesperson opportunity',async()=>{
+  const sales=await login('sales@example.test');
+  const action=await request('/admin/crm/leads/event/102/visibility',{method:'PATCH',token:sales.data.token,body:{hidden:true}});
+  assert.equal(action.status,403);
+  assert(!server.readDB().crmHiddenLeads?.some(item=>item.key==='event:102'));
+});
