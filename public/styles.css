@@ -2268,3 +2268,12 @@ body.product-lightbox-open{overflow:hidden}
 .party-calendar-day.is-past:disabled{opacity:.32;cursor:not-allowed;background:var(--bg2);border-color:transparent;box-shadow:none}
 .party-calendar-day.is-past:disabled:hover{transform:none;background:var(--bg2);border-color:transparent;box-shadow:none}
 .party-calendar-controls button:disabled{opacity:.35;cursor:not-allowed;pointer-events:none}
+
+/* Explain cancelled checkouts clearly without implying a card was charged. */
+.admin-order-cancel-label{display:block;margin-top:6px;max-width:230px;font-size:11px;line-height:1.35;font-weight:600;color:#a04f3d;overflow-wrap:anywhere}
+.admin-cancellation-detail{border-color:#f0d1c7!important;background:#fffaf7}
+.admin-cancellation-detail p{font-size:13px;line-height:1.55;color:#68514b;margin:8px 0}
+.admin-cancellation-detail small{display:block;font-size:11px;margin-top:5px;color:#796c64;overflow-wrap:anywhere}
+.admin-cancel-reason{display:inline-flex;align-items:center;padding:6px 11px;border-radius:999px;background:#fff0eb;color:#9d4836;font-weight:700;font-size:12px}
+.admin-cancellation-detail .admin-cancel-note{padding:10px 12px;border-radius:9px;background:white;border:1px solid #f0d1c7;white-space:pre-wrap}
+.admin-cancellation-detail .admin-cancel-refund-warning{padding:10px 12px;border-radius:9px;background:#fff1d6;color:#805016;font-weight:700}
