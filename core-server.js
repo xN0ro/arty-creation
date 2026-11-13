@@ -1154,6 +1154,10 @@ app.post('/api/orders', optionalAuth, async (req, res) => {
         releaseEventSeatsForOrder(latestDB, persisted);
         persisted.paymentStatus = 'cancelled';
         orderCancellation.recordCancellation(persisted,'payment_setup_failed',{by:'system:stripe-setup'});
+        if(persisted.status!=='annulée'){
+          persisted.statusHistory=persisted.statusHistory||[];
+          persisted.statusHistory.push({from:persisted.status||'',to:'annulée',at:persisted.cancellation.at,by:'system:stripe-setup',cancellationReason:'payment_setup_failed'});
+        }
         persisted.status = 'annulée';
         persisted.updatedAt = new Date().toISOString();
         writeDB(latestDB);
@@ -2881,7 +2885,7 @@ app.put('/api/admin/orders/:id/status', adminOnly, async (req, res) => {
     releaseEventSeatsForOrder(db, order);
     cancelOrderTicketBookings(db, order);
   }
-  if (status !== 'annulée' && oldStatus !== status) orderCancellation.clearCancellation(order);
+  if (oldStatus === 'annulée' && ['en attente de paiement','payée','préparation','expédiée','livrée'].includes(status)) orderCancellation.clearCancellation(order);
   if (status === 'remboursée') order.refundStatus = 'refunded';
   order.statusHistory = order.statusHistory || [];
   if (oldStatus !== status) order.statusHistory.push({ from: oldStatus || '', to: status, at: new Date().toISOString(), by: req.session.email || 'admin', ...(status==='annulée'?{cancellationReason:order.cancellation?.reason||'admin_cancelled'}:{}) });
@@ -3832,6 +3836,10 @@ async function reconcileExpiredEventSeatHolds({ force = false } = {}) {
         releaseEventSeatsForOrder(db, current);
         current.paymentStatus = 'cancelled';
         orderCancellation.recordCancellation(current,'reservation_expired',{by:'system:ticket-hold'});
+        if(current.status!=='annulée'){
+          current.statusHistory=current.statusHistory||[];
+          current.statusHistory.push({from:current.status||'',to:'annulée',at:current.cancellation.at,by:'system:ticket-hold',cancellationReason:'reservation_expired'});
+        }
         current.status = 'annulée';
         current.updatedAt = new Date().toISOString();
         writeDB(db);
