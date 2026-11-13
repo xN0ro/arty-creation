@@ -33,7 +33,7 @@ function extensionGrant(db,email){const normalized=String(email||'').trim().toLo
 function extensionPermission(req){
   const route=String(req.originalUrl||req.url||'').split('?')[0];
   if(route.includes('/admin/crm/customers')||route.includes('/admin/crm/export/customers'))return'customers';
-  if(route.includes('/admin/crm/leads')||route.includes('/admin/crm/team')||route.includes('/admin/crm/export/leads'))return'leads';
+  if(route.includes('/admin/crm/leads')||route.includes('/admin/crm/hidden-leads')||route.includes('/admin/crm/team')||route.includes('/admin/crm/export/leads'))return'leads';
   if(route.includes('/admin/crm')||route.includes('/admin/crm/export'))return'crm_dashboard';
   if(route.includes('/marketing-config')||route.includes('/marketing-insights'))return'marketing';
   if(route.includes('/commerce-config'))return'settings';
