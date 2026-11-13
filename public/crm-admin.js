@@ -3,7 +3,7 @@
 'use strict';
 
 const state={
-  summary:null,actions:null,reporting:null,googleCalendar:null,customers:[],leads:[],team:[],customer:null,
+  summary:null,actions:null,reporting:null,googleCalendar:null,customers:[],leads:[],team:[],customer:null,hiddenLeads:[],
   customerQuery:'',customerFilter:'all',leadQuery:'',leadOwner:'all',leadStatus:'all',
   dragLead:null,editingLead:null,activeSection:'overview',dayQueue:'today',dayOwner:'mine',leadView:'list',leadPreset:'open',errors:{},saving:false,activityFilter:'all',taskMode:'',returnFocus:null
 };
@@ -106,11 +106,15 @@ async function loadCustomers(){
   if(!has('customers'))return;
   try{state.customers=await api('/api/admin/crm/customers');state.errors.customers=''}catch(e){state.errors.customers=e.message}
 }
+async function loadHiddenLeads(){
+  if(!has('leads'))return;
+  try{state.hiddenLeads=await api('/api/admin/crm/hidden-leads')}catch(e){state.hiddenLeads=[];console.warn('CRM archives:',e)}
+}
 async function loadLeads(){
   if(!has('leads'))return;
   try{const [leads,team]=await Promise.all([api('/api/admin/crm/leads'),api('/api/admin/crm/team')]);state.leads=leads;state.team=team;state.errors.leads=''}catch(e){state.errors.leads=e.message}
 }
-async function loadAll(){ensure();await Promise.all([loadOverview(),loadCustomers(),loadLeads()])}
+async function loadAll(){ensure();await Promise.all([loadOverview(),loadCustomers(),loadLeads(),loadHiddenLeads()])}
 
 function stat(label,value,sub=''){return `<div class="crm-stat"><span>${esc(label)}</span><strong>${esc(value)}</strong>${sub?`<small>${esc(sub)}</small>`:''}</div>`}
 function actionLeadCard(l,kind=''){
@@ -270,11 +274,13 @@ function leadCard(l){
 function renderLeads(){
   const p=document.getElementById('adminCrmLeadsPanel');if(!p||!has('leads'))return;
   if(state.errors.leads){p.innerHTML=crmNav('leads')+failure('leads');return}
-  const leads=filteredLeads();
+  const leads=state.leadPreset==='archived'?[]:filteredLeads();
+  const archive=state.leadPreset==='archived';
   p.innerHTML=`${crmNav('leads')}<div class="crm-head"><div><span>CRM</span><h2>${T('Des échanges aux projets.','From conversations to projects.')}</h2><p>${T('Retrouvez chaque opportunité et sa prochaine action.','Find every opportunity and its next action.')}</p></div><div class="crm-head-actions"><button class="btn btn-ghost" onclick="ARTYCRM.download('leads')">${T('Exporter','Export')}</button><button class="crm-primary" onclick="ARTYCRM.newLead()">+ ${T('Nouveau prospect','New lead')}</button></div></div>
-  <div class="crm-preset-row" role="group" aria-label="${T('Vues rapides','Quick views')}">${[['open',T('En cours','Open')],['mine',T('Mes prospects','My leads')],['no_next',T('Sans suivi','No next action')],['closed',T('Terminés','Closed')],['all',T('Tous','All')]].map(([k,v])=>`<button aria-pressed="${state.leadPreset===k}" class="${state.leadPreset===k?'active':''}" onclick="ARTYCRM.leadPreset('${k}')">${v}</button>`).join('')}<div class="crm-view-toggle"><button aria-pressed="${state.leadView==='list'}" onclick="ARTYCRM.leadView('list')">${T('Liste','List')}</button><button aria-pressed="${state.leadView==='board'}" onclick="ARTYCRM.leadView('board')">${T('Tableau','Board')}</button></div></div>
+  <div class="crm-preset-row" role="group" aria-label="${T('Vues rapides','Quick views')}">${[['open',T('En cours','Open')],['mine',T('Mes prospects','My leads')],['no_next',T('Sans suivi','No next action')],['closed',T('Terminés','Closed')],['all',T('Tous','All')],['archived',T('Retirés du CRM','Removed from CRM')]].map(([k,v])=>`<button aria-pressed="${state.leadPreset===k}" class="${state.leadPreset===k?'active':''}" onclick="ARTYCRM.leadPreset('${k}')">${v}</button>`).join('')}<div class="crm-view-toggle"><button aria-pressed="${state.leadView==='list'}" onclick="ARTYCRM.leadView('list')">${T('Liste','List')}</button><button aria-pressed="${state.leadView==='board'}" onclick="ARTYCRM.leadView('board')">${T('Tableau','Board')}</button></div></div>
   <div class="crm-toolbar"><input aria-label="${T('Rechercher un prospect','Search leads')}" type="search" value="${attr(state.leadQuery)}" placeholder="${T('Rechercher nom, courriel, sujet…','Search name, email, subject…')}" oninput="ARTYCRM.searchLeads(this.value)"><select aria-label="${T('Responsable','Owner')}" onchange="ARTYCRM.filterOwner(this.value)"><option value="all">${T('Toute l’équipe','All team')}</option>${state.team.map(t=>`<option value="${attr(t.email)}" ${state.leadOwner===t.email?'selected':''}>${esc(t.name)}</option>`).join('')}</select><select aria-label="${T('Étape','Stage')}" onchange="ARTYCRM.filterStatus(this.value)"><option value="all">${T('Toutes les étapes','All stages')}</option>${statusOrder.map(k=>`<option value="${k}" ${state.leadStatus===k?'selected':''}>${statusLabel(k)}</option>`).join('')}</select><span class="crm-result-count">${leads.length} ${T('résultat(s)','result(s)')}</span></div>
-  ${state.leadView==='board'?`<div class="crm-kanban">${statusOrder.filter(k=>state.leadPreset!=='open'||!['won','refunded','lost'].includes(k)).map(k=>`<section class="crm-kanban-col" data-stage="${k}" ondragover="event.preventDefault()" ondrop="ARTYCRM.dropStage(event,'${k}')"><header><span class="crm-stage-dot ${k}"></span><strong>${statusLabel(k)}</strong><b>${leads.filter(l=>l.status===k).length}</b></header><div class="crm-kanban-list">${leads.filter(l=>l.status===k).map(leadCard).join('')||`<div class="crm-drop-empty">${T('Aucun prospect','No leads')}</div>`}</div></section>`).join('')}</div>`:`<div class="crm-opportunity-list"><div class="crm-opportunity-heading"><span>${T('Client / projet','Client / project')}</span><span>${T('Étape','Stage')}</span><span>${T('Prochain suivi','Next action')}</span><span>${T('Valeur','Value')}</span></div>${leads.map(l=>`<button class="crm-opportunity" onclick="ARTYCRM.openLeadActions('${l.kind}','${encodeKey(l.id)}')"><span><strong>${esc(l.name||l.email)}</strong><small>${esc(l.title||'')}</small><small>${esc(l.owner||T('Non assigné','Unassigned'))}</small></span><span><b class="crm-pill ${l.status}">${statusLabel(l.status)}</b></span><span><small>${l.nextFollowUp?scheduleDate(l.nextFollowUp):T('À planifier','Not scheduled')}</small><small>${l.nextFollowUp?taskType(l.followUpType):''}</small></span><strong>${leadPrimaryValue(l)}</strong></button>`).join('')||`<div class="crm-empty">${T('Aucun prospect dans cette vue.','No leads in this view.')}</div>`}</div>`}`;
+  ${archive?`<div class="crm-opportunity-list">${state.hiddenLeads.map(l=>`<div class="crm-opportunity"><span><strong>${esc(l.name||l.email)}</strong><small>${esc(l.title||'')}</small><small>${esc(l.kind==='event'?T('Demande événement','Event inquiry'):T('Prospect manuel','Manual lead'))}</small></span><span></span><span><small>${l.hiddenAt?date(l.hiddenAt):''}</small></span><button class="btn btn-ghost btn-sm" type="button" onclick="ARTYCRM.restoreLead('${attr(l.kind)}','${attr(encodeKey(l.id))}')">${T('Restaurer','Restore')}</button></div>`).join('')||`<div class="crm-empty">${T('Aucun prospect retiré.','No archived leads.')}</div>`}</div>`:
+  state.leadView==='board'?`<div class="crm-kanban">${statusOrder.filter(k=>state.leadPreset!=='open'||!['won','refunded','lost'].includes(k)).map(k=>`<section class="crm-kanban-col" data-stage="${k}" ondragover="event.preventDefault()" ondrop="ARTYCRM.dropStage(event,'${k}')"><header><span class="crm-stage-dot ${k}"></span><strong>${statusLabel(k)}</strong><b>${leads.filter(l=>l.status===k).length}</b></header><div class="crm-kanban-list">${leads.filter(l=>l.status===k).map(leadCard).join('')||`<div class="crm-drop-empty">${T('Aucun prospect','No leads')}</div>`}</div></section>`).join('')}</div>`:`<div class="crm-opportunity-list"><div class="crm-opportunity-heading"><span>${T('Client / projet','Client / project')}</span><span>${T('Étape','Stage')}</span><span>${T('Prochain suivi','Next action')}</span><span>${T('Valeur','Value')}</span></div>${leads.map(l=>`<button class="crm-opportunity" onclick="ARTYCRM.openLeadActions('${l.kind}','${encodeKey(l.id)}')"><span><strong>${esc(l.name||l.email)}</strong><small>${esc(l.title||'')}</small><small>${esc(l.owner||T('Non assigné','Unassigned'))}</small></span><span><b class="crm-pill ${l.status}">${statusLabel(l.status)}</b></span><span><small>${l.nextFollowUp?scheduleDate(l.nextFollowUp):T('À planifier','Not scheduled')}</small><small>${l.nextFollowUp?taskType(l.followUpType):''}</small></span><strong>${leadPrimaryValue(l)}</strong></button>`).join('')||`<div class="crm-empty">${T('Aucun prospect dans cette vue.','No leads in this view.')}</div>`}</div>`}`;
 }
 
 function ownerOptions(selected=''){return `<option value="">${T('Non assigné','Unassigned')}</option>${state.team.map(t=>`<option value="${attr(t.email)}" ${selected===t.email?'selected':''}>${esc(t.name)}${t.role==='admin'?' · '+T('Admin','Admin'):''}</option>`).join('')}`}
@@ -318,6 +324,7 @@ function renderLeadActions(){
       ${l.kind==='event'&&l.status==='won'&&has('events')&&Number(l.quoteNetPaid||0)>0&&l.quoteRefundStatus!=='refund_pending'?`<button class="crm-action-tile danger" onclick="ARTYCRM.refundEventLead()"><span>↩</span><strong>${T('Rembourser','Refund payment')}</strong><small>${T('Remboursement Stripe sécurisé','Secure Stripe refund')}</small></button>`:''}
       ${!terminal?`<button class="crm-action-tile danger" onclick="ARTYCRM.renderLostAction()"><span>×</span><strong>${T('Marquer perdu','Mark lost')}</strong><small>${T('Enregistrer la raison','Record the reason')}</small></button>`:''}
       <button class="crm-action-tile secondary" onclick="ARTYCRM.renderLeadEditor()"><span>⋯</span><strong>${T('Modifier les détails','Edit details')}</strong><small>${T('Champs avancés du prospect','Advanced lead fields')}</small></button>
+      ${['event','manual'].includes(l.kind)&&has('leads')?`<button class="crm-action-tile danger" onclick="ARTYCRM.archiveLead()"><span>−</span><strong>${T('Retirer du CRM','Remove from CRM')}</strong><small>${T('Garder les données et le service client','Keep original records')}</small></button>`:''}
       ${canDeleteManualLead(l)?`<button class="crm-action-tile danger" onclick="ARTYCRM.deleteManualLead()"><span>⌫</span><strong>${T('Supprimer le prospect','Delete lead')}</strong><small>${T('Supprimer définitivement','Delete permanently')}</small></button>`:''}
     </div>
     ${l.kind==='event'&&l.paymentLinkUrl?`<div class="crm-secure-link"><div><strong>${T('Lien de devis sécurisé','Secure quote link')}</strong><small>${(l.quoteEmailStatus==='sent'?T('Courriel du devis envoyé.','Quote email sent.'):T('Vérifiez l’envoi du devis avant de relancer.','Check quote delivery before following up.'))}</small></div><button class="btn btn-ghost btn-sm" onclick="ARTYCRM.openSecureQuote()">${T('Ouvrir','Open')}</button></div>`:''}
@@ -516,6 +523,23 @@ function renderLeadEditor(){
     <div class="crm-editor-footer"><button class="btn btn-ghost" onclick="${isNew?'ARTYCRM.closeLeadEditor()':'ARTYCRM.renderLeadActions()'}">${isNew?T('Annuler','Cancel'):T('Retour','Back')}</button><button class="btn btn-orange" onclick="ARTYCRM.saveLeadEditor()">${isNew?T('Créer le prospect','Create lead'):T('Enregistrer','Save')}</button></div>`;
   document.getElementById('leadStatus')?.addEventListener('change',e=>{const row=host.querySelector('.crm-lost-field');if(row)row.style.display=e.target.value==='lost'?'':'none'});
 }
+async function archiveLead(){
+  const l=state.editingLead;if(!l||!['event','manual'].includes(l.kind)||!has('leads'))return;
+  if(!confirm(T('Retirer ce prospect du CRM? Les ventes, demandes d’événement et messages client seront conservés.','Remove this lead from CRM? Sales, event requests, and customer messages will be preserved.')))return;
+  try{
+    await api('/api/admin/crm/leads/'+encodeKey(l.kind)+'/'+encodeKey(l.id)+'/visibility',{method:'PATCH',body:JSON.stringify({hidden:true})});
+    closeLeadEditor();await Promise.all([loadLeads(),loadHiddenLeads(),loadOverview(),loadCustomers()]);
+    renderLeads();showToast(T('Prospect retiré du CRM.','Lead removed from CRM.'),'success');
+  }catch(e){showToast(e.message,'error')}
+}
+async function restoreLead(kind,idEncoded){
+  if(!has('leads'))return;
+  try{
+    await api('/api/admin/crm/leads/'+encodeKey(kind)+'/'+encodeKey(decodeURIComponent(idEncoded))+'/visibility',{method:'PATCH',body:JSON.stringify({hidden:false})});
+    await Promise.all([loadHiddenLeads(),loadLeads(),loadOverview(),loadCustomers()]);
+    renderLeads();showToast(T('Prospect restauré.','Lead restored.'),'success');
+  }catch(e){showToast(e.message,'error')}
+}
 async function deleteManualLead(){
   const l=state.editingLead;if(!canDeleteManualLead(l))return;
   if(!confirm(T('Supprimer définitivement ce prospect? Cette action est irréversible.','Delete this lead permanently? This cannot be undone.')))return;
@@ -582,7 +606,7 @@ async function section(next){
     await loadOverview();renderOverview();
   }else if(next==='leads'){
     const panel=document.getElementById('adminCrmLeadsPanel');if(panel)panel.style.display='block';
-    await Promise.all([loadLeads(),loadOverview()]);renderLeads();
+    await Promise.all([loadLeads(),loadHiddenLeads(),loadOverview()]);renderLeads();
   }else{
     const panel=document.getElementById('adminCrmCustomersPanel');if(panel)panel.style.display='block';
     await loadCustomers();renderCustomers();
@@ -625,11 +649,11 @@ function styles(){}
 
 async function guarded(fn){if(state.saving)return;state.saving=true;const modal=document.getElementById('crmLeadModal');modal?.setAttribute('aria-busy','true');modal?.querySelectorAll('button').forEach(b=>b.disabled=true);try{return await fn()}finally{state.saving=false;modal?.removeAttribute('aria-busy');modal?.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 function saveView(key,value){try{localStorage.setItem('arty-crm-view-'+key,value)}catch{}}
-try{state.leadView=localStorage.getItem('arty-crm-view-mode')==='board'?'board':'list';const preset=localStorage.getItem('arty-crm-view-preset');if(['open','mine','no_next','closed','all'].includes(preset))state.leadPreset=preset}catch{}
+try{state.leadView=localStorage.getItem('arty-crm-view-mode')==='board'?'board':'list';const preset=localStorage.getItem('arty-crm-view-preset');if(['open','mine','no_next','closed','all','archived'].includes(preset))state.leadPreset=preset}catch{}
 document.addEventListener('keydown',e=>{const m=document.getElementById('crmLeadModal');if(!m||m.hidden)return;if(e.key==='Escape'){e.preventDefault();closeLeadEditor()}if(e.key==='Tab'){const nodes=[...m.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary')].filter(n=>n.getAttribute('tabindex')!=='-1'&&!n.closest('[hidden]'));if(!nodes.length)return;const first=nodes[0],last=nodes[nodes.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}}});
 
 window.ARTYCRM={
-  openTask,taskForm,newTaskForm,renderActivityForm,saveActivity:()=>guarded(saveActivity),retryCalendar:()=>guarded(retryCalendar),openClientFromLead,openSupport,
+  archiveLead,restoreLead,openTask,taskForm,newTaskForm,renderActivityForm,saveActivity:()=>guarded(saveActivity),retryCalendar:()=>guarded(retryCalendar),openClientFromLead,openSupport,
   activityFilter:q=>{state.activityFilter=q;renderCustomerDetail()},
   dayQueue:q=>{state.dayQueue=q;renderOverview()},dayOwner:q=>{state.dayOwner=q;renderOverview()},leadPreset:q=>{state.leadPreset=q;saveView('preset',q);renderLeads()},leadView:q=>{state.leadView=q;saveView('mode',q);renderLeads()},
   install,loadAll,renderOverview,renderCustomers,renderLeads,openCustomer,section,connectGoogleCalendar,disconnectGoogleCalendar,previewQuoteAction,

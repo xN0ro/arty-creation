@@ -64,8 +64,8 @@ test('daily queues include all tasks, unassigned opportunities and missing next 
   for(let i=0;i<25;i++)flow.createTask(db.crmLeads[0].crm,{dueAt:day+'T10:00'},'staff');
   assert.equal(crm.crmActionCenter(db).queues.today,25);assert.equal(crm.crmActionCenter(db).queues.no_next,0);assert.equal(crm.crmSummary(db).followUpsToday,25);
 });
-test('customer timeline joins task outcomes and support conversations without granting support access',()=>{
+test('customer timeline keeps sales activities without mixing in support conversations',()=>{
   const db=fixture();flow.logActivity(db.crmLeads[0].crm,{type:'call',outcome:'reached',note:'Friday works'},'staff');db.supportRequests=[{id:'S1',customer:{email:'client@example.test'},subject:'Question',messages:[{at:'2026-09-20T10:00:00Z',body:'Support message'}]}];
-  const full=crm.customerDetail(db,'client@example.test');assert(full.timeline.some(x=>x.type==='support'));assert(full.timeline.some(x=>x.type==='activity'));
+  const full=crm.customerDetail(db,'client@example.test');assert(!full.timeline.some(x=>x.type==='support'));assert.equal(full.support.length,0);assert(full.timeline.some(x=>x.type==='activity'));
   const limited=crm.customerDetail(db,'client@example.test',{includeSupport:false});assert.equal(limited.support.length,0);assert(!limited.timeline.some(x=>x.type==='support'));
 });

@@ -18,6 +18,7 @@ function setup(){
     else if(suffix==='/action-center')result=crm.crmActionCenter(db);
     else if(suffix==='/google-calendar/status')result={oauthConfigured:true,connected:false};
     else if(suffix==='/leads')result=crm.buildLeads(db);
+    else if(suffix==='/hidden-leads')result=[];
     else if(suffix==='/team')result=[{email:'owner@example.test',name:'Owner'}];
     else if(suffix==='/customers')result=crm.buildCustomerIndex(db);
     else if(suffix.startsWith('/customers/'))result=crm.customerDetail(db,decodeURIComponent(suffix.split('/')[2]));
@@ -54,7 +55,7 @@ test('logging an interaction sends only the activity API request, not an email',
   const h=setup();try{await h.w.ARTYCRM.loadAll();h.w.ARTYCRM.openLeadActions('manual','L1');h.w.ARTYCRM.renderActivityForm();h.w.document.getElementById('activityType').value='email';h.w.document.getElementById('activityOutcome').value='email_sent';h.w.document.getElementById('activityNote').value='Sent availability yesterday';await h.w.ARTYCRM.saveActivity();assert(h.db.crmLeads[0].crm.activities.some(a=>a.note==='Sent availability yesterday'));assert.equal(h.requests.filter(r=>r.options.method==='POST').length,1);assert(h.requests.some(r=>r.url.endsWith('/activities')))}finally{h.close()}
 });
 test('customer profile renders safe text, net spending and permission-controlled support links',async()=>{
-  const h=setup();try{h.db.crmLeads[0].name='<img src=x onerror=alert(1)>';h.db.supportRequests=[{id:'S1',subject:'Delivery question',customer:{email:'alex@example.test'},messages:[{at:'2026-09-20T10:00:00Z',body:'Please help'}]}];await h.w.ARTYCRM.loadAll();await h.w.ARTYCRM.section('customers');await h.w.ARTYCRM.openCustomer('alex%40example.test');const panel=h.w.document.getElementById('crmCustomerDetail');assert.equal(panel.querySelectorAll('img').length,0);assert(panel.textContent.includes('Net paid'));assert(panel.textContent.includes('Delivery question'));assert(panel.textContent.includes('Support conversation'))}finally{h.close()}
+  const h=setup();try{h.db.crmLeads[0].name='<img src=x onerror=alert(1)>';h.db.supportRequests=[{id:'S1',subject:'Delivery question',customer:{email:'alex@example.test'},messages:[{at:'2026-09-20T10:00:00Z',body:'Please help'}]}];await h.w.ARTYCRM.loadAll();await h.w.ARTYCRM.section('customers');await h.w.ARTYCRM.openCustomer('alex%40example.test');const panel=h.w.document.getElementById('crmCustomerDetail');assert.equal(panel.querySelectorAll('img').length,0);assert(panel.textContent.includes('Net paid'));assert(!panel.textContent.includes('Delivery question'));assert(!panel.textContent.includes('Support conversation'))}finally{h.close()}
 });
 test('French and English render complete workspace and task controls',async()=>{
   const h=setup();try{h.lang('fr');await h.w.ARTYCRM.loadAll();await h.w.ARTYCRM.section('overview');assert(h.w.document.body.textContent.includes('Chaque client compte.'));await h.w.ARTYCRM.openTask('manual','L1');assert(h.w.document.getElementById('crmLeadEditorBody').textContent.includes('Planifier le prochain échange'));h.w.ARTYCRM.closeLeadEditor();h.lang('en');await h.w.ARTYCRM.section('overview');assert(h.w.document.body.textContent.includes('Every client matters.'))}finally{h.close()}

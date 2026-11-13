@@ -197,6 +197,7 @@ function updateAuthUI(){
     const adm=['admin','staff'].includes(currentUser.role)?`<a href="#/admin" class="admin-link">${currentUser.role==='staff'?I18n.t('Espace équipe'):I18n.t('Admin')}</a>`:'';
     a.innerHTML=I18n.html`${cartH}<div class="nav-dropdown"><div class="nav-user" onclick="toggleDropdown()"><div class="nav-user-avatar">${av}</div><span class="nav-user-name">${currentUser.name.split(' ')[0]}</span></div><div class="nav-dropdown-menu"><a href="#/profile">Mon Profil</a>${adm}<button class="logout-btn" onclick="logout()">Déconnexion</button></div></div>`;
   }else{a.innerHTML=I18n.html`${cartH}<button class="btn btn-ghost btn-sm" onclick="openModal('auth')">Connexion</button><button class="btn btn-orange btn-sm" onclick="openModal('auth','register')">S'inscrire</button>`}
+  window.ARTYAdminAlerts?.render();
 }
 
 // ===== DATA =====

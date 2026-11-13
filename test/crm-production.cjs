@@ -73,7 +73,7 @@ test('staff reports exclude unassigned customer purchases and support content re
   const report=await request('/reporting',{token:'sales'});assert.equal(report.status,200);
   const summary=await request('/summary',{token:'sales'});assert.equal(summary.data.customers,1);
   const restricted=await request('/customers/one%40example.test',{token:'sales'});assert.equal(restricted.data.support.length,0);assert.equal(restricted.data.summary.lifetimeSpend,100);assert(!restricted.data.timeline.some(x=>x.type==='support'));
-  const owner=await request('/customers/one%40example.test');assert.equal(owner.data.support.length,1);
+  const owner=await request('/customers/one%40example.test');assert.equal(owner.data.support.length,0);
 });
 test('manual interactions appear in client history and do not claim to send an email',async()=>{
   const logged=await request('/leads/manual/L1/activities',{method:'POST',token:'sales',body:{type:'email',outcome:'email_sent',note:'Customer asked for October',requestKey:'interaction-1'}});assert.equal(logged.status,200);

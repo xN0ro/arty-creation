@@ -44,7 +44,7 @@ async function call(route, {body,token,method=body?'POST':'GET',language='fr'}={
   return {status:response.status,data:await response.json()};
 }
 
-test('all six topics create a support conversation and CRM record with the correct email routing', async () => {
+test('all six topics create a support conversation and contact record, never a CRM lead', async () => {
   for (const [topic,channel] of [['commande','orders'],['livraison','orders'],['produit','support'],['paiement','orders'],['événement','events'],['autre','contact']]) {
     const result=await call('/contact',{body:valid({topic})});
     assert.equal(result.status,200);assert.equal(result.data.success,true);assert.match(result.data.reference,/^SUP-/);assert.equal(result.data.emailStatus,'sent');
