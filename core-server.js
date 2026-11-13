@@ -2740,7 +2740,7 @@ app.put('/api/admin/home-favorite-kits', adminOnly, (req, res) => {
 
 app.get('/api/admin/orders', adminOnly, (req, res) => {
   const db = readDB();
-  res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  res.json((db.orders || []).sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(order=>({...order,cancellationInfo:orderCancellation.cancellationDetails(order)})));
 });
 app.patch('/api/admin/orders/:id/test', adminOnly, (req, res) => {
   const db = readDB();
