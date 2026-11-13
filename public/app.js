@@ -2753,6 +2753,47 @@ function renderAdminSupportRequests(){
 async function saveAdminSupportRequest(id){const status=document.getElementById(`supportStatus-${id}`)?.value,adminReply=document.getElementById(`supportReply-${id}`)?.value.trim()||'';try{const r=await artyFetch(`/api/admin/support-requests/${encodeURIComponent(id)}`,{method:'PATCH',headers:authH(),body:JSON.stringify({status,adminReply})});const d=await r.json().catch(()=>({}));if(!r.ok)return showToast(d.error||I18n.t('Erreur'),'error');await loadAdminSupportRequests();renderAdminSupportRequests();showToast(I18n.t('Demande mise à jour'),'success')}catch{showToast(I18n.t('Erreur'),'error')}}
 function adminOrderDomId(id){return String(id||'').replace(/[^a-z0-9_-]/gi,'-')}
 function adminOrderStatusOptions(current){return [['en attente de paiement',I18n.t('En attente de paiement')],['payée',I18n.t('Payée')],['préparation',I18n.t('En préparation')],['expédiée',I18n.t('Expédiée')],['livrée',I18n.t('Livrée')],['annulée',I18n.t('Annulée')],['remboursée',I18n.t('Remboursée')]].map(([value,label])=>`<option value="${value}" ${current===value?'selected':''}>${label}</option>`).join('')}
+
+function adminCancellationMeta(order){
+  if(String(order?.status||'')!=='annulée')return null;
+  const info=order.cancellationInfo||order.cancellation||{},key=info.reason||'unknown',en=I18n.language?.()==='en',ix=en?1:0;
+  const names={
+    reservation_expired:['Réservation expirée','Reservation expired'],
+    payment_setup_failed:['Initialisation du paiement impossible','Payment setup failed'],
+    stripe_cancelled:['Paiement Stripe annulé','Stripe payment cancelled'],
+    admin_cancelled:['Annulation manuelle','Cancelled by admin'],
+    unknown:['Motif non enregistré','Reason not recorded']
+  };
+  const explanations={
+    reservation_expired:['La réservation temporaire des places a expiré sans paiement confirmé. Les places ont été libérées.','The temporary ticket reservation expired without confirmed payment. The seats were released.'],
+    payment_setup_failed:['Stripe n’a pas pu initialiser le paiement, donc la commande a été annulée.','Stripe could not initialize the payment, so the order was cancelled.'],
+    stripe_cancelled:['Stripe a confirmé l’annulation de la tentative de paiement. Il ne s’agit pas d’une preuve de remboursement.','Stripe confirmed the payment attempt was cancelled. This does not mean a refund was issued.'],
+    admin_cancelled:['Un membre de l’équipe a annulé manuellement la commande.','A staff member manually cancelled the order.'],
+    unknown:['Le motif précis n’a pas été enregistré sur cette ancienne commande. Vérifiez Stripe au besoin.','The exact reason was not recorded for this older order. Check Stripe if needed.']
+  };
+  const reason=names[key]?key:'unknown';
+  return {label:names[reason][ix],description:explanations[reason][ix],at:info.at||'',by:info.by||'',note:info.note||'',legacy:info.legacy===true};
+}
+function toggleAdminOrderCancelNote(id){
+  const wrap=document.getElementById('detailCancelNoteWrap-'+id),select=document.getElementById('detailStatus-'+id);
+  if(wrap&&select)wrap.style.display=select.value==='annulée'?'':'none';
+}
+function adminCancellationDetailHtml(order){
+  const info=adminCancellationMeta(order);
+  if(!info)return '';
+  const en=I18n.language?.()==='en';
+  const warning=order.paymentStatus==='refund_needed'
+    ?'<p class="admin-cancel-refund-warning">'+(en?'Payment was previously confirmed. A refund still needs to be processed.':'Un paiement avait été confirmé. Le remboursement reste à effectuer.')+'</p>'
+    :'';
+  return '<section class="admin-order-detail-card admin-cancellation-detail"><div class="admin-order-detail-title"><div>'+profileIcon('receipt')+
+   '<h3>'+(en?'Cancellation details':'Détails de l’annulation')+'</h3></div></div>'+
+   '<div class="admin-cancel-reason">'+safeText(info.label)+'</div>'+
+   '<p>'+safeText(info.description)+'</p>'+
+   (info.at?'<small>'+safeText(profileDate(info.at,true))+'</small>':'')+
+   (info.by?'<small>'+safeText(info.by)+'</small>':'')+
+   (info.note?'<p class="admin-cancel-note">'+safeText(info.note)+'</p>':'')+warning+'</section>';
+}
+
 function adminPaymentMeta(status){const key=String(status||'pending').toLowerCase(),map={paid:[I18n.t('Paiement confirmé'),'ok'],pending:[I18n.t('En attente'),'pending'],cancelled:[I18n.t('Annulé'),'out'],refund_needed:[I18n.t('Remboursement requis'),'pending'],refund_pending:[I18n.t('Remboursement en cours'),'pending'],refunded:[I18n.t('Remboursé'),'out'],provider_not_connected:[I18n.t('Paiement à confirmer'),'pending']};const value=map[key]||[status||I18n.t('À confirmer'),'pending'];return{label:value[0],className:value[1]}}
 function adminOrderItemDetails(item){
   const custom=item.customData||{},details=[];
@@ -2797,8 +2838,8 @@ function renderAdminOrders(){
   const realOrders=(adminOrders||[]).filter(order=>!order.isTest),testOrders=(adminOrders||[]).filter(order=>!!order.isTest);
   const awaiting=realOrders.filter(order=>['payée','préparation'].includes(order.status)).length,shipping=realOrders.filter(order=>order.status==='expédiée').length;
   const rows=(adminOrders||[]).map(order=>{
-    const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],ticketOnly=items.length>0&&items.every(item=>item.type==='event-ticket'),meta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),quantity=items.reduce((total,item)=>total+(Number(item.qty)||1),0);
-    return I18n.html`<tr class="admin-order-row ${order.isTest?'is-test-order':''}"><td><button type="button" class="admin-order-number" onclick="openAdminOrderDetail('${safeAttr(order.id)}')"><span class="admin-order-id-line"><strong>${safeText(order.id)}</strong>${order.isTest?'<em class="admin-test-badge">TEST</em>':''}</span><span>${profileDate(order.createdAt)}</span></button></td><td><strong>${safeText(customer.name||I18n.t('Client non indiqué'))}</strong><span class="admin-order-cell-note">${safeText(customer.email||order.guestEmail||I18n.t('Courriel non indiqué'))}</span></td><td><strong>${safeText(ticketOnly?I18n.t('Billet électronique'):address.city||I18n.t('Adresse à consulter'))}</strong><span class="admin-order-cell-note">${safeText(ticketOnly?I18n.t('Envoi après paiement'):[address.province,address.postal].filter(Boolean).join(' · '))}</span></td><td><strong>${quantity} ${ticketOnly?`personne${quantity>1?'s':''}`:`article${quantity>1?'s':''}`}</strong><span class="admin-order-cell-note">${safeText(items[0]?.name||I18n.t('Aucun article'))}${items.length>1?` + ${items.length-1}`:''}</span></td><td><strong>${I18n.currency(toMoney(order.total))}</strong><span class="admin-status ${payment.className}">${safeText(payment.label)}</span></td><td><span class="account-status ${meta.className}">${safeText(meta.label)}</span></td><td><button type="button" class="admin-order-view" onclick="openAdminOrderDetail('${safeAttr(order.id)}')">Voir les détails</button></td></tr>`;
+    const customer=order.customer||{},address=order.address||{},items=Array.isArray(order.items)?order.items:[],ticketOnly=items.length>0&&items.every(item=>item.type==='event-ticket'),meta=profileStatusMeta(order.status),payment=adminPaymentMeta(order.paymentStatus),cancellation=adminCancellationMeta(order),quantity=items.reduce((total,item)=>total+(Number(item.qty)||1),0);
+    return I18n.html`<tr class="admin-order-row ${order.isTest?'is-test-order':''}"><td><button type="button" class="admin-order-number" onclick="openAdminOrderDetail('${safeAttr(order.id)}')"><span class="admin-order-id-line"><strong>${safeText(order.id)}</strong>${order.isTest?'<em class="admin-test-badge">TEST</em>':''}</span><span>${profileDate(order.createdAt)}</span></button></td><td><strong>${safeText(customer.name||I18n.t('Client non indiqué'))}</strong><span class="admin-order-cell-note">${safeText(customer.email||order.guestEmail||I18n.t('Courriel non indiqué'))}</span></td><td><strong>${safeText(ticketOnly?I18n.t('Billet électronique'):address.city||I18n.t('Adresse à consulter'))}</strong><span class="admin-order-cell-note">${safeText(ticketOnly?I18n.t('Envoi après paiement'):[address.province,address.postal].filter(Boolean).join(' · '))}</span></td><td><strong>${quantity} ${ticketOnly?`personne${quantity>1?'s':''}`:`article${quantity>1?'s':''}`}</strong><span class="admin-order-cell-note">${safeText(items[0]?.name||I18n.t('Aucun article'))}${items.length>1?` + ${items.length-1}`:''}</span></td><td><strong>${I18n.currency(toMoney(order.total))}</strong><span class="admin-status ${payment.className}">${safeText(payment.label)}</span></td><td><span class="account-status ${meta.className}">${safeText(meta.label)}</span>${cancellation?'<small class="admin-order-cancel-label" title="'+safeAttr(cancellation.description)+'">'+safeText(cancellation.label)+'</small>':''}</td><td><button type="button" class="admin-order-view" onclick="openAdminOrderDetail('${safeAttr(order.id)}')">Voir les détails</button></td></tr>`;
   }).join('');
   panel.innerHTML=I18n.html`<div class="admin-orders-heading"><div><span>Gestion des commandes</span><h3>Commandes et livraisons</h3><p>Les commandes marquées TEST restent visibles ici, mais elles sont exclues du chiffre d’affaires, du panier moyen, des meilleures ventes et des statistiques marketing. Les remboursements des paiements Stripe sont envoyés directement à Stripe depuis ARTY.</p><div class="admin-test-order-actions">${realOrders.length?`<button type="button" class="btn btn-ghost btn-sm" onclick="markAllCurrentOrdersAsTest()">Réinitialiser les statistiques de test</button>`:''}${testOrders.length?`<span>${testOrders.length} commande${testOrders.length>1?'s':''} test exclue${testOrders.length>1?'s':''} du tableau de bord</span>`:''}</div></div><div class="admin-orders-overview"><div><strong>${realOrders.length}</strong><span>Commandes réelles</span></div><div><strong>${testOrders.length}</strong><span>Tests</span></div><div><strong>${awaiting}</strong><span>À préparer</span></div><div><strong>${shipping}</strong><span>En livraison</span></div></div></div><div class="admin-table-wrap admin-orders-table"><table class="admin-table"><thead><tr><th>Commande</th><th>Client</th><th>Destination</th><th>Produits</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody>${rows||I18n.html('<tr><td colspan="7" class="admin-muted">Aucune commande pour le moment.</td></tr>')}</tbody></table></div><div class="admin-section-title"><h3>Historique des remboursements</h3></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Remboursement</th><th>Commande</th><th>Montant</th><th>Raison</th><th>Statut</th></tr></thead><tbody>${refundRows||I18n.html('<tr><td colspan="5" class="admin-muted">Aucun remboursement.</td></tr>')}</tbody></table></div><div class="admin-order-detail-modal" id="adminOrderDetailModal" hidden><button class="admin-order-detail-backdrop" type="button" onclick="closeAdminOrderDetail()" aria-label="Fermer les détails"></button><section class="admin-order-detail-sheet" role="dialog" aria-modal="true" aria-labelledby="adminOrderDetailTitle"><button class="admin-order-detail-close" type="button" onclick="closeAdminOrderDetail()" aria-label="Fermer">×</button><div id="adminOrderDetailContent"></div></section></div>`;
 }
