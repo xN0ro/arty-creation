@@ -2688,9 +2688,10 @@ function normalizeEventPayload(body, existing = {}) {
 // ========== ADMIN ==========
 function initializeAdminAlertBaseline(db){
   if(!db.adminNotificationsBaselineAt){
-    // Existing support and sales history is not a backlog of 'new' alerts.
-    // Store the baseline in the persistent DB so server restarts do not reset it.
-    db.adminNotificationsBaselineAt=new Date().toISOString();
+    // Enable notifications from the rollout of this feature, not from the
+    // first admin visit. This avoids silently losing messages that arrive
+    // between deployment and the owner's first login. Older history stays read.
+    db.adminNotificationsBaselineAt='2026-11-13T02:29:00.000Z';
     writeDB(db);
   }
 }
