@@ -22,6 +22,6 @@ test('scroll effects only observe the active route and have a no-observer fallba
 });
 
 test('catalog visibility fix uses cache-busted app and stylesheet assets',()=>{
-  assert.match(html,/styles\.css\?v=20260919-catalog-visibility-1/);
-  assert.match(html,/app\.js\?v=20260919-catalog-visibility-1/);
+  assert.match(html,/styles\.css\?v=\d{8}-[^"]+/);
+  assert.match(html,/app\.js\?v=\d{8}-[^"]+/);
 });

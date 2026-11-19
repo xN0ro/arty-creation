@@ -15,7 +15,7 @@
   .navbar .nav-logo-text,.navbar.scrolled .nav-logo-text{font-size:1.1rem}
   #languageControl{margin-left:0;order:3}
   .language-switch{padding:2px;gap:0}
-  .language-switch button{min-width:39px;min-height:42px;padding:8px;font-size:.875rem}
+  .language-switch :is(button,a){min-width:39px;min-height:42px;padding:8px;font-size:.875rem}
   .nav-hamburger{order:4;display:flex;align-items:center;justify-content:center;flex-shrink:0;width:44px;height:44px;gap:5px;border-radius:12px;background:var(--bg2)}
   .nav-hamburger span{width:22px}
   .mobile-cart-button:not([hidden]){order:2;display:flex;align-items:center;justify-content:center;position:relative;flex:0 0 44px;width:44px;height:44px;border-radius:12px;background:var(--orange-pale);color:#a94e18}

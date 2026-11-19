@@ -31,14 +31,31 @@ function navigate(h){window.location.hash=h}
 function safeText(v){return String(v??'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]))}
 function safeAttr(v){return safeText(v).replace(/'/g,'&#39;')}
 function toMoney(v){return Number(v||0).toFixed(2)}
+function storefrontLink(kind, entity) {
+  const path = entity.publicPath || (kind === 'event' ? '/events/event-' : '/products/kit-') + entity.id;
+  return artyLocalizedPath(path);
+}
 
 // ===== ROUTER =====
 let artyLastRouteAdmin=false;
+function artyRoute() {
+  if (location.hash.startsWith('#/') || location.hash === '#contact') return location.hash;
+  const landing = window.__ARTY_MARKETING_LANDING__;
+  switch (landing?.kind) {
+    case 'product': return '#/product/' + landing.id;
+    case 'event': return '#/event/' + landing.id;
+    case 'collection': return '#/paintings?cat=' + landing.id;
+    case 'catalog': return '#/paintings';
+    case 'events': return '#/party' + location.search;
+    case 'contact': return '#/contact';
+    default: return /^\/(?:en\/)?contact\/?$/.test(location.pathname) ? '#/contact' : '#/';
+  }
+}
 async function handleRoute(){
   if(artyLastRouteAdmin&&location.hash!=='#/admin')await Promise.all([loadKits(),loadCategories(),loadEvents(),loadEventOptions(),loadBundles()]);
   artyLastRouteAdmin=location.hash==='#/admin';
-  if(document.getElementById('page-contact')?.classList.contains('active'))updateLanguageControls();
-  const h=window.location.hash||(/^\/contact\/?$/.test(location.pathname)?'#/contact':'#/');
+  const h = artyRoute();
+  updateStorefrontMeta();
   document.querySelectorAll('[data-contact-link]').forEach(link=>{if(h==='#/contact'||h.startsWith('#/contact?'))link.setAttribute('aria-current','page');else link.removeAttribute('aria-current')});
   closeMobileNavigation();closeMobileFilters();
   const toastEl=document.getElementById('toast');
@@ -130,16 +147,6 @@ function getHomeFavoriteKits(){
   return random;
 }
 
-function renderHomePopularKits(){
-  const kits=getHomeFavoriteKits();
-  document.getElementById('homePopularKits').innerHTML = kits.map(k=>{
-    const cat = allCategories.find(c=>c.id===k.categoryId);
-    return `<div class="kit-card" onclick="navigate('#/product/${k.id}')">
-      <div class="kit-card-img"><img src="${k.image}" alt="${safeText(I18n.field(k,'name'))}" loading="lazy">${k.featured?I18n.html('<span class="kit-card-badge">Populaire</span>'):''}</div>
-      <div class="kit-card-body"><div class="kit-card-category">${cat?cat.name:''}</div><h3 class="kit-card-title">${safeText(I18n.field(k,'name'))}</h3><p class="kit-card-desc">${k.shortDesc||k.description}</p>
-      <div class="kit-card-footer"><span class="kit-card-price">${I18n.currency(k.price.toFixed(2))}</span></div></div></div>`;
-  }).join('');
-}
 
 function renderHomeCats(){
   document.getElementById('homeCatGrid').innerHTML=allCategories.map(c=>
@@ -155,8 +162,8 @@ function renderHomeEvents(){
     const d = new Date(ev.date+'T00:00:00');
     const dateStr = d.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long'});
     const spotsLeft = Math.max(0,Number(ev.remainingSpots ?? ev.bookingLimit ?? 0));
-    return I18n.html`<div class="event-card" onclick="navigate('#/event/${ev.id}')" style="cursor:pointer">
-      <div class="event-card-img"><img src="${ev.image}" loading="lazy"></div>
+    return I18n.html`<a class="event-card" href="${safeAttr(storefrontLink('event',ev))}">
+      <div class="event-card-img"><img src="${safeAttr(ev.image)}" alt="${safeAttr(ev.title)}" loading="lazy"></div>
       <div class="event-card-body">
         <div class="event-card-date">${dateStr} · ${ev.time||''}</div>
         <h3 class="event-card-title">${ev.title}</h3>
@@ -166,7 +173,7 @@ function renderHomeEvents(){
           <span class="event-card-spots">${spotsLeft} place${spotsLeft!==1?'s':''} restante${spotsLeft!==1?'s':''}</span>
         </div>
       </div>
-    </div>`;
+    </a>`;
   }).join('');
 }
 
@@ -185,7 +192,6 @@ function initNavbar(){
       document.getElementById('navAuth')?.classList.remove('open');
     }
   });
-  document.querySelectorAll('.nav-links a[data-nav]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();const s=a.dataset.nav;if(s==='home'){navigate('#/');window.scrollTo({top:0,behavior:'smooth'})}else scrollToSection(s)}));
 }
 function toggleMobile(){setMobileNavigation(!document.getElementById('navDrawer')?.classList.contains('open'))}
 function toggleDropdown(){document.querySelector('.nav-dropdown-menu')?.classList.toggle('open')}
@@ -321,7 +327,7 @@ function initScrollEffects(){
 
 // ===== PAINTINGS PAGE =====
 function renderPaintingsPage(){
-  const params=new URLSearchParams((window.location.hash.split('?')[1]||''));
+  const params = new URLSearchParams(artyRoute().split('?')[1] || '');
   catalogFilters={category:params.get('cat')||'all',stock:'all',search:'',priceMin:'',priceMax:'',sort:'featured'};
   renderCatalogFilterOptions();
   syncCatalogInputs();
@@ -426,28 +432,6 @@ function renderActiveFilters(filtered){
   wrap.innerHTML=chips.length?chips.join(''):I18n.html('<span class="active-filter-placeholder">Aucun filtre actif</span>');
 }
 
-function renderKitsGrid(){
-  const g=document.getElementById('kitsGrid'); if(!g)return;
-  const filtered=getFilteredKits();
-  renderActiveFilters(filtered);
-  g.classList.remove('visible');
-  g.innerHTML=filtered.map(k=>{
-    const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));
-    const img=k.image||'logoarty.png';
-    const isInStock=k.inStock!==false;
-    return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')">
-      <div class="kit-card-img"><img src="${safeAttr(img)}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?I18n.html('<span class="kit-card-badge">Populaire</span>'):''}${!isInStock?I18n.html('<span class="kit-stock-badge">Épuisé</span>'):''}</div>
-      <div class="kit-card-body">
-        <div class="kit-card-category">${safeText(cat?cat.name:I18n.t('Sans catégorie'))}</div>
-        <h3 class="kit-card-title">${safeText(I18n.field(k,'name'))}</h3>
-        <p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p>
-        <div class="kit-card-footer"><span class="kit-card-price">${I18n.currency(toMoney(k.price))}</span></div>
-      </div>
-    </div>`;
-  }).join('');
-  if(!filtered.length) g.innerHTML=I18n.html('<div class="empty-state catalog-empty"><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>');
-  setTimeout(()=>g.classList.add('visible'),50);
-}
 
 function toggleCatalogFilters(){
   document.getElementById('catalogSidebar')?.classList.toggle('open');
@@ -464,7 +448,7 @@ function eventShareUrl(id){
     const marketingUrl=window.ARTYMarketing?.publicUrl?.('event',id);
     if(marketingUrl)return marketingUrl;
   }catch{}
-  if(location.pathname.startsWith('/events/'))return location.href;
+    if(!location.hash && window.__ARTY_MARKETING_LANDING__?.kind === 'event')return location.href;
   return `${location.origin}/?#/event/${encodeURIComponent(id)}`;
 }
 async function shareEvent(id){
@@ -504,14 +488,16 @@ function eventTicketTierPricesHTML(ev,context='detail'){
   return '<span class="arty-tier-native '+(context==='card'?'arty-tier-native-card':'arty-tier-native-detail')+'">'+rows+'</span>';
 }
 function renderEventPage(id){
-  const ev=allEvents.find(k=>k.id===id);
+  const past = location.hash ? null : window.__ARTY_MARKETING_LANDING__?.pastEvent;
+  const ev = allEvents.find(event => Number(event.id) === id) || (Number(past?.id) === id ? past : null);
   const c=document.getElementById('eventPageContent');
+  if (!ev && !location.hash && c.querySelector('[data-storefront-preview]')) return;
   if(!ev){c.innerHTML=I18n.html('<div class="empty-state" style="padding:60px 0"><div class="empty-state-icon">📅</div><p>Événement non trouvé</p></div>');return}
   const left=spotsLeft(ev);
   const scarcity=publicEventScarcity(ev);
   const includes=eventIncludes(ev);
   c.innerHTML=I18n.html`
-    <button class="product-back" onclick="navigate('#/party')">← Retour aux événements</button>
+    <a class="product-back" href="${artyLocalizedPath('/events')}">← Retour aux événements</a>
     <div class="event-detail-modern">
       <div class="event-detail-media">
         <img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" class="event-detail-img">
@@ -523,7 +509,7 @@ function renderEventPage(id){
         <div class="event-detail-date">${formatEventDate(ev,true)} · ${safeText(ev.time||'18:00')}</div>
         <h1>${safeText(I18n.field(ev,'title'))}</h1>
         <div class="product-price">${eventTicketTierPricesHTML(ev)}${!(window.ARTYTicketPricingCore?.eventOptions?.(ev)||[]).length?' <span>/personne</span>':''}</div>
-        <p class="product-desc">${safeText(ev.description||I18n.t('Une activité créative Arty avec tout le matériel inclus.'))}</p>
+        <p class="product-desc">${safeText(I18n.field(ev,'description')||I18n.t('Une activité créative Arty avec tout le matériel inclus.'))}</p>
         <div class="event-detail-meta">
           <span class="event-meta-tag">⏱ ${safeText(ev.duration||I18n.t('2 heures'))}</span>
           <span class="event-meta-tag">📍 ${safeText(ev.location||I18n.t('Lieu à confirmer'))}</span>
@@ -609,7 +595,7 @@ function renderPartyCalendarAgenda(eventsByDate){
   const heading=selectedDate?selectedDate.toLocaleDateString(I18n.locale(),{weekday:'long',day:'numeric',month:'long',year:'numeric'}):I18n.t('Sélectionnez une date');
   const cards=events.map(event=>{
     const left=spotsLeft(event);
-    return `<article class="party-calendar-event" onclick="navigate('#/event/${event.id}')">
+    return `<a class="party-calendar-event" href="${safeAttr(storefrontLink('event',event))}">
       <img src="${safeAttr(event.image||'photoacceuil.jpg')}" alt="${safeAttr(event.title)}" loading="lazy">
       <div class="party-calendar-event-copy">
         <span>${safeText(event.time||I18n.t('Heure à confirmer'))} · ${safeText(I18n.t(event.eventType)||I18n.t('Atelier'))}</span>
@@ -618,7 +604,7 @@ function renderPartyCalendarAgenda(eventsByDate){
         <div><strong>${I18n.currency(toMoney(event.price))}</strong><small class="${left<=0?'is-full':''}">${safeText(publicEventScarcity(event).show?publicEventScarcity(event).label:I18n.t('Billets disponibles'))}</small></div>
       </div>
       <span class="party-calendar-event-arrow">${partyCalendarArrow('right')}</span>
-    </article>`;
+    </a>`;
   }).join('');
   agenda.innerHTML=I18n.html`<div class="party-calendar-agenda-head"><span>Votre sélection</span><h3>${safeText(heading)}</h3><p>${events.length?I18n.msg`${events.length} événement${events.length>1?'s':''} à cette date`:I18n.t('Aucun événement public à cette date')}</p></div>
     <div class="party-calendar-agenda-list">${cards||I18n.html`<div class="party-calendar-no-event"><span>${eventExperienceIcon('calendar')}</span><h4>Cette date est libre</h4><p>Vous pouvez demander un événement privé et nous préparerons une proposition adaptée à votre groupe.</p><button class="btn btn-orange btn-sm" type="button" onclick="navigate('#/event-builder')">Créer mon événement</button></div>`}</div>`;
@@ -666,18 +652,18 @@ function renderPartyEvents(){
   partyGrid.innerHTML=sorted.map(ev=>{
     const left=spotsLeft(ev);
     const scarcity=publicEventScarcity(ev);
-    return I18n.html`<article class="event-card event-card-modern" onclick="navigate('#/event/${ev.id}')">
+    return I18n.html`<article class="event-card event-card-modern">
       <div class="event-card-img"><img src="${safeAttr(ev.image||'photoacceuil.jpg')}" alt="${safeAttr(ev.title)}" loading="lazy"><span class="event-card-type">${safeText(I18n.t(ev.eventType)||I18n.t('Atelier'))}</span></div>
       <div class="event-card-body">
         <div class="event-card-date">${formatEventDate(ev)} · ${safeText(ev.time||'18:00')}</div>
-        <h3 class="event-card-title">${safeText(I18n.field(ev,'title'))}</h3>
+        <h3 class="event-card-title"><a class="event-card-link" href="${safeAttr(storefrontLink('event',ev))}">${safeText(I18n.field(ev,'title'))}</a></h3>
         <p class="event-card-desc">${safeText(ev.description||I18n.t('Réservez votre place pour une activité peinture Arty.'))}</p>
         <div class="event-card-mini-meta"><span>${safeText(ev.duration||I18n.t('2 heures'))}</span><span>${safeText(ev.location||I18n.t('Lieu à confirmer'))}</span></div>
         <div class="event-card-footer">
           <span class="event-card-price">${eventTicketTierPricesHTML(ev,'card')}</span>
           ${scarcity.show?`<span class="event-card-spots ${scarcity.className}">${safeText(scarcity.label)}</span>`:''}
         </div>
-        <button class="btn btn-orange btn-sm" onclick="event.stopPropagation();openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver des billets</button>
+        <button class="btn btn-orange btn-sm" onclick="openBooking(${ev.id})" ${left<=0?'disabled style="opacity:.45"':''}>Réserver des billets</button>
       </div>
     </article>`;
   }).join('');
@@ -1228,7 +1214,7 @@ function renderAdminEvents(){
       <div class="form-group"><label>Description</label><textarea id="aEvDesc" placeholder="Expliquez l’expérience, l’ambiance et ce qui est inclus."></textarea></div>
       <div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div>
       <div class="form-row"><div class="form-group"><label>Prix / personne ($)</label><input type="number" id="aEvPrice" step="0.01"></div><div class="form-group"><label>Places max</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div>
-      <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Studio Arty!, Montréal"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg" placeholder="/images/evenement.jpg ou URL"></div></div>
+      <div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Nom du lieu, adresse, ville, province, code postal"></div><div class="form-group"><label>Image URL</label><input type="text" id="aEvImg" placeholder="/images/evenement.jpg ou URL"></div></div>
       <div class="form-group"><label>Inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peintures, pinceaux, tutoriel, collation"></div>
       <div class="form-group"><label>Note importante</label><input type="text" id="aEvHostNote" placeholder="Ex: Arrivez 10 minutes avant le début."></div>
       <div class="admin-event-visibility-options"><small>La capacité est interne. Le site affiche uniquement une alerte lorsqu’il reste 5 billets ou moins.</small></div><label class="catalog-check" style="margin-bottom:16px"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label>
@@ -1355,7 +1341,23 @@ function switchAdminTab(t,btn){
 function renderHomePopularKits(){
   const kits=getHomeFavoriteKits();
   const el=document.getElementById('homePopularKits');if(!el)return;
-  el.innerHTML=kits.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?I18n.html('<span class="kit-card-badge">Populaire</span>'):''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:'')}</div><h3 class="kit-card-title">${safeText(I18n.field(k,'name'))}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div></div></div></div>`}).join('');
+  if (!kits.length && el.querySelector('.kit-card')) return;
+  el.innerHTML = kits.map(kit => renderKitCard(kit)).join('');
+}
+function renderKitCard(kit, catalogCard = false) {
+  const cat = allCategories.find(category => String(category.id) === String(kit.categoryId));
+  const name = I18n.field(kit, 'name');
+  return I18n.html`<a class="kit-card${catalogCard?' catalog-kit-card':''}" href="${safeAttr(storefrontLink('product',kit))}">
+    <div class="kit-card-img"><img src="${safeAttr(kit.image||'logoarty.png')}" alt="${safeAttr(I18n.field(kit,'imageAlt')||name)}" loading="lazy">
+      ${kit.featured?I18n.html('<span class="kit-card-badge">Populaire</span>'):''}${stockBadgeHTML(kit)}
+    </div>
+    <div class="kit-card-body">
+      <div class="kit-card-category">${safeText(cat?cat.name:catalogCard?I18n.t('Sans catégorie'):'')}</div>
+      <h3 class="kit-card-title">${safeText(name)}</h3>
+      <p class="kit-card-desc">${safeText(kit.shortDesc||kit.description||'')}</p>
+      <div class="kit-card-footer"><div>${kitPriceHTML(kit)}</div></div>
+    </div>
+  </a>`;
 }
 function getFilteredKits(){
   let kits=[...allKits];
@@ -1372,7 +1374,8 @@ function getFilteredKits(){
 }
 function renderKitsGrid(){
   const g=document.getElementById('kitsGrid');if(!g)return;const filtered=getFilteredKits();renderActiveFilters(filtered);g.classList.remove('visible');
-  g.innerHTML=filtered.map(k=>{const cat=allCategories.find(c=>String(c.id)===String(k.categoryId));return `<div class="kit-card catalog-kit-card" onclick="navigate('#/product/${k.id}')"><div class="kit-card-img"><img src="${safeAttr(k.image||'logoarty.png')}" alt="${safeAttr(k.name)}" loading="lazy">${k.featured?I18n.html('<span class="kit-card-badge">Populaire</span>'):''}${stockBadgeHTML(k)}</div><div class="kit-card-body"><div class="kit-card-category">${safeText(cat?cat.name:I18n.t('Sans catégorie'))}</div><h3 class="kit-card-title">${safeText(I18n.field(k,'name'))}</h3><p class="kit-card-desc">${safeText(k.shortDesc||k.description||'')}</p><div class="kit-card-footer"><div>${kitPriceHTML(k)}</div></div></div></div>`}).join('');
+  if (!allKits.length && g.querySelector('.kit-card')) return;
+  g.innerHTML = filtered.map(kit => renderKitCard(kit, true)).join('');
   if(!filtered.length)g.innerHTML=I18n.html('<div class="empty-state catalog-empty"><h3>Aucun produit trouvé</h3><p>Essayez de retirer un filtre ou de chercher un mot plus simple.</p><button class="btn btn-orange btn-sm" onclick="resetCatalogFilters()">Réinitialiser les filtres</button></div>');
   setTimeout(()=>g.classList.add('visible'),50);
 }
@@ -1551,15 +1554,15 @@ function normalizeClientProductChoices(raw,prefix){
 async function renderProductPage(id,{force=false}={}){
   const c=document.getElementById('productPageContent');
   if(!c)return;
-  c.innerHTML=productLoadingHTML();
+  const preview = !location.hash && !force ? c.querySelector('[data-storefront-preview]') : null;
+  if (!preview) c.innerHTML=productLoadingHTML();
   try{
   let kit=allKits.find(k=>String(k.id)===String(id));
   if(!kit||force){
-    c.innerHTML=productLoadingHTML();
     if(force)allKits=allKits.filter(k=>String(k.id)!==String(id));
     kit=await fetchProductById(id);
   }
-  if(!kit){c.innerHTML=productLoadErrorHTML(id);return}
+  if(!kit){if(!preview)c.innerHTML=productLoadErrorHTML(id);return}
   const t=productUiText();
   const cat=allCategories.find(ct=>String(ct.id)===String(kit.categoryId));
   const images=productImageList(kit).filter(Boolean);
@@ -1568,8 +1571,9 @@ async function renderProductPage(id,{force=false}={}){
   const included=(Array.isArray(kit.includes)?kit.includes:[]).filter(Boolean).map(item=>typeof item==='string'?item:(item?.label||item?.name||String(item||''))).filter(Boolean);
   const localizedName=I18n.field(kit,'name')||kit.name||'ARTY';
   const localizedDescription=I18n.field(kit,'description')||I18n.field(kit,'shortDesc')||kit.description||kit.shortDesc||'';
+  const firstImageAlt = I18n.field(kit, 'imageAlt') || localizedName;
   const localizedCategory=cat?(I18n.field(cat,'name')||cat.name):'ARTY';
-  const thumbs=images.length>1?`<div class="product-thumbs" aria-label="${safeAttr(t.photo)}">${images.map((img,index)=>`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" data-index="${index}" data-alt="${safeAttr(localizedName)} — ${safeAttr(t.photo)} ${index+1}" onclick="switchProductImage(this)" aria-label="${safeAttr(t.photo)} ${index+1}" aria-pressed="${index===0?'true':'false'}"><img src="${safeAttr(img)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='logoarty.png'"></button>`).join('')}</div>`:'';
+  const thumbs=images.length>1?`<div class="product-thumbs" aria-label="${safeAttr(t.photo)}">${images.map((img,index)=>`<button type="button" class="product-thumb${index===0?' active':''}" data-image="${safeAttr(img)}" data-index="${index}" data-alt="${safeAttr(index===0?firstImageAlt:localizedName+' — '+t.photo+' '+(index+1))}" onclick="switchProductImage(this)" aria-label="${safeAttr(t.photo)} ${index+1}" aria-pressed="${index===0?'true':'false'}"><img src="${safeAttr(img)}" alt="" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='logoarty.png'"></button>`).join('')}</div>`:'';
   const sizeOptions=sizes.length?`<div class="product-option-group"><div class="product-option-heading"><div><span>${safeText(t.chooseSize)}</span><small>${safeText(t.required)}</small></div></div><div class="product-size-grid">${sizes.map((option,index)=>`<label class="product-size-option"><input type="radio" name="productSize" value="${safeAttr(option.id)}" ${index===0?'checked':''} onchange="updateProductPrice(${kit.id})"><span><strong>${safeText(I18n.field(option,'label')||option.label)}</strong><small>${productChoicePrice(option.priceDelta)}</small></span></label>`).join('')}</div></div>`:'';
   const addOnOptions=addOns.length?`<div class="product-option-group"><div class="product-option-heading"><div><span>${safeText(t.customize)}</span><small>${safeText(t.optional)}</small></div></div><div class="product-addon-list">${addOns.map(option=>`<label class="product-addon-option"><input class="product-addon-input" type="checkbox" value="${safeAttr(option.id)}" onchange="updateProductPrice(${kit.id})"><span class="product-addon-check" aria-hidden="true">✓</span><span class="product-addon-copy"><strong>${safeText(I18n.field(option,'label')||option.label)}</strong>${option.description?`<small>${safeText(I18n.field(option,'description')||option.description)}</small>`:''}</span><b>${productChoicePrice(option.priceDelta)}</b></label>`).join('')}</div></div>`:'';
   const regular=Number(kit.originalPrice??kit.price)||0,price=getKitDisplayPrice(kit),inStock=kit.inStock!==false;
@@ -1577,15 +1581,15 @@ async function renderProductPage(id,{force=false}={}){
   const processCard=`<section class="product-detail-card product-process-card"><div class="product-detail-card-head"><div class="product-detail-icon teal" aria-hidden="true">3</div><div><span class="product-detail-kicker">ARTY</span><h2>${safeText(t.how)}</h2><p>${safeText(t.howIntro)}</p></div></div><div class="product-process-steps"><div><b>1</b><span><strong>${safeText(t.step1)}</strong><small>${safeText(t.step1Sub)}</small></span></div><div><b>2</b><span><strong>${safeText(t.step2)}</strong><small>${safeText(t.step2Sub)}</small></span></div><div><b>3</b><span><strong>${safeText(t.step3)}</strong><small>${safeText(t.step3Sub)}</small></span></div></div></section>`;
   c.innerHTML=`
     <nav class="product-breadcrumb" aria-label="Breadcrumb">
-      <button type="button" onclick="navigate('#/')">${safeText(t.home)}</button><span>›</span>
-      <button type="button" onclick="navigate('#/paintings')">${safeText(t.kits)}</button><span>›</span>
+      <a href="${artyLocalizedPath('/')}">${safeText(t.home)}</a><span>›</span>
+      <a href="${artyLocalizedPath('/products')}">${safeText(t.kits)}</a><span>›</span>
       <span aria-current="page">${safeText(localizedName)}</span>
     </nav>
-    <button class="product-back" onclick="navigate('#/paintings')">← ${safeText(t.back)}</button>
+    <a class="product-back" href="${artyLocalizedPath('/products')}">← ${safeText(t.back)}</a>
     <div class="product-layout product-layout-pro">
       <section class="product-gallery product-gallery-pro">
         <div class="product-main-media">
-          <img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" data-index="0" alt="${safeAttr(localizedName)} — ${safeAttr(t.photo)} 1" decoding="async" fetchpriority="high" onclick="openProductLightbox()" onerror="this.onerror=null;this.src='logoarty.png'">
+          <img src="${safeAttr(images[0])}" class="product-main-img" id="pMainImg" data-index="0" alt="${safeAttr(firstImageAlt)}" decoding="async" fetchpriority="high" onclick="openProductLightbox()" onerror="this.onerror=null;this.src='logoarty.png'">
           ${images.length>1?`<button class="product-image-nav product-image-prev" type="button" onclick="stepProductImage(-1)" aria-label="${safeAttr(t.previous)}">‹</button><button class="product-image-nav product-image-next" type="button" onclick="stepProductImage(1)" aria-label="${safeAttr(t.next)}">›</button><span class="product-photo-count" id="productPhotoCount">${safeText(t.photo)} 1 / ${images.length}</span>`:''}
           <button class="product-image-zoom" type="button" onclick="openProductLightbox()" aria-label="${safeAttr(t.zoom)}"><span aria-hidden="true">⌕</span><small>${safeText(t.zoom)}</small></button>
         </div>
@@ -1610,7 +1614,7 @@ async function renderProductPage(id,{force=false}={}){
   updateProductPrice(kit.id);
   }catch(error){
     console.error('ARTY product page render failed',error,{productId:id});
-    c.innerHTML=productLoadErrorHTML(id);
+    if (!preview?.isConnected) c.innerHTML=productLoadErrorHTML(id);
   }
 }
 function addToCart(kitId){
@@ -2989,7 +2993,7 @@ function renderAdminEvents(){
       <div class="admin-table-wrap admin-guest-table"><table class="admin-table"><thead><tr><th>Participant et billet</th><th>Acheteur</th><th>Présence</th><th>Action</th></tr></thead><tbody>${guestRows||I18n.html('<tr><td colspan="4" class="admin-muted">Aucun billet pour cet événement.</td></tr>')}</tbody></table></div>
       ${selectedBookings.length?I18n.html`<details class="admin-booking-contacts"><summary>Coordonnées et envoi des billets (${selectedBookings.length})</summary><div>${bookingContacts}</div></details>`:''}
     </section>
-    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><div class="admin-event-visibility-options"><small>La capacité est interne. Le site affiche uniquement une alerte lorsqu’il reste 5 billets ou moins.</small></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
+    <details class="admin-event-editor admin-event-builder" id="adminEventEditor"><summary><span><strong>Créer ou modifier un événement</strong><small>Date, capacité, prix et informations publiques</small></span></summary><div class="admin-event-editor-body"><div class="admin-form-head"><div><h3 id="evFormTitle">Publier un événement</h3><p>Renseignez toutes les informations affichées au client.</p></div><button class="btn btn-ghost btn-sm" type="button" onclick="resetEvForm()">Nouveau</button></div><input type="hidden" id="editEvId"><div class="form-row"><div class="form-group"><label>Titre</label><input type="text" id="aEvTitle"></div><div class="form-group"><label>Type</label><select id="aEvType"><option value="Atelier public">Atelier public</option><option value="Famille">Famille</option><option value="Couple">Couple</option><option value="Enfants">Enfants</option><option value="Privé">Privé</option></select></div></div><div class="form-group"><label>Description</label><textarea id="aEvDesc"></textarea></div><div class="form-row"><div class="form-group"><label>Date</label><input type="date" id="aEvDate"></div><div class="form-group"><label>Heure</label><input type="time" id="aEvTime" value="18:00"></div><div class="form-group"><label>Durée</label><input type="text" id="aEvDur" placeholder="2 heures"></div></div><div class="form-row"><div class="form-group"><label>Prix par personne ($)</label><input type="number" id="aEvPrice" min="0" step="0.01"></div><div class="form-group"><label>Capacité</label><input type="number" id="aEvSpots" min="1"></div><div class="form-group"><label>Statut</label><select id="aEvStatus"><option value="published">Publié</option><option value="draft">Brouillon</option><option value="cancelled">Annulé</option></select></div></div><div class="form-row"><div class="form-group"><label>Lieu</label><input type="text" id="aEvLoc" placeholder="Nom du lieu, adresse, ville, province, code postal"></div><div class="form-group"><label>Image</label><input type="text" id="aEvImg" placeholder="URL de l’image"></div></div><div class="form-group"><label>Ce qui est inclus</label><input type="text" id="aEvIncludes" placeholder="Toile, peinture, pinceaux"></div><div class="form-group"><label>Information importante</label><input type="text" id="aEvHostNote"></div><div class="admin-event-visibility-options"><small>La capacité est interne. Le site affiche uniquement une alerte lorsqu’il reste 5 billets ou moins.</small></div><label class="catalog-check"><input type="checkbox" id="aEvFeatured"> Mettre en avant</label><div class="admin-editor-actions"><button class="btn btn-orange" type="button" onclick="saveEv()">Enregistrer l’événement</button><button class="btn btn-ghost" type="button" onclick="resetEvForm()" style="display:none" id="cancelEv">Annuler</button></div></div></details>
     <div class="admin-section-title"><h3>Demandes d’événements privés</h3><p>Demandes sur mesure à traiter par votre équipe.</p></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Client</th><th>Projet</th><th>Lieu</th><th>Statut</th><th>Actions</th></tr></thead><tbody>${requestRows||I18n.html('<tr><td colspan="5" class="admin-muted">Aucune demande privée.</td></tr>')}</tbody></table></div>`;
 }
 

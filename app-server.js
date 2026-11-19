@@ -111,74 +111,7 @@ function getCommerceConfig(){const db=readDb();return commerceCore.normalizeComm
 function getMarketingConfig(){const db=readDb();return marketingCore.normalizeMarketingConfig(db.marketingConfig||marketingCore.DEFAULT_MARKETING_CONFIG)}
 
 function escapeHtml(value){return String(value??'').replace(/[&<>\"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]))}
-function escapeAttr(value){return escapeHtml(value).replace(/'/g,'&#39;')}
-function jsonScript(value){return JSON.stringify(value).replace(/</g,'\\u003c').replace(/-->/g,'--\\u003e')}
-function loadIndexHtml(){return fs.readFileSync(path.join(__dirname,'public','index.html'),'utf8')}
 function requestLanguage(req){return String(req.query?.lang||req.headers['accept-language']||'fr').toLowerCase().startsWith('en')?'en':'fr'}
-function entityCollection(db,kind){if(kind==='event')return db.events||[];if(kind==='collection')return db.categories||[];return db.kits||[]}
-function schemaFor(config,kind,entity,meta){
-  if(kind==='product')return {'@context':'https://schema.org','@type':'Product',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,image:[meta.image],sku:meta.contentId,url:meta.url,offers:{'@type':'Offer',url:meta.url,priceCurrency:'CAD',price:Number(entity.price)||0,availability:entity.inStock===false?'https://schema.org/OutOfStock':'https://schema.org/InStock'}};
-  if(kind==='event'){
-    const startDate=entity.date?`${entity.date}${entity.time?`T${String(entity.time).slice(0,5)}:00`:''}`:undefined;
-    const locationName=text(entity.location||entity.venue||entity.address||'',180);
-    const schema={'@context':'https://schema.org','@type':'Event',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,image:[meta.image],url:meta.url,eventStatus:'https://schema.org/EventScheduled',eventAttendanceMode:'https://schema.org/OfflineEventAttendanceMode',offers:{'@type':'Offer',url:meta.url,priceCurrency:'CAD',price:Number(entity.price)||0,availability:'https://schema.org/InStock'}};
-    if(startDate)schema.startDate=startDate;if(locationName)schema.location={'@type':'Place',name:locationName};return schema;
-  }
-  if(kind==='collection')return {'@context':'https://schema.org','@type':'CollectionPage',name:meta.title.replace(/\s*\|.*$/,''),description:meta.description,url:meta.url,image:meta.image};
-  if(kind==='contact')return {'@context':'https://schema.org','@type':'ContactPage',name:meta.title,url:meta.url,description:meta.description};
-  return {'@context':'https://schema.org','@type':'WebSite',name:config.brandName,url:config.siteUrl,description:config.defaultDescription};
-}
-function injectMarketingHead(html,config,kind,entity,meta,landing){
-  let output=html;
-  const title=meta?.title||config.defaultTitle,description=meta?.description||config.defaultDescription,image=meta?.image||marketingCore.absoluteUrl(config,config.defaultSocialImage),url=meta?.url||config.siteUrl;
-  // The base URL must appear before any relative CSS/JS/image references are parsed.
-  // Otherwise /products/... or /events/... would try to load /products/styles.css, etc.
-  output=output.replace(/<head>/i,'<head>\n  <base href="/">');
-  output=output.replace(/<title>[\s\S]*?<\/title>/i,`<title>${escapeHtml(title)}</title>`);
-  output=output.replace(/<meta\s+name="description"\s+content="[^"]*"\s*\/?\s*>/i,`<meta name="description" content="${escapeAttr(description)}">`);
-  const verification=[config.verification.google?`<meta name="google-site-verification" content="${escapeAttr(config.verification.google)}">`:'',config.verification.facebook?`<meta name="facebook-domain-verification" content="${escapeAttr(config.verification.facebook)}">`:''].join('');
-  const schema=schemaFor(config,kind,entity||{},meta||{title,url,image,description});
-  const extra=`\n  <link rel="canonical" href="${escapeAttr(url)}">\n  <meta property="og:site_name" content="${escapeAttr(config.brandName)}">\n  <meta property="og:type" content="${kind==='product'?'product':kind==='event'?'event':'website'}">\n  <meta property="og:title" content="${escapeAttr(title)}">\n  <meta property="og:description" content="${escapeAttr(description)}">\n  <meta property="og:image" content="${escapeAttr(image)}">\n  <meta property="og:url" content="${escapeAttr(url)}">\n  <meta name="twitter:card" content="summary_large_image">\n  <meta name="twitter:title" content="${escapeAttr(title)}">\n  <meta name="twitter:description" content="${escapeAttr(description)}">\n  <meta name="twitter:image" content="${escapeAttr(image)}">\n  ${verification}\n  <script type="application/ld+json">${jsonScript(schema)}</script>\n  <script>window.__ARTY_MARKETING_LANDING__=${jsonScript(landing||null)};</script>\n`;
-  return output.replace('</head>',`${extra}</head>`);
-}
-function sendMarketingPage(req,res,kind){
-  const db=readDb(),config=getMarketingConfig(),lang=requestLanguage(req);
-  if(kind==='home'){
-    const meta={title:config.defaultTitle,description:config.defaultDescription,image:marketingCore.absoluteUrl(config,config.defaultSocialImage),url:config.siteUrl};
-    return res.type('html').send(injectMarketingHead(loadIndexHtml(),config,'home',{},meta,{kind:'home',url:config.siteUrl}));
-  }
-  const resolved=marketingCore.resolveEntity(config,kind,entityCollection(db,kind),req.params.slug);
-  if(!resolved)return res.status(404).type('html').send('ARTY page not found');
-  const canonicalPath=new URL(resolved.canonicalUrl).pathname;
-  if(req.path!==canonicalPath)return res.redirect(301,`${canonicalPath}${req.originalUrl.includes('?')?'?'+req.originalUrl.split('?').slice(1).join('?'):''}`);
-  const meta=marketingCore.buildPageMeta(config,kind,resolved.entity,lang);
-  const landing={kind,id:resolved.entity.id,slug:resolved.slug,url:meta.url,contentId:meta.contentId};
-  return res.type('html').send(injectMarketingHead(loadIndexHtml(),config,kind,resolved.entity,meta,landing));
-}
-function buildSitemap(){
-  const db=readDb(),config=getMarketingConfig(),urls=[{loc:config.siteUrl,lastmod:''},{loc:config.siteUrl+'/contact',lastmod:''}];
-  [['product',db.kits||[]],['event',db.events||[]],['collection',db.categories||[]]].forEach(([kind,list])=>list.forEach(entity=>urls.push({loc:marketingCore.publicUrl(config,kind,entity),lastmod:text(entity.updatedAt||entity.date||'',30)})));
-  const xml=urls.map(item=>`  <url><loc>${escapeHtml(item.loc)}</loc>${item.lastmod?`<lastmod>${escapeHtml(item.lastmod.slice(0,10))}</lastmod>`:''}</url>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${xml}\n</urlset>`;
-}
-function installMarketingPublicRoutes(app){
-  if(app.__artyMarketingPublicInstalled)return;app.__artyMarketingPublicInstalled=true;
-  app.get('/',(req,res)=>sendMarketingPage(req,res,'home'));
-  app.get('/contact',(req,res)=>{
-    const config=getMarketingConfig(),en=requestLanguage(req)==='en';
-    const meta={title:en?'Contact & support | ARTY':'Contact & assistance | ARTY',description:en?'A question about an order, delivery, painting kit or event? Contact the ARTY team.':'Une question sur une commande, une livraison, un kit ou un événement ? Contactez l’équipe ARTY.',url:config.siteUrl+'/contact',image:marketingCore.absoluteUrl(config,config.defaultSocialImage)};
-    // Show the contact page from the first paint while the shared app loads its data.
-    // Other entry routes keep the original homepage markup and startup behavior.
-    const loading=`<div class="contact-shell" aria-busy="true" style="min-height:100vh"><header class="contact-hero"><p class="contact-eyebrow">${en?'Contact &amp; support':'Contact &amp; assistance'}</p><h1>${en?'We’re here':'On est là'}<br><span>${en?'for you.':'pour vous.'}</span></h1><p role="status">${en?'Loading the contact form…':'Chargement du formulaire…'}</p></header></div>`;
-    const html=loadIndexHtml().replace('<div class="page active" id="page-home">','<div class="page" id="page-home">').replace('<div class="page" id="page-contact">','<div class="page active" id="page-contact">').replace('<main id="contactPageContent"></main>',`<main id="contactPageContent">${loading}</main>`);
-    res.type('html').send(injectMarketingHead(html,config,'contact',{},meta,{kind:'contact',url:meta.url}));
-  });
-  app.get('/products/:slug',(req,res)=>sendMarketingPage(req,res,'product'));
-  app.get('/events/:slug',(req,res)=>sendMarketingPage(req,res,'event'));
-  app.get('/collections/:slug',(req,res)=>sendMarketingPage(req,res,'collection'));
-  app.get('/sitemap.xml',(req,res)=>res.type('application/xml').send(buildSitemap()));
-  app.get('/robots.txt',(req,res)=>{const config=getMarketingConfig();res.type('text/plain').send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${config.siteUrl}/sitemap.xml\n`) });
-}
 
 function installExtensionRoutes(app){
   if(app.__artyExtensionsInstalled)return;app.__artyExtensionsInstalled=true;
@@ -408,18 +341,10 @@ function installExtensionRoutes(app){
 
 function wrappedExpress(...args){
   const app=realExpress(...args),originalUse=app.use.bind(app);
-  let marketingInstalled=false,extensionsInstalled=false;
+  let extensionsInstalled=false;
   app.use=function(...useArgs){
     const mount=typeof useArgs[0]==='string'?useArgs[0]:'';
     const middleware=useArgs.find(value=>typeof value==='function');
-
-    // Install SEO/marketing pages after the global security/compression guards
-    // but immediately before the public static middleware so / and clean URLs
-    // still receive their server-rendered metadata.
-    if(!marketingInstalled&&!mount&&middleware?.name==='serveStatic'){
-      installMarketingPublicRoutes(app);
-      marketingInstalled=true;
-    }
 
     const result=originalUse(...useArgs);
 
@@ -441,7 +366,7 @@ function replaceRequired(source,needle,replacement,label){
   return source.replace(needle,replacement);
 }
 function patchServerSource(source){
-  source=replaceRequired(source,"const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');","const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');\nconst commerceCore = require('./commerce-core');\nconst marketingCore = require('./marketing-core');",'commerce and marketing imports');
+  source=replaceRequired(source,"const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');","const { I18n, middleware: localeMiddleware, catalog: localizeCatalog, orderView: localizeOrder, translations: normalizeTranslations, withLocale } = require('./localization');\nconst commerceCore = require('./commerce-core');",'commerce import');
   source=replaceRequired(source,"function priceOrder(db, items = [], promoCode = '') {","function priceOrder(db, items = [], promoCode = '', address = {}) {",'priceOrder signature');
   source=replaceRequired(source,'return {\n    items:pricedItems,\n    subtotal,\n    discountTotal,\n    discountsApplied,\n    promoCode:context.code,\n    promoCodeValid:context.promoCodeValid,\n    promoCodeQualified,\n    promoCodeApplied,\n    promoDiscountTotal,\n    total:money(subtotal - discountTotal)\n  };',"const commerce = commerceCore.calculateCommerceTotals(db.commerceConfig, pricedItems, subtotal, discountTotal, address);\n  return { items:pricedItems, subtotal, discountTotal, discountsApplied, promoCode:context.code, promoCodeValid:context.promoCodeValid, promoCodeQualified, promoCodeApplied, promoDiscountTotal, ...commerce, total:commerce.total };",'priceOrder commerce totals');
   source=replaceRequired(source,"  if (needsShipping && (!address || !String(address.line1 || '').trim())) return res.status(400).json({ error: I18n.t('Adresse de livraison requise') });","  const shippingAddressError = commerceCore.validateShippingAddress(db.commerceConfig, address, needsShipping);\n  if (shippingAddressError) return res.status(400).json({ error: I18n.t(shippingAddressError) });",'shipping address validation');

@@ -4,37 +4,87 @@
   try { saved = localStorage.getItem('arty_language') || ''; } catch {}
   const pageLanguage = new URLSearchParams(location.search).get('lang');
   const routeLanguage = new URLSearchParams(location.hash.split('?')[1] || '').get('lang');
-  I18n.setLanguage(pageLanguage || routeLanguage || saved || 'fr');
+  const storefrontLanguage = document.documentElement.dataset.storefrontLanguage;
+  const legacyRoute = location.hash.startsWith('#/');
+  const preferred = legacyRoute && storefrontLanguage !== 'en'
+    ? pageLanguage || routeLanguage || saved || storefrontLanguage
+    : storefrontLanguage || pageLanguage || routeLanguage || saved;
+  I18n.setLanguage(preferred || 'fr');
   document.documentElement.lang = I18n.language();
+  if (storefrontLanguage && !legacyRoute) {
+    try { localStorage.setItem('arty_language', I18n.language()); } catch {}
+  }
 })();
 
 const artyStaticBindings = [];
 let artyLanguageChanging = false;
+function artyLocalizedPath(path, language = I18n.language()) {
+  return language === 'en' ? '/en' + path : path;
+}
+function switchStorefrontLanguage(event, link) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return true;
+  setArtyLanguage(link.dataset.language);
+  return false;
+}
 function languageSwitchHTML() {
   return `<div class="language-switch" role="group" aria-label="Language / Langue"><button type="button" lang="fr" data-language="fr" aria-pressed="${I18n.language()==='fr'}" onclick="setArtyLanguage('fr')">FR</button><button type="button" lang="en" data-language="en" aria-pressed="${I18n.language()==='en'}" onclick="setArtyLanguage('en')">EN</button></div>`;
 }
 function updateLanguageControls() {
-  document.querySelectorAll('[data-language]').forEach(button => {
-    button.setAttribute('aria-pressed',String(button.dataset.language===I18n.language()));
-    button.disabled = artyLanguageChanging;
+  const language = I18n.language();
+  document.querySelectorAll('[data-language]').forEach(control => {
+    const selected = control.dataset.language === language;
+    if (control.tagName === 'A') {
+      if (selected) control.setAttribute('aria-current', 'page');
+      else control.removeAttribute('aria-current');
+    } else {
+      control.setAttribute('aria-pressed', String(selected));
+      control.disabled = artyLanguageChanging;
+    }
   });
-  document.documentElement.lang = I18n.language();
-  const contactPage=location.hash==='#/contact'||location.hash.startsWith('#/contact?')||(!location.hash&&/^\/contact\/?$/.test(location.pathname));
-  document.title = contactPage ? (I18n.language()==='en'?'Contact & support | ARTY':'Contact & assistance | ARTY') : I18n.t('Arty! — Kits de Peinture & Événements Créatifs');
-  document.querySelector('meta[name="description"]')?.setAttribute('content',contactPage ? (I18n.language()==='en'?'A question about an order, delivery, painting kit or event? Contact the ARTY team.':'Une question sur une commande, une livraison, un kit ou un événement ? Contactez l’équipe ARTY.') : I18n.language()==='en'?'Creative painting kits, tutorials, and ARTY events. Explore our activities and create at your own pace.':'Kits de peinture créatifs, tutoriels et événements ARTY. Découvrez nos activités et créez à votre rythme.');
+  document.documentElement.lang = language;
+  document.querySelectorAll('[data-public-path]').forEach(link => {
+    link.href = artyLocalizedPath(link.dataset.publicPath, language);
+  });
+}
+function updateStorefrontMeta() {
+  const landing = window.__ARTY_MARKETING_LANDING__;
+  if (location.hash && !(location.hash === '#/' && landing?.kind === 'home')) return;
+  const language = I18n.language();
+  const meta = landing?.pages?.[language];
+  if (!meta) return;
+  document.title = meta.title;
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', meta.url);
+  document.querySelector('meta[name="description"]')?.setAttribute('content', meta.description);
+  for (const [key, value] of Object.entries({ title:meta.title, description:meta.description, image:meta.image, url:meta.url })) {
+    document.querySelector('meta[property="og:' + key + '"]')?.setAttribute('content', value);
+    document.querySelector('meta[name="twitter:' + key + '"]')?.setAttribute('content', value);
+  }
+  document.querySelector('meta[property="og:locale"]')?.setAttribute('content', language + '_CA');
+}
+function originalText(node) {
+  const note = node.previousSibling;
+  if (note?.nodeType === Node.COMMENT_NODE && note.nodeValue.startsWith('arty-i18n:')) {
+    return decodeURIComponent(note.nodeValue.slice('arty-i18n:'.length));
+  }
+  return node.nodeValue;
 }
 function bindStaticLanguage() {
   // Keep option values stable even when their display text is translated.
-  document.querySelectorAll('option:not([value])').forEach(option => option.setAttribute('value',option.textContent));
+  document.querySelectorAll('option:not([value])').forEach(option => {
+    const original = Array.from(option.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(originalText).join('');
+    option.setAttribute('value', original || option.textContent);
+  });
   const walker = document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
   let node;
   while ((node=walker.nextNode())) {
     if (node.parentElement?.closest('script,style,textarea,[translate="no"]')) continue;
-    if (I18n.has(node.nodeValue)) artyStaticBindings.push({node,source:node.nodeValue});
+    const source = originalText(node);
+    if (I18n.has(source)) artyStaticBindings.push({node,source});
   }
   document.querySelectorAll('[placeholder],[title],[alt],[aria-label],[aria-description]').forEach(node => {
     for (const attribute of ['placeholder','title','alt','aria-label','aria-description']) {
-      const source=node.getAttribute(attribute);
+      const original = node.getAttribute('data-i18n-source-' + attribute);
+      const source = original ? decodeURIComponent(original) : node.getAttribute(attribute);
       if (source && I18n.has(source)) artyStaticBindings.push({node,attribute,source});
     }
   });
@@ -47,6 +97,7 @@ function applyStaticLanguage() {
     else node.nodeValue=I18n.t(source);
   }
   updateLanguageControls();
+  updateStorefrontMeta();
 }
 async function artyFetch(input, options = {}) {
   const url=new URL(typeof input==='string'?input:input.url,location.href);
@@ -124,10 +175,24 @@ async function setArtyLanguage(language) {
   I18n.setLanguage(language);applyStaticLanguage();updateLanguageControls();
   try {
     try{localStorage.setItem('arty_language',language);}catch{}
-    const url=new URL(location.href);url.searchParams.set('lang',language);history.replaceState(null,'',url);
+    const url = new URL(location.href);
+    const landing = window.__ARTY_MARKETING_LANDING__;
+    if (landing?.path) {
+      url.pathname = artyLocalizedPath(landing.path, language);
+      url.searchParams.delete('lang');
+      const [hashPath, hashQuery] = url.hash.split('?');
+      const params = new URLSearchParams(hashQuery);
+      if (params.has('lang')) {
+        params.delete('lang');
+        url.hash = hashPath + (params.size ? '?' + params : '');
+      }
+    } else {
+      url.searchParams.set('lang', language);
+    }
+    history.replaceState(history.state, '', url);
     await Promise.all([loadKits(),loadCategories(),loadEvents(),loadEventOptions(),loadBundles(),loadBundleDealRules(),loadLanguageAnnouncement()]);
     localizeCart();
-    const hash=location.hash||'#/';
+    const hash=artyRoute();
     if(hash==='#/checkout'&&stripeElements){translatePaymentCopy(document.getElementById('checkoutPageContent'),previous);stripeElements.update({locale:language});}
     else if(hash.startsWith('#/event-quote/')&&eventQuoteElements){translatePaymentCopy(document.getElementById('eventQuotePageContent'),previous);eventQuoteElements.update({locale:language});}
     else {
@@ -181,6 +246,7 @@ function localizeCart() {
   saveCart();
 }
 document.addEventListener('DOMContentLoaded',()=>{
-  document.getElementById('languageControl').innerHTML=languageSwitchHTML();
+  const languageControl = document.getElementById('languageControl');
+  if (!languageControl.hasChildNodes()) languageControl.innerHTML = languageSwitchHTML();
   bindStaticLanguage();
 });

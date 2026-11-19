@@ -1,5 +1,17 @@
 /* English catalog. French source messages are stable keys. */
 (function(root,factory){if(typeof module==='object'&&module.exports)module.exports=factory();else root.ARTY_EN=factory();})(typeof globalThis!=='undefined'?globalThis:this,function(){return {
+  "Kits de peinture": "DIY painting kits",
+  "et ateliers créatifs": "and art workshops",
+  "À la maison ou en atelier à Ottawa et à Gatineau.": "At home or at a workshop in Ottawa or Gatineau.",
+  "Du premier trait à la dernière touche, on vous guide étape par étape.": "We’ll guide you from the first outline to the finishing touches.",
+  "Ateliers de peinture": "Painting workshops",
+  "à Ottawa et à Gatineau": "in Ottawa and Gatineau",
+  "Art Brunch, Paint & Sip et ateliers privés.": "Art Brunch, Paint & Sip and private workshops.",
+  "Retrouvez-nous au Moulin de Provence KD, au centre-ville d’Ottawa, ou chez Âmes Créatives, aux Galeries de Hull. Pour une fête ou une activité d’équipe, on peut aussi préparer un atelier sur mesure.": "Find us at Le Moulin de Provence KD in downtown Ottawa or at Âmes Créatives at Galeries de Hull. We can also plan a private workshop for your party or team.",
+  "Kits de peinture à faire chez soi. Ateliers guidés à Ottawa et à Gatineau.": "Painting kits to enjoy at home. Guided workshops in Ottawa and Gatineau.",
+  "Nom du lieu, adresse, ville, province, code postal": "Venue name, street address, city, province, postal code",
+  "Événement terminé": "Event ended",
+  "Retour à la boutique": "Back to the shop",
   "Un petit coup de main ?": "Need a helping hand?",
   "Une question sur votre commande ou un projet en tête ? Notre équipe est là pour vous.": "A question about your order or a project in mind? Our team is here for you.",
   "Parlons-en": "Let’s talk",

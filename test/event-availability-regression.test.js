@@ -7,7 +7,8 @@ const server=fs.readFileSync(path.join(__dirname,'..','core-server.js'),'utf8');
 const client=fs.readFileSync(path.join(__dirname,'..','public','app.js'),'utf8');
 const page=fs.readFileSync(path.join(__dirname,'..','public','index.html'),'utf8');
 test('public events API excludes completed events without deleting admin records',()=>{
-  assert.match(server,/\.filter\(e => eventLifecycle\.eventCanAcceptBookings\(e\)\)/);
+  assert.match(server,/\.filter\(event => eventLifecycle\.eventCanAcceptBookings\(event\)\)/);
+  assert.match(server,/res\.json\(getPublicEvents\(readDB\(\)\)\)/);
   assert.match(server,/app\.get\('\/api\/admin\/events', adminOnly/);
   assert.match(server,/res\.json\(\(db\.events \|\| \[\]\)\.sort/);
 });

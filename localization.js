@@ -3,7 +3,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const I18n = require('./public/i18n-core');
 const context = new AsyncLocalStorage();
 I18n.setLanguageProvider(() => context.getStore() || 'fr');
-const fields = ['name','title','subtitle','shortDesc','description','includes','duration','hostNote','note','label','message','discountLabel','productLabel','sizeLabel','eventType','videoTitle','videoUrl','customerLabel'];
+const fields = ['name','title','subtitle','shortDesc','description','imageAlt','includes','duration','hostNote','note','label','message','discountLabel','productLabel','sizeLabel','eventType','videoTitle','videoUrl','customerLabel'];
 
 function translations(raw, existing = {}) {
   const input = { ...(existing.en || {}), ...(raw?.en && typeof raw.en === 'object' ? raw.en : {}) };
@@ -49,6 +49,7 @@ function response(req, payload) {
 function middleware(req, res, next) {
   req.locale = I18n.normalize(req.query.lang || req.get('X-Arty-Language') || 'fr');
   res.set('Content-Language', req.locale);
+  res.set('X-Robots-Tag', 'noindex');
   res.vary('X-Arty-Language');
   const json = res.json.bind(res);
   res.json = payload => json(response(req,payload));
