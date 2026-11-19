@@ -62,7 +62,8 @@ function enhanceHome(){
   var actions=home.querySelector('.hero-actions');
   if(actions){
     var link=actions.querySelector('.arty-mobile-events-link');
-    if(!link){link=owned('a','arty-mobile-events-link');link.href='#/party';actions.appendChild(link)}
+    if(!link){link=owned('a','arty-mobile-events-link');actions.appendChild(link)}
+    setAttr(link,'href',copy('/events','/en/events'));
     setText(link,copy('Découvrir nos événements →','Explore our events →'));
   }
 }
@@ -87,16 +88,14 @@ function enhanceCatalog(){
   setText(document.querySelector('.arty-mobile-kit-info>summary'),copy('Comment fonctionne votre kit','How your kit works'));
   document.querySelectorAll('#homePopularKits .kit-card,#kitsGrid .kit-card').forEach(function(card){
     var body=card.querySelector('.kit-card-body');
-    var route=(card.getAttribute('onclick')||'').match(/#\/product\/[a-zA-Z0-9_-]+/);
-    if(!body||!route)return;
-    var link=body.querySelector('.arty-mobile-card-link');
-    if(!link){
-      link=owned('a','arty-mobile-card-link');link.href=route[0];
-      link.addEventListener('click',function(event){event.stopPropagation()});body.appendChild(link);
+    if(!body)return;
+    var label=body.querySelector('.arty-mobile-card-link');
+    if(!label){
+      label=owned('span','arty-mobile-card-link');
+      label.setAttribute('aria-hidden','true');
+      body.appendChild(label);
     }
-    setText(link,copy('Voir le kit','View kit'));
-    var title=card.querySelector('.kit-card-title');
-    setAttr(link,'aria-label',copy('Voir le kit : ','View kit: ')+(title?title.textContent:''));
+    setText(label,copy('Voir le kit','View kit'));
   });
 }
 function hiddenByOverlay(){
@@ -115,7 +114,7 @@ function ensureProductDock(){
   var page=document.getElementById('page-product');
   var original=page&&page.querySelector('.product-buy-now');
   var price=document.getElementById('productConfiguredPrice');
-  if(!(location.hash||'').startsWith('#/product/')||!page||!page.classList.contains('active')||!original||!price){
+  if(!page?.classList.contains('active')||!original||!price){
     removeNode('.arty-mobile-product-dock');setBodyClass('arty-mobile-product-ready',false);return;
   }
   var dock=document.querySelector('.arty-mobile-product-dock');

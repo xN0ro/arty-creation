@@ -1,10 +1,12 @@
 # French and English
 
-French is the default. Visitors can select FR or EN in the navigation or Studio. The selection is stored locally and in the URL (`?lang=en` or `?lang=fr`). Signed-in users also save an account preference. New orders, bookings, support requests, and event requests keep their own language for later emails, including webhook and admin-triggered emails.
+French is the default. Public storefront pages have separate URLs, with French at the existing paths and English under `/en/`. Old `?lang=` links to those pages redirect to the matching language URL. Visitors can still select FR or EN without losing their place in the app or Studio. Signed-in users also save an account preference. New orders, bookings, support requests, and event requests keep their own language for later emails, including webhook and admin-triggered emails.
 
 ## Editing content
 
 The main admin content fields are French. The English section edits `translations.en` on the same product, event, category, announcement, discount, or package rule. Product size and add-on rows have their own English labels. Reusable product templates preserve English contents and option labels. Existing published catalog copy has reviewed English translations in the message catalog. New custom copy should be entered in both languages; an empty English field falls back to the original content.
+
+For public events, enter the venue as `Name, street address, city, province, postal code` so the event page can include a full address in its search markup.
 
 ## Interface messages
 

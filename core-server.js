@@ -18,6 +18,9 @@ const eventLifecycle = require('./event-lifecycle');
 const salesReporting = require('./sales-reporting');
 const adminAlerts = require('./admin-alerts-core');
 const orderCancellation = require('./order-cancellation');
+const marketingCore = require('./marketing-core');
+const { installStorefrontPages, eventPlace } = require('./storefront-pages');
+const { withCatalogCopy } = require('./catalog-copy');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -82,6 +85,7 @@ app.use(createOptimizedUploadMiddleware({
 
 // Public assets are revalidated/cached instead of being downloaded on every
 // navigation. index.html itself remains short-lived so deploys appear quickly.
+installStorefrontPages(app, { readDB, getPublicKits, getPublicEvents, publicEventView });
 app.use(express.static(PUBLIC_DIR, {
   etag: true,
   lastModified: true,
@@ -647,20 +651,28 @@ app.get('/api/storage-health', (req, res) => res.json({ ...getStorageHealth(), c
 app.get('/api/kits', (req, res) => res.json(getPublicKits(readDB())));
 app.get('/api/kits/:id', (req, res) => { const db = readDB(); const k = getPublicKits(db).find(k => k.id === parseInt(req.params.id)); k ? res.json(k) : res.status(404).json({ error: I18n.t('Non trouvé') }); });
 app.get('/api/categories', (req, res) => res.json(readDB().categories || []));
-function publicEventView(event) {
+function publicEventView(event, config) {
   const max=Math.max(0,parseInt(event.maxSpots)||0),booked=Math.max(0,parseInt(event.bookedSpots)||0),remaining=Math.max(0,max-booked);
   const {maxSpots,bookedSpots,showMaxCapacity,...publicEvent}=event;
   const end=eventLifecycle.eventEndMs(event);
-  return {...publicEvent,endsAt:Number.isFinite(end)?new Date(end).toISOString():'',remainingSpots:remaining,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
+  const place = eventPlace(event);
+  const address = place?.address;
+  const location = address
+    ? [place.name === address.streetAddress ? '' : place.name, address.streetAddress, address.addressLocality, address.addressRegion + ' ' + address.postalCode].filter(Boolean).join(', ')
+    : event.location;
+  const publicPath = marketingCore.pathFor('event', marketingCore.entitySlug(config, 'event', event));
+  return {...publicEvent,location,publicPath,endsAt:Number.isFinite(end)?new Date(end).toISOString():'',remainingSpots:remaining,bookingLimit:Math.min(10,remaining),soldOut:remaining<=0};
+}
+function getPublicEvents(db) {
+  const config = marketingCore.normalizeMarketingConfig(db.marketingConfig);
+  return (db.events || [])
+    .filter(event => eventLifecycle.eventCanAcceptBookings(event))
+    .sort((a,b) => new Date((a.date || '') + 'T' + (a.time || '00:00')) - new Date((b.date || '') + 'T' + (b.time || '00:00')))
+    .map(event => publicEventView(event, config));
 }
 app.get('/api/events', async (req, res) => {
   await reconcileExpiredEventSeatHolds();
-  const now = new Date();
-  const db = readDB();
-  const events = (db.events || [])
-    .filter(e => eventLifecycle.eventCanAcceptBookings(e))
-    .sort((a,b) => new Date((a.date || '') + 'T' + (a.time || '00:00')) - new Date((b.date || '') + 'T' + (b.time || '00:00')));
-  res.json(events.map(publicEventView));
+  res.json(getPublicEvents(readDB()));
 });
 require('./event-options')(app, {readDB,writeDB,adminOnly,I18n});
 app.get('/api/team-activities', (req, res) => res.json(readDB().teamActivities || []));
@@ -3064,7 +3076,9 @@ app.post('/api/admin/product-images', adminOnly, async (req, res) => {
     // dimensions and strips camera metadata before the file reaches public storage.
     const optimized = await optimizeImageBuffer(buffer);
     fs.mkdirSync(PRODUCT_UPLOADS_DIR, { recursive: true });
-    const filename = `product-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.webp`;
+    const originalName = String(req.body?.fileName || '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+    const stem = marketingCore.slugify(originalName, 'product');
+    const filename = `${stem}-${Date.now()}-${crypto.randomBytes(6).toString('hex')}.webp`;
     fs.writeFileSync(path.join(PRODUCT_UPLOADS_DIR, filename), optimized, { flag: 'wx' });
     res.json({
       success: true,
@@ -3533,10 +3547,12 @@ function enrichPublicKit(kit, db) {
   };
 }
 function getPublicKits(db) {
+  const config = marketingCore.normalizeMarketingConfig(db.marketingConfig);
   return (db.kits || []).map(k => {
     const enriched = enrichPublicKit(k, db);
     const { stockQty, lowStockThreshold, trackInventory, ...publicKit } = enriched;
-    return publicKit;
+    const publicPath = marketingCore.pathFor('product', marketingCore.entitySlug(config, 'product', k));
+    return { ...withCatalogCopy(publicKit), publicPath };
   });
 }
 function buildOrderItems(db, rawItems = []) {

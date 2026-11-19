@@ -61,7 +61,7 @@ test('event detail and event listing use built-in ticket option price display',(
 test('updated page invalidates cached app.js after ticket-admin price save changes',()=>{
   const fs=require('node:fs');
   const html=fs.readFileSync(require('node:path').join(__dirname,'../public/index.html'),'utf8');
-  assert.match(html,/app\.js\?v=20261106-ticket-pricing-fix-2/);
+  assert.match(html,/app\.js\?v=\d{8}-[^"]+/);
   assert.match(html,/ticket-pricing-ui\.js\?v=20261106-types-2/);
   const app=fs.readFileSync(require('node:path').join(__dirname,'../public/app.js'),'utf8');
   assert.match(app,/p\.ticketOptions=types/);

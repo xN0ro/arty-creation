@@ -26,16 +26,33 @@
   }
   // Work only on authored text and accessible attributes, before inserting values.
   // Interpolated customer data, URLs, CSS, event handlers, and IDs are never translated.
-  function mapHTML(source, translate) {
+  const htmlEntities = { '&amp;':'&', '&quot;':'"', '&#39;':"'", '&lt;':'<', '&gt;':'>', '&nbsp;':'\u00a0' };
+  const decodeHTML = value => value.replace(/&(?:amp|quot|lt|gt|nbsp|#39);/g, entity => htmlEntities[entity]);
+  const escapeHTML = value => value.replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  function mapHTML(source, translate, preserveSource = false) {
     let skipped = '';
     return source.replace(/<!--[\s\S]*?-->|<(?:[^>"']|"[^"]*"|'[^']*')*>|[^<]+/g, part => {
       if (part.startsWith('<!--')) return part;
       if (part[0] === '<') {
         if (/^<\/(script|style)\b/i.test(part)) skipped = '';
         else if (/^<(script|style)\b/i.test(part)) skipped = part.match(/^<(\w+)/)[1];
-        return part.replace(/\b(placeholder|title|alt|aria-label|aria-description)=("([^"]*)"|'([^']*)')/gi, (match, attr, quoted, double, single) => `${attr}=${quoted[0]}${messagePart(double ?? single, translate).replace(/"/g,'&quot;').replace(/'/g,'&#39;')}${quoted[0]}`);
+        return part.replace(/\b(placeholder|title|alt|aria-label|aria-description)=("([^"]*)"|'([^']*)')/gi, (match, attr, quoted, double, single) => {
+          const original = double ?? single;
+          const value = preserveSource ? decodeHTML(original) : original;
+          const translated = messagePart(value, translate);
+          if (preserveSource) {
+            if (translated === value) return match;
+            return `${attr}="${escapeHTML(translated)}" data-i18n-source-${attr}="${encodeURIComponent(value)}"`;
+          }
+          return `${attr}=${quoted[0]}${translated.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}${quoted[0]}`;
+        });
       }
-      return skipped ? part : messagePart(part, translate);
+      if (skipped) return part;
+      if (!preserveSource) return messagePart(part, translate);
+      const value = decodeHTML(part);
+      const translated = messagePart(value, translate);
+      if (translated === value) return part;
+      return `<!--arty-i18n:${encodeURIComponent(value)}-->${escapeHTML(translated)}`;
     });
   }
   function templateParts(strings, values) {
@@ -47,6 +64,11 @@
   function html(strings, ...values) {
     const source = templateParts(strings, values);
     return interpolate(mapHTML(source, message => t(message)), values);
+  }
+  function pageHTML(source, requestedLanguage) {
+    if (normalize(requestedLanguage) === 'fr') return source;
+    // Remember the authored French text for in-place switches in the app.
+    return mapHTML(source, message => t(message, [], requestedLanguage), true);
   }
   function msg(strings, ...values) {
     const source = templateParts(strings, values);
@@ -63,7 +85,7 @@
     return result;
   }
   return {
-    t, html, msg, key, normalize, language, locale, messagesFromHTML, messagesFromText,
+    t, html, pageHTML, msg, key, normalize, language, locale, messagesFromHTML, messagesFromText,
     field(record, name) {
       const value = record?.[name] ?? '';
       const translated = language()==='en' ? record?.translations?.en?.[name] : undefined;
